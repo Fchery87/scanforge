@@ -59,8 +59,9 @@ export default function RepositoriesPage() {
       try {
         const res = await api.github.listRepositories(org_id as string);
         setGithubRepos(res.items ?? []);
-      } catch {
-        setConnectError("Failed to load repositories from GitHub");
+      } catch (err: any) {
+        console.error("Failed to load GitHub repositories:", err);
+        setConnectError(err.message || "Failed to load repositories from GitHub");
       } finally {
         setLoadingGithubRepos(false);
       }

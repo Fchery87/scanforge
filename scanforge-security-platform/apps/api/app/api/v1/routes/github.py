@@ -137,7 +137,13 @@ async def list_github_repositories(
             detail="No GitHub integration found. Connect GitHub first.",
         )
 
-    repos = await gh.list_repositories(integration.installation_id)
+    try:
+        repos = await gh.list_repositories(integration.installation_id)
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to fetch repositories from GitHub: {e}",
+        )
     return GitHubRepoListResponse(items=repos, total=len(repos))
 
 

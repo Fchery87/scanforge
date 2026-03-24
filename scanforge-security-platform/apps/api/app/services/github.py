@@ -1,3 +1,4 @@
+import logging
 import time
 from urllib.parse import urlencode
 from uuid import UUID
@@ -10,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.models.organization import OrganizationIntegration
 from app.schemas.github import GitHubConnectRequest, GitHubOAuthCallbackRequest, GitHubRepoItem
+
+logger = logging.getLogger(__name__)
 
 
 def _make_app_jwt() -> str:
@@ -92,11 +95,39 @@ class GitHubService:
                 raise Exception("No GitHub App installation found. Please install the app first.")
             return installations[0]
 
+    async def _get_installation_details(self, installation_id: str) -> dict:
+        """Fetch installation details from GitHub using the App JWT."""
+        app_jwt = _make_app_jwt()
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"https://api.github.com/app/installations/{installation_id}",
+                headers={
+                    "Authorization": f"Bearer {app_jwt}",
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+            )
+            resp.raise_for_status()
+            return resp.json()
+
     async def save_integration(
         self,
         org_id: UUID,
         data: GitHubConnectRequest,
     ) -> OrganizationIntegration:
+        account_login = data.account_login
+        account_type = data.account_type
+
+        # Fetch account details from GitHub if not provided by the client
+        if not account_login:
+            try:
+                details = await self._get_installation_details(data.installation_id)
+                account = details.get("account", {})
+                account_login = account.get("login")
+                account_type = account.get("type")
+            except Exception:
+                logger.warning("Could not fetch installation details from GitHub", exc_info=True)
+
         result = await self.db.execute(
             select(OrganizationIntegration).where(OrganizationIntegration.organization_id == org_id)
         )
@@ -104,15 +135,15 @@ class GitHubService:
 
         if integration:
             integration.installation_id = data.installation_id
-            integration.account_login = data.account_login
-            integration.account_type = data.account_type
+            integration.account_login = account_login
+            integration.account_type = account_type
         else:
             integration = OrganizationIntegration(
                 organization_id=org_id,
                 provider="github",
                 installation_id=data.installation_id,
-                account_login=data.account_login,
-                account_type=data.account_type,
+                account_login=account_login,
+                account_type=account_type,
             )
             self.db.add(integration)
 
@@ -136,7 +167,12 @@ class GitHubService:
 
     async def _get_installation_token(self, installation_id: str) -> str:
         """Exchange App JWT for an installation access token."""
-        app_jwt = _make_app_jwt()
+        try:
+            app_jwt = _make_app_jwt()
+        except Exception:
+            logger.error("Failed to create GitHub App JWT — check GITHUB_APP_ID and GITHUB_PRIVATE_KEY", exc_info=True)
+            raise
+
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 f"https://api.github.com/app/installations/{installation_id}/access_tokens",
@@ -146,6 +182,11 @@ class GitHubService:
                     "X-GitHub-Api-Version": "2022-11-28",
                 },
             )
+            if not resp.is_success:
+                logger.error(
+                    "GitHub installation token exchange failed: %s %s",
+                    resp.status_code, resp.text,
+                )
             resp.raise_for_status()
             return resp.json()["token"]
 
@@ -165,6 +206,11 @@ class GitHubService:
                     },
                     params={"per_page": per_page, "page": page},
                 )
+                if not resp.is_success:
+                    logger.error(
+                        "GitHub list repositories failed: %s %s",
+                        resp.status_code, resp.text,
+                    )
                 resp.raise_for_status()
                 data = resp.json()
                 for r in data.get("repositories", []):
