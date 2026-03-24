@@ -87,7 +87,7 @@ export default function OrganizationPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-8 animate-fade-up">
         <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-[#0ea5e9] text-white text-xl font-bold font-display shadow-lg shadow-primary/20">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-accent text-white text-xl font-bold font-display shadow-lg shadow-primary/20">
             {org.name?.charAt(0)}
           </div>
           <div>

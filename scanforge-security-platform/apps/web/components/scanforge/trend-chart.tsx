@@ -64,24 +64,24 @@ export function TrendChart({ data, className }: TrendChartProps) {
       <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto">
         <defs>
           <linearGradient id="trend-gradient-info" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="hsl(217 91% 60%)" stopOpacity="0.3" />
-            <stop offset="100%" stopColor="hsl(217 91% 60%)" stopOpacity="0.02" />
+            <stop offset="0%" stopColor="#135bec" stopOpacity="0.3" />
+            <stop offset="100%" stopColor="#135bec" stopOpacity="0.02" />
           </linearGradient>
           <linearGradient id="trend-gradient-low" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="hsl(160 84% 39%)" stopOpacity="0.25" />
-            <stop offset="100%" stopColor="hsl(160 84% 39%)" stopOpacity="0.02" />
+            <stop offset="0%" stopColor="#22c55e" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="#22c55e" stopOpacity="0.02" />
           </linearGradient>
           <linearGradient id="trend-gradient-medium" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="hsl(38 92% 50%)" stopOpacity="0.25" />
-            <stop offset="100%" stopColor="hsl(38 92% 50%)" stopOpacity="0.02" />
+            <stop offset="0%" stopColor="#eab308" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="#eab308" stopOpacity="0.02" />
           </linearGradient>
           <linearGradient id="trend-gradient-high" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="hsl(25 95% 53%)" stopOpacity="0.25" />
-            <stop offset="100%" stopColor="hsl(25 95% 53%)" stopOpacity="0.02" />
+            <stop offset="0%" stopColor="#f97316" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="#f97316" stopOpacity="0.02" />
           </linearGradient>
           <linearGradient id="trend-gradient-critical" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="hsl(0 84% 60%)" stopOpacity="0.3" />
-            <stop offset="100%" stopColor="hsl(0 84% 60%)" stopOpacity="0.02" />
+            <stop offset="0%" stopColor="#ef4444" stopOpacity="0.3" />
+            <stop offset="100%" stopColor="#ef4444" stopOpacity="0.02" />
           </linearGradient>
         </defs>
 
@@ -93,7 +93,7 @@ export function TrendChart({ data, className }: TrendChartProps) {
             y1={padding.top + chartHeight * pct}
             x2={padding.left + chartWidth}
             y2={padding.top + chartHeight * pct}
-            stroke="hsl(220 15% 18%)"
+            stroke="var(--color-border)"
             strokeWidth="0.5"
             strokeDasharray="4 4"
           />
@@ -109,10 +109,10 @@ export function TrendChart({ data, className }: TrendChartProps) {
         {/* Date labels */}
         {data.length > 1 && (
           <>
-            <text x={padding.left} y={height - 2} fill="hsl(215 12% 38%)" fontSize="9" fontFamily="var(--font-mono)">
+            <text x={padding.left} y={height - 2} fill="var(--color-text-tertiary)" fontSize="9" fontFamily="var(--font-mono)">
               {data[0].date.slice(5)}
             </text>
-            <text x={padding.left + chartWidth} y={height - 2} fill="hsl(215 12% 38%)" fontSize="9" fontFamily="var(--font-mono)" textAnchor="end">
+            <text x={padding.left + chartWidth} y={height - 2} fill="var(--color-text-tertiary)" fontSize="9" fontFamily="var(--font-mono)" textAnchor="end">
               {data[data.length - 1].date.slice(5)}
             </text>
           </>

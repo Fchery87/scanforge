@@ -1,77 +1,75 @@
 @import "tailwindcss";
 
 /* ================================================================
-   SCANFORGE — "Dark Glass & Neon Wire"
+   SCANFORGE — Stitch Design System
    
-   Aesthetic: Refined dark glass panels with crisp glowing wireframe
-   edges. Every panel floats. Every edge glows subtly. The atmosphere
-   feels like looking through dark smoked glass at a data constellation.
+   Aesthetic: Clean dark surfaces with vibrant blue (#135bec) accents.
+   Space Grotesk typography. Sharp geometry with softened corners.
+   Professional security platform feel — Bloomberg meets Vercel.
    ================================================================ */
 
 @theme {
   /* ─── Color Palette ─── */
-  --color-background: #07080e;
-  --color-surface: #0d0f18;
-  --color-surface-hover: #121520;
-  --color-surface-elevated: #161a28;
-  --color-border: #1c2035;
-  --color-border-strong: #252a42;
+  --color-background: #090b10;
+  --color-surface: #0f1118;
+  --color-surface-hover: #151821;
+  --color-surface-elevated: #1a1d28;
+  --color-border: #1e2130;
+  --color-border-strong: #282c3e;
 
-  --color-text-primary: #d8dae5;
-  --color-text-secondary: #7c8298;
-  --color-text-tertiary: #454a64;
+  --color-text-primary: #e4e6ed;
+  --color-text-secondary: #8188a0;
+  --color-text-tertiary: #4a5068;
 
-  /* Accent: Electric blue-violet gradient */
-  --color-primary: #5b6ef5;
-  --color-primary-hover: #7080f7;
-  --color-primary-glow: #5b6ef540;
-  --color-secondary: #f05f8a;
-  --color-secondary-hover: #f47a9e;
-  --color-accent: #3dc9b0;
+  /* Primary: Stitch blue */
+  --color-primary: #135bec;
+  --color-primary-hover: #2d6ef5;
+  --color-primary-glow: #135bec40;
+  --color-primary-dim: #135bec12;
+
+  /* Secondary */
+  --color-secondary: #8b5cf6;
+  --color-secondary-hover: #a78bfa;
+  --color-accent: #06b6d4;
 
   /* Status */
-  --color-success: #34d399;
-  --color-success-dim: #34d39918;
-  --color-warning: #fbbf24;
-  --color-warning-dim: #fbbf2418;
-  --color-danger: #f43f5e;
-  --color-danger-dim: #f43f5e18;
-  --color-info: #60a5fa;
-  --color-info-dim: #60a5fa18;
+  --color-success: #22c55e;
+  --color-success-dim: #22c55e15;
+  --color-warning: #f59e0b;
+  --color-warning-dim: #f59e0b15;
+  --color-danger: #ef4444;
+  --color-danger-dim: #ef444415;
+  --color-info: #3b82f6;
+  --color-info-dim: #3b82f615;
 
   /* Severity */
-  --color-severity-critical: #f43f5e;
+  --color-severity-critical: #ef4444;
   --color-severity-high: #f97316;
-  --color-severity-medium: #fbbf24;
-  --color-severity-low: #34d399;
-  --color-severity-info: #5b6ef5;
-
-  /* Glow wireframe colors */
-  --color-glow-wire: #5b6ef530;
-  --color-glow-wire-hover: #5b6ef560;
-  --color-glow-wire-active: #5b6ef590;
+  --color-severity-medium: #eab308;
+  --color-severity-low: #22c55e;
+  --color-severity-info: #135bec;
 
   /* ─── Typography ─── */
-  --font-display: var(--font-syne);
-  --font-sans: var(--font-jakarta);
+  --font-display: var(--font-space);
+  --font-sans: var(--font-space);
   --font-mono: var(--font-jetbrains);
 
   /* ─── Spacing ─── */
-  --radius-sm: 0.375rem;
-  --radius: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
   --radius-full: 9999px;
 
   /* ─── Layout ─── */
-  --sidebar-width: 256px;
-  --sidebar-collapsed-width: 64px;
+  --sidebar-width: 260px;
+  --sidebar-collapsed-width: 68px;
   --header-height: 56px;
 
   /* ─── Animations ─── */
   --animate-fade-up: fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
   --animate-fade-in: fade-in 0.3s ease-out both;
-  --animate-shimmer: shimmer 2.5s ease-in-out infinite;
+  --animate-shimmer: shimmer 2s ease-in-out infinite;
   --animate-glow-pulse: glow-pulse 2.5s ease-in-out infinite;
   --animate-slide-in-right: slide-in-right 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   --animate-scale-in: scale-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
@@ -84,7 +82,7 @@
    ================================================================ */
 
 @keyframes fade-up {
-  0% { opacity: 0; transform: translateY(16px); }
+  0% { opacity: 0; transform: translateY(14px); }
   100% { opacity: 1; transform: translateY(0); }
 }
 
@@ -118,8 +116,8 @@
 }
 
 @keyframes breathe {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 0.7; }
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.6; }
 }
 
 /* ================================================================
@@ -149,7 +147,7 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Atmospheric body background — radial glow from top-left */
+  /* Atmospheric background glow */
   body::before {
     content: "";
     position: fixed;
@@ -158,8 +156,8 @@
     width: 100%;
     height: 100%;
     background:
-      radial-gradient(ellipse 60% 40% at 15% 10%, #5b6ef508 0%, transparent 70%),
-      radial-gradient(ellipse 50% 50% at 85% 90%, #f05f8a05 0%, transparent 70%);
+      radial-gradient(ellipse 50% 35% at 20% 5%, #135bec06 0%, transparent 70%),
+      radial-gradient(ellipse 40% 40% at 80% 95%  , #8b5cf604 0%, transparent 70%);
     pointer-events: none;
     z-index: 0;
   }
@@ -167,8 +165,8 @@
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);
     color: var(--color-text-primary);
-    letter-spacing: -0.025em;
-    line-height: 1.2;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
   }
 
   code, pre, .mono, kbd {
@@ -194,13 +192,13 @@
   }
 
   ::selection {
-    background: #5b6ef530;
-    color: #a5b0f9;
+    background: #135bec35;
+    color: #93b0fd;
   }
 }
 
 /* ================================================================
-   SCROLLBAR — Thin, refined
+   SCROLLBAR
    ================================================================ */
 
 ::-webkit-scrollbar {
@@ -213,12 +211,12 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #252a42;
+  background: #282c3e;
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #454a64;
+  background: #4a5068;
 }
 
 /* ================================================================
@@ -227,72 +225,69 @@
 
 @layer utilities {
   /* ─── Glow Wireframe System ─── */
-  /* The signature effect: glowing wireframe borders */
-
   .glow-wire {
     box-shadow:
-      inset 0 1px 0 0 #5b6ef525,
-      inset 0 -1px 0 0 #5b6ef510,
-      inset 1px 0 0 0 #5b6ef510,
-      inset -1px 0 0 0 #5b6ef510,
-      0 0 15px #5b6ef510,
-      0 1px 3px rgba(0,0,0,0.4);
+      inset 0 1px 0 0 #135bec20,
+      inset 0 -1px 0 0 #135bec08,
+      inset 1px 0 0 0 #135bec08,
+      inset -1px 0 0 0 #135bec08,
+      0 0 12px #135bec0a,
+      0 1px 3px rgba(0,0,0,0.35);
   }
 
   .glow-wire-hover {
     box-shadow:
-      inset 0 1px 0 0 #5b6ef540,
-      inset 0 -1px 0 0 #5b6ef520,
-      inset 1px 0 0 0 #5b6ef520,
-      inset -1px 0 0 0 #5b6ef520,
-      0 0 25px #5b6ef518,
-      0 2px 8px rgba(0,0,0,0.5);
+      inset 0 1px 0 0 #135bec35,
+      inset 0 -1px 0 0 #135bec15,
+      inset 1px 0 0 0 #135bec15,
+      inset -1px 0 0 0 #135bec15,
+      0 0 20px #135bec12,
+      0 2px 8px rgba(0,0,0,0.45);
   }
 
   .glow-wire-active {
     box-shadow:
-      inset 0 1px 0 0 #5b6ef560,
-      inset 0 -1px 0 0 #5b6ef530,
-      inset 1px 0 0 0 #5b6ef530,
-      inset -1px 0 0 0 #5b6ef530,
-      0 0 35px #5b6ef525,
-      0 4px 16px rgba(0,0,0,0.6);
+      inset 0 1px 0 0 #135bec50,
+      inset 0 -1px 0 0 #135bec25,
+      inset 1px 0 0 0 #135bec25,
+      inset -1px 0 0 0 #135bec25,
+      0 0 30px #135bec18,
+      0 4px 12px rgba(0,0,0,0.5);
   }
 
   /* Status glows */
   .glow-success {
-    box-shadow: inset 0 1px 0 0 #34d39930, 0 0 20px #34d39915;
+    box-shadow: inset 0 1px 0 0 #22c55e25, 0 0 16px #22c55e10;
   }
 
   .glow-danger {
-    box-shadow: inset 0 1px 0 0 #f43f5e30, 0 0 20px #f43f5e15;
+    box-shadow: inset 0 1px 0 0 #ef444425, 0 0 16px #ef444410;
   }
 
   .glow-warning {
-    box-shadow: inset 0 1px 0 0 #fbbf2430, 0 0 20px #fbbf2415;
+    box-shadow: inset 0 1px 0 0 #f59e0b25, 0 0 16px #f59e0b10;
   }
 
   .glow-primary {
-    box-shadow: inset 0 1px 0 0 #5b6ef540, 0 0 25px #5b6ef520;
+    box-shadow: inset 0 1px 0 0 #135bec30, 0 0 20px #135bec15;
   }
 
   /* ─── Glass Surface ─── */
   .glass {
-    background: #0d0f18cc;
-    backdrop-filter: blur(20px) saturate(150%);
-    -webkit-backdrop-filter: blur(20px) saturate(150%);
-    border: 1px solid #1c2035;
+    background: #0f1118cc;
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    border: 1px solid #1e2130;
   }
 
   .glass-elevated {
-    background: #161a28cc;
-    backdrop-filter: blur(24px) saturate(160%);
-    -webkit-backdrop-filter: blur(24px) saturate(160%);
-    border: 1px solid #252a42;
+    background: #1a1d28cc;
+    backdrop-filter: blur(20px) saturate(150%);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    border: 1px solid #282c3e;
   }
 
   /* ─── Gradient Borders ─── */
-  /* Used for primary action cards and highlighted elements */
   .border-gradient {
     position: relative;
     border: none;
@@ -304,7 +299,7 @@
     inset: 0;
     border-radius: inherit;
     padding: 1px;
-    background: linear-gradient(135deg, #5b6ef540, #f05f8a20, #3dc9b030);
+    background: linear-gradient(135deg, #135bec30, #8b5cf620, #06b6d420);
     mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     mask-composite: exclude;
     -webkit-mask-composite: xor;
@@ -315,26 +310,26 @@
   .skeleton-shimmer {
     background: linear-gradient(
       90deg,
-      #0d0f18 0%,
-      #161a28 40%,
-      #252a42 50%,
-      #161a28 60%,
-      #0d0f18 100%
+      #0f1118 0%,
+      #1a1d28 40%,
+      #282c3e 50%,
+      #1a1d28 60%,
+      #0f1118 100%
     );
     background-size: 200% 100%;
-    animation: shimmer 2.5s ease-in-out infinite;
+    animation: shimmer 2s ease-in-out infinite;
   }
 
   /* ─── Text Gradient ─── */
   .text-gradient {
-    background: linear-gradient(135deg, #7080f7, #f05f8a);
+    background: linear-gradient(135deg, #2d6ef5, #8b5cf6);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
 
   .text-gradient-cool {
-    background: linear-gradient(135deg, #5b6ef5, #3dc9b0);
+    background: linear-gradient(135deg, #135bec, #06b6d4);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -345,14 +340,13 @@
     content: "";
     position: absolute;
     inset: 0;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.02'/%3E%3C/svg%3E");
     pointer-events: none;
     z-index: 1;
     border-radius: inherit;
   }
 
   /* ─── Accent Top Line ─── */
-  /* Thin gradient line at the top of cards, modals */
   .accent-line-top {
     position: relative;
   }
@@ -364,17 +358,17 @@
     left: 10%;
     right: 10%;
     height: 1px;
-    background: linear-gradient(90deg, transparent, #5b6ef550, transparent);
+    background: linear-gradient(90deg, transparent, #135bec40, transparent);
     border-radius: 9999px;
   }
 
   /* ─── Stagger Helpers ─── */
-  .stagger-1 { animation-delay: 60ms; }
-  .stagger-2 { animation-delay: 120ms; }
-  .stagger-3 { animation-delay: 180ms; }
-  .stagger-4 { animation-delay: 240ms; }
-  .stagger-5 { animation-delay: 300ms; }
-  .stagger-6 { animation-delay: 360ms; }
-  .stagger-7 { animation-delay: 420ms; }
-  .stagger-8 { animation-delay: 480ms; }
+  .stagger-1 { animation-delay: 50ms; }
+  .stagger-2 { animation-delay: 100ms; }
+  .stagger-3 { animation-delay: 150ms; }
+  .stagger-4 { animation-delay: 200ms; }
+  .stagger-5 { animation-delay: 250ms; }
+  .stagger-6 { animation-delay: 300ms; }
+  .stagger-7 { animation-delay: 350ms; }
+  .stagger-8 { animation-delay: 400ms; }
 }

@@ -3,10 +3,9 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import Link from "next/link";
-import { Building2, Plus, ArrowRight } from "lucide-react";
+import { Building2, Plus, ArrowRight, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -39,6 +38,10 @@ function gradeBadgeColor(grade: string | null) {
   if (grade === "C") return "border-warning/30 bg-warning/10 text-warning";
   if (grade === "D") return "border-severity-high/30 bg-severity-high/10 text-severity-high";
   return "border-danger/30 bg-danger/10 text-danger";
+}
+
+function orgInitial(name: string) {
+  return name.charAt(0).toUpperCase();
 }
 
 export default function OrganizationsPage() {
@@ -100,13 +103,15 @@ export default function OrganizationsPage() {
         }
       />
 
+      {/* Search bar */}
       {orgs.length > 0 && (
-        <div className="mb-5">
+        <div className="mb-6 relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-tertiary pointer-events-none" />
           <Input
             placeholder="Search organizations..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="max-w-sm"
+            className="pl-9"
           />
         </div>
       )}
@@ -140,7 +145,7 @@ export default function OrganizationsPage() {
               />
             </div>
             {error && (
-              <div className="rounded-lg bg-danger/10 border border-danger/30 px-3 py-2 text-sm text-danger">
+              <div className="rounded-lg bg-danger/10 border border-danger/20 px-3 py-2 text-sm text-danger">
                 {error}
               </div>
             )}
@@ -176,16 +181,24 @@ export default function OrganizationsPage() {
         />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredOrgs.map((org) => {
+          {filteredOrgs.map((org, index) => {
             const grade = deriveGrade(orgStats[org.id]);
             return (
               <Link
                 key={org.id}
                 href={`/dashboard/${org.id}`}
-                className="group flex items-center gap-4 rounded-xl border border-border bg-surface p-5 transition-all duration-200 hover:border-border-strong hover:bg-surface-hover hover:shadow-lg hover:shadow-black/20 animate-fade-up"
+                className={cn(
+                  "group relative flex items-center gap-4 rounded-xl border border-border bg-surface p-5 transition-all duration-200",
+                  "hover:border-border-strong hover:bg-surface-hover",
+                  "animate-fade-up"
+                )}
+                style={{ animationDelay: `${index * 50}ms` }}
               >
-                <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary flex-shrink-0">
-                  <Building2 size={20} strokeWidth={1.5} />
+                {/* Top accent line on hover */}
+                <div className="absolute top-0 left-[15%] right-[15%] h-[1px] bg-gradient-to-r from-transparent via-primary/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+                <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold text-lg font-display flex-shrink-0">
+                  {orgInitial(org.name)}
                 </div>
                 <div className="flex-1 min-w-0">
                   <h3 className="text-sm font-semibold text-text-primary truncate">{org.name}</h3>
@@ -199,7 +212,7 @@ export default function OrganizationsPage() {
                     {grade}
                   </span>
                 )}
-                <ArrowRight className="h-4 w-4 text-text-tertiary flex-shrink-0 transition-transform duration-200 group-hover:translate-x-1 group-hover:text-primary" />
+                <ArrowRight className="h-4 w-4 text-text-tertiary flex-shrink-0 transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-primary" />
               </Link>
             );
           })}

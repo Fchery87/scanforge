@@ -37,7 +37,7 @@ export function ScorecardRing({ grade, overallScore, className }: ScorecardRingP
             cy="34"
             r="30"
             fill="none"
-            stroke="hsl(220 15% 18%)"
+            stroke="var(--color-border-strong)"
             strokeWidth="4"
           />
           <circle
