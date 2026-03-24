@@ -1,0 +1,380 @@
+@import "tailwindcss";
+
+/* ================================================================
+   SCANFORGE — "Dark Glass & Neon Wire"
+   
+   Aesthetic: Refined dark glass panels with crisp glowing wireframe
+   edges. Every panel floats. Every edge glows subtly. The atmosphere
+   feels like looking through dark smoked glass at a data constellation.
+   ================================================================ */
+
+@theme {
+  /* ─── Color Palette ─── */
+  --color-background: #07080e;
+  --color-surface: #0d0f18;
+  --color-surface-hover: #121520;
+  --color-surface-elevated: #161a28;
+  --color-border: #1c2035;
+  --color-border-strong: #252a42;
+
+  --color-text-primary: #d8dae5;
+  --color-text-secondary: #7c8298;
+  --color-text-tertiary: #454a64;
+
+  /* Accent: Electric blue-violet gradient */
+  --color-primary: #5b6ef5;
+  --color-primary-hover: #7080f7;
+  --color-primary-glow: #5b6ef540;
+  --color-secondary: #f05f8a;
+  --color-secondary-hover: #f47a9e;
+  --color-accent: #3dc9b0;
+
+  /* Status */
+  --color-success: #34d399;
+  --color-success-dim: #34d39918;
+  --color-warning: #fbbf24;
+  --color-warning-dim: #fbbf2418;
+  --color-danger: #f43f5e;
+  --color-danger-dim: #f43f5e18;
+  --color-info: #60a5fa;
+  --color-info-dim: #60a5fa18;
+
+  /* Severity */
+  --color-severity-critical: #f43f5e;
+  --color-severity-high: #f97316;
+  --color-severity-medium: #fbbf24;
+  --color-severity-low: #34d399;
+  --color-severity-info: #5b6ef5;
+
+  /* Glow wireframe colors */
+  --color-glow-wire: #5b6ef530;
+  --color-glow-wire-hover: #5b6ef560;
+  --color-glow-wire-active: #5b6ef590;
+
+  /* ─── Typography ─── */
+  --font-display: var(--font-syne);
+  --font-sans: var(--font-jakarta);
+  --font-mono: var(--font-jetbrains);
+
+  /* ─── Spacing ─── */
+  --radius-sm: 0.375rem;
+  --radius: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-full: 9999px;
+
+  /* ─── Layout ─── */
+  --sidebar-width: 256px;
+  --sidebar-collapsed-width: 64px;
+  --header-height: 56px;
+
+  /* ─── Animations ─── */
+  --animate-fade-up: fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-fade-in: fade-in 0.3s ease-out both;
+  --animate-shimmer: shimmer 2.5s ease-in-out infinite;
+  --animate-glow-pulse: glow-pulse 2.5s ease-in-out infinite;
+  --animate-slide-in-right: slide-in-right 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-scale-in: scale-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-spin: spin 0.8s linear infinite;
+  --animate-breathe: breathe 6s ease-in-out infinite;
+}
+
+/* ================================================================
+   KEYFRAMES
+   ================================================================ */
+
+@keyframes fade-up {
+  0% { opacity: 0; transform: translateY(16px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes slide-in-right {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes scale-in {
+  0% { opacity: 0; transform: scale(0.92); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.7; }
+}
+
+/* ================================================================
+   BASE LAYER
+   ================================================================ */
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background: var(--color-background);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Atmospheric body background — radial glow from top-left */
+  body::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background:
+      radial-gradient(ellipse 60% 40% at 15% 10%, #5b6ef508 0%, transparent 70%),
+      radial-gradient(ellipse 50% 50% at 85% 90%, #f05f8a05 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    color: var(--color-text-primary);
+    letter-spacing: -0.025em;
+    line-height: 1.2;
+  }
+
+  code, pre, .mono, kbd {
+    font-family: var(--font-mono);
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  button {
+    cursor: pointer;
+    font-family: inherit;
+    border: none;
+    outline: none;
+    background: none;
+  }
+
+  input, select, textarea {
+    font-family: inherit;
+    font-size: 14px;
+  }
+
+  ::selection {
+    background: #5b6ef530;
+    color: #a5b0f9;
+  }
+}
+
+/* ================================================================
+   SCROLLBAR — Thin, refined
+   ================================================================ */
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #252a42;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #454a64;
+}
+
+/* ================================================================
+   UTILITY CLASSES
+   ================================================================ */
+
+@layer utilities {
+  /* ─── Glow Wireframe System ─── */
+  /* The signature effect: glowing wireframe borders */
+
+  .glow-wire {
+    box-shadow:
+      inset 0 1px 0 0 #5b6ef525,
+      inset 0 -1px 0 0 #5b6ef510,
+      inset 1px 0 0 0 #5b6ef510,
+      inset -1px 0 0 0 #5b6ef510,
+      0 0 15px #5b6ef510,
+      0 1px 3px rgba(0,0,0,0.4);
+  }
+
+  .glow-wire-hover {
+    box-shadow:
+      inset 0 1px 0 0 #5b6ef540,
+      inset 0 -1px 0 0 #5b6ef520,
+      inset 1px 0 0 0 #5b6ef520,
+      inset -1px 0 0 0 #5b6ef520,
+      0 0 25px #5b6ef518,
+      0 2px 8px rgba(0,0,0,0.5);
+  }
+
+  .glow-wire-active {
+    box-shadow:
+      inset 0 1px 0 0 #5b6ef560,
+      inset 0 -1px 0 0 #5b6ef530,
+      inset 1px 0 0 0 #5b6ef530,
+      inset -1px 0 0 0 #5b6ef530,
+      0 0 35px #5b6ef525,
+      0 4px 16px rgba(0,0,0,0.6);
+  }
+
+  /* Status glows */
+  .glow-success {
+    box-shadow: inset 0 1px 0 0 #34d39930, 0 0 20px #34d39915;
+  }
+
+  .glow-danger {
+    box-shadow: inset 0 1px 0 0 #f43f5e30, 0 0 20px #f43f5e15;
+  }
+
+  .glow-warning {
+    box-shadow: inset 0 1px 0 0 #fbbf2430, 0 0 20px #fbbf2415;
+  }
+
+  .glow-primary {
+    box-shadow: inset 0 1px 0 0 #5b6ef540, 0 0 25px #5b6ef520;
+  }
+
+  /* ─── Glass Surface ─── */
+  .glass {
+    background: #0d0f18cc;
+    backdrop-filter: blur(20px) saturate(150%);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    border: 1px solid #1c2035;
+  }
+
+  .glass-elevated {
+    background: #161a28cc;
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    border: 1px solid #252a42;
+  }
+
+  /* ─── Gradient Borders ─── */
+  /* Used for primary action cards and highlighted elements */
+  .border-gradient {
+    position: relative;
+    border: none;
+  }
+
+  .border-gradient::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, #5b6ef540, #f05f8a20, #3dc9b030);
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    -webkit-mask-composite: xor;
+    pointer-events: none;
+  }
+
+  /* ─── Skeleton Shimmer ─── */
+  .skeleton-shimmer {
+    background: linear-gradient(
+      90deg,
+      #0d0f18 0%,
+      #161a28 40%,
+      #252a42 50%,
+      #161a28 60%,
+      #0d0f18 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2.5s ease-in-out infinite;
+  }
+
+  /* ─── Text Gradient ─── */
+  .text-gradient {
+    background: linear-gradient(135deg, #7080f7, #f05f8a);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .text-gradient-cool {
+    background: linear-gradient(135deg, #5b6ef5, #3dc9b0);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* ─── Noise Overlay ─── */
+  .noise::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 1;
+    border-radius: inherit;
+  }
+
+  /* ─── Accent Top Line ─── */
+  /* Thin gradient line at the top of cards, modals */
+  .accent-line-top {
+    position: relative;
+  }
+
+  .accent-line-top::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 10%;
+    right: 10%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #5b6ef550, transparent);
+    border-radius: 9999px;
+  }
+
+  /* ─── Stagger Helpers ─── */
+  .stagger-1 { animation-delay: 60ms; }
+  .stagger-2 { animation-delay: 120ms; }
+  .stagger-3 { animation-delay: 180ms; }
+  .stagger-4 { animation-delay: 240ms; }
+  .stagger-5 { animation-delay: 300ms; }
+  .stagger-6 { animation-delay: 360ms; }
+  .stagger-7 { animation-delay: 420ms; }
+  .stagger-8 { animation-delay: 480ms; }
+}

@@ -1,0 +1,132 @@
+import base64
+import json
+from collections.abc import Callable
+from uuid import UUID
+
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
+
+from app.db.session import AsyncSessionLocal
+from app.services.audit_logs import AuditLogService
+
+AUDITED_METHODS = {"POST", "PATCH", "DELETE"}
+AUDITED_PATHS = [
+    "/organizations",
+    "/projects",
+    "/repositories",
+    "/scans",
+    "/findings",
+    "/exports",
+    "/members",
+]
+
+
+class AuditLogContext:
+    def __init__(self):
+        self.user_id: str | None = None
+        self.org_id: str | None = None
+
+    def set(self, user_id: str | None = None, org_id: str | None = None):
+        self.user_id = user_id
+        self.org_id = org_id
+
+    def clear(self):
+        self.user_id = None
+        self.org_id = None
+
+
+audit_context = AuditLogContext()
+
+
+class AuditMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        if request.method not in AUDITED_METHODS:
+            return await call_next(request)
+
+        path = request.url.path
+        if not any(path.startswith(p) for p in AUDITED_PATHS):
+            return await call_next(request)
+
+        audit_context.clear()
+
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.startswith("Bearer "):
+            try:
+                token = auth_header[7:]
+                parts = token.split(".")
+                if len(parts) >= 2:
+                    payload = parts[1]
+                    padding = "=" * (4 - len(payload) % 4) if len(payload) % 4 else ""
+                    decoded = base64.b64decode(payload + padding)
+                    claims = json.loads(decoded)
+                    audit_context.set(
+                        user_id=claims.get("sub"),
+                        org_id=claims.get("org_id"),
+                    )
+            except Exception:
+                pass
+
+        response = await call_next(request)
+
+        if audit_context.user_id and response.status_code < 400:
+            try:
+                action = self._extract_action(request.method, path)
+                target = self._extract_target(path)
+
+                async with AsyncSessionLocal() as db:
+                    service = AuditLogService(db)
+                    await service.create(
+                        actor_user_id=UUID(audit_context.user_id) if audit_context.user_id else None,
+                        action=action,
+                        target_type=target.get("type", "unknown"),
+                        target_id=target.get("id"),
+                        organization_id=UUID(audit_context.org_id) if audit_context.org_id else None,
+                        ip_address=request.headers.get("x-forwarded-for", "").split(",")[0].strip() or None,
+                        user_agent=request.headers.get("user-agent"),
+                        metadata_json={
+                            "method": request.method,
+                            "path": path,
+                            "status_code": response.status_code,
+                        },
+                    )
+            except Exception:
+                pass
+
+        return response
+
+    def _extract_action(self, method: str, _path: str) -> str:
+        action_map = {
+            "POST": "create",
+            "PATCH": "update",
+            "DELETE": "delete",
+        }
+        return action_map.get(method, method.lower())
+
+    def _extract_target(self, path: str) -> dict:
+        parts = [p for p in path.split("/") if p]
+        target_types = {
+            "organizations": "organization",
+            "projects": "project",
+            "repositories": "repository",
+            "scans": "scan",
+            "findings": "finding",
+            "exports": "export",
+            "members": "membership",
+            "schedules": "schedule",
+        }
+        target_type = "unknown"
+        target_id = None
+
+        for i, part in enumerate(parts):
+            if part in target_types and i + 1 < len(parts):
+                target_type = target_types[part]
+                potential_id = parts[i + 1]
+                try:
+                    UUID(potential_id)
+                    target_id = potential_id
+                except ValueError:
+                    pass
+                break
+
+        return {"type": target_type, "id": target_id}

@@ -1,0 +1,82 @@
+# ScanForge — Local Development Stack
+# Usage: docker compose up -d
+
+services:
+  # ── Postgres (Neon local or standard) ──────────────────────
+  # For local-only dev without Neon:
+  postgres:
+    image: postgres:16-alpine
+    container_name: scanforge-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: scanforge
+      POSTGRES_USER: scanforge
+      POSTGRES_PASSWORD: scanforge_local
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scanforge -d scanforge"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis (Upstash-compatible local) ──────────────────────
+  # For local dev without Upstash:
+  redis:
+    image: redis:7-alpine
+    container_name: scanforge-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── MinIO (S3-compatible local storage) ───────────────────
+  # R2-compatible alternative for local dev
+  minio:
+    image: minio/minio:latest
+    container_name: scanforge-storage
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: scanforge
+      MINIO_ROOT_PASSWORD: scanforge_local_storage
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── LocalStack (AWS services emulation) ───────────────────
+  # Optional: use for S3-compatible API testing with R2
+  localstack:
+    image: localstack/localstack:latest
+    container_name: scanforge-localstack
+    restart: unless-stopped
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: s3
+      DEFAULT_REGION: us-east-1
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  localstack_data:

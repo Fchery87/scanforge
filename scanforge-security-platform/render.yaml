@@ -1,0 +1,129 @@
+# Render Blueprint — ScanForge Platform
+# https://render.com/docs/blueprint-spec
+
+services:
+  # ─── FastAPI Web API ───────────────────────────────────────────────
+  - type: web
+    name: scanforge-api
+    runtime: python_3.12
+    region: oregon
+    plan: starter
+    branch: main
+    autoDeploy: true
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: WEB_CONCURRENCY
+        value: 2
+
+      # Shared — from environment groups
+      - fromGroup: shared-app
+      - fromGroup: shared-db
+      - fromGroup: auth
+      - fromGroup: storage
+      - fromGroup: queue
+
+      # Scanner binaries
+      - key: TRIVY_BINARY
+        value: /usr/local/bin/trivy
+      - key: GITLEAKS_BINARY
+        value: /usr/local/bin/gitleaks
+      - key: OSV_SCANNER_BINARY
+        value: /usr/local/bin/osv-scanner
+      - key: SYFT_BINARY
+        value: /usr/local/bin/syft
+      - key: GRYPE_BINARY
+        value: /usr/local/bin/grype
+
+  # ─── Worker Service ────────────────────────────────────────────────
+  - type: worker
+    name: scanforge-worker
+    runtime: python_3.12
+    region: oregon
+    plan: starter
+    branch: main
+    autoDeploy: true
+    envVars:
+      - key: APP_ENV
+        value: production
+
+      # Shared — from environment groups
+      - fromGroup: shared-app
+      - fromGroup: shared-db
+      - fromGroup: storage
+      - fromGroup: queue
+
+      # Scanner binaries
+      - key: TRIVY_BINARY
+        value: /usr/local/bin/trivy
+      - key: GITLEAKS_BINARY
+        value: /usr/local/bin/gitleaks
+      - key: OSV_SCANNER_BINARY
+        value: /usr/local/bin/osv-scanner
+      - key: SYFT_BINARY
+        value: /usr/local/bin/syft
+      - key: GRYPE_BINARY
+        value: /usr/local/bin/grype
+
+  # ─── Nightly Scan Scheduler Cron ──────────────────────────────────
+  - type: cron
+    name: scanforge-scheduler
+    region: oregon
+    plan: starter
+    branch: main
+    autoDeploy: true
+    schedule: "0 3 * * *"
+    command: python -m app.worker.scheduler
+    envVars:
+      - key: APP_ENV
+        value: production
+      - fromGroup: shared-app
+      - fromGroup: shared-db
+      - fromGroup: queue
+
+  # ─── Weekly Deep Scan + Cleanup Cron ─────────────────────────────
+  - type: cron
+    name: scanforge-maintenance
+    region: oregon
+    plan: starter
+    branch: main
+    autoDeploy: true
+    schedule: "0 5 * * 0"
+    command: python -m app.worker.maintenance
+    envVars:
+      - key: APP_ENV
+        value: production
+      - fromGroup: shared-app
+      - fromGroup: shared-db
+      - fromGroup: storage
+      - fromGroup: queue
+
+# ─── Environment Groups ───────────────────────────────────────────
+# Configure these in the Render Dashboard → Environment → Groups
+#
+# shared-app
+#   DATABASE_URL=postgresql+asyncpg://...
+#   APP_URL=https://api.scanforge.app
+#   CORS_ORIGINS=["https://scanforge.app","https://*.scanforge.app"]
+#
+# shared-db
+#   (merged into shared-app — DATABASE_URL is in shared-app)
+#
+# auth
+#   NEON_AUTH_ISSUER=https://console.neon.tech/project/...
+#   NEON_AUTH_AUDIENCE=scanforge-api
+#   NEON_AUTH_JWKS_URL=https://console.neon.tech/project/.../.well-known/jwks.json
+#   NEON_AUTH_CLIENT_ID=...
+#   NEON_AUTH_CLIENT_SECRET=...
+#
+# storage
+#   R2_ENDPOINT=https://...r2.cloudflarestorage.com
+#   R2_BUCKET=scanforge-artifacts
+#   R2_ACCESS_KEY_ID=...
+#   R2_SECRET_ACCESS_KEY=...
+#   R2_PUBLIC_BASE_URL=https://cdn.scanforge.app
+#
+# queue
+#   UPSTASH_REDIS_REST_URL=https://...upstash.io
+#   UPSTASH_REDIS_REST_TOKEN=...
