@@ -40,18 +40,15 @@ class QueueClient:
             "Content-Type": "application/json",
         }
 
-    async def _request(self, method: str, path: str, data: dict | None = None) -> dict:
-        url = f"{self.redis_url}{path}"
+    async def _command(self, *args: str | int | float) -> dict:
+        """Send a Redis command as a JSON array to the Upstash REST API."""
         async with httpx.AsyncClient() as client:
-            if method == "GET":
-                response = await client.get(url, headers=self._headers, timeout=30.0)
-            elif method == "POST":
-                response = await client.post(url, headers=self._headers, json=data, timeout=30.0)
-            elif method == "DELETE":
-                response = await client.delete(url, headers=self._headers, timeout=30.0)
-            else:
-                raise ValueError(f"Unsupported method: {method}")
-
+            response = await client.post(
+                self.redis_url,
+                headers=self._headers,
+                json=list(args),
+                timeout=30.0,
+            )
             response.raise_for_status()
             return response.json()
 
@@ -66,40 +63,30 @@ class QueueClient:
 
         if delay_seconds > 0:
             score = datetime.utcnow().timestamp() + delay_seconds
-            await self._request("POST", "/zadd", {
-                "key": self.SCAN_QUEUE,
-                "members": {job_json: score},
-            })
+            await self._command("ZADD", self.SCAN_QUEUE, score, job_json)
         else:
-            await self._request("POST", "/lpush", {
-                "key": self.SCAN_QUEUE,
-                "elements": [job_json],
-            })
+            await self._command("LPUSH", self.SCAN_QUEUE, job_json)
 
         return job.job_id
 
     async def dequeue(self, timeout_seconds: int = 5) -> QueueJob | None:
         try:
-            result = await self._request("POST", "/brpop", {
-                "key": self.SCAN_QUEUE,
-                "timeout": timeout_seconds,
-            })
+            result = await self._command("BRPOP", self.SCAN_QUEUE, timeout_seconds)
 
-            if result and "element" in result:
-                return QueueJob.model_validate_json(result["element"])
+            if result and result.get("result"):
+                # BRPOP returns [key, value]
+                _, value = result["result"]
+                return QueueJob.model_validate_json(value)
         except httpx.HTTPStatusError:
             pass
         return None
 
     async def enqueue_to_dlq(self, job: QueueJob) -> None:
         job_json = job.model_dump_json()
-        await self._request("POST", "/lpush", {
-            "key": self.DLQ,
-            "elements": [job_json],
-        })
+        await self._command("LPUSH", self.DLQ, job_json)
 
     async def get_job_status(self, job_id: str) -> dict | None:
-        result = await self._request("GET", f"/get/job:{job_id}:status")
+        result = await self._command("GET", f"job:{job_id}:status")
         if result and result.get("result"):
             return json.loads(result["result"])
         return None
@@ -115,22 +102,16 @@ class QueueClient:
             "updated_at": datetime.utcnow().isoformat(),
             **(metadata or {}),
         }
-        await self._request("POST", "/setex", {
-            "key": f"job:{job_id}:status",
-            "seconds": 86400,
-            "value": json.dumps(status_data),
-        })
+        await self._command("SETEX", f"job:{job_id}:status", 86400, json.dumps(status_data))
 
     async def increment_retry(self, job_id: str) -> int:
-        result = await self._request("POST", "/incr", {
-            "key": f"job:{job_id}:retries",
-        })
+        result = await self._command("INCR", f"job:{job_id}:retries")
         return int(result.get("result", 1))
 
     async def get_retry_count(self, job_id: str) -> int:
-        result = await self._request("GET", f"/get/job:{job_id}:retries")
+        result = await self._command("GET", f"job:{job_id}:retries")
         return int(result.get("result") or 0)
 
     async def get_queue_length(self) -> int:
-        result = await self._request("GET", f"/llen/{self.SCAN_QUEUE}")
+        result = await self._command("LLEN", self.SCAN_QUEUE)
         return int(result.get("result", 0))

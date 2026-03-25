@@ -132,12 +132,7 @@ async def get_scan(
     if not scan or scan.project_id != project_id:
         raise HTTPException(status_code=404, detail="Scan not found")
 
-    runs = await scan_service.get_scanner_runs(scan_id)
-
-    return ScanDetailResponse(
-        **scan.__dict__,
-        scanner_runs=runs,
-    )
+    return ScanDetailResponse.model_validate(scan)
 
 
 @router.post("/{scan_id}/cancel", response_model=ScanResponse)
