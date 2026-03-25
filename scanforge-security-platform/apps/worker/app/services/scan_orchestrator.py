@@ -308,12 +308,12 @@ class ScanOrchestrator:
 
     def _get_scanners_for_type(self, scan_type: str) -> list[str]:
         mapping = {
-            "scan.repo.full": ["trivy", "gitleaks", "osv"],
-            "scan.repo.diff": ["gitleaks"],
-            "scan.dependencies": ["trivy", "osv"],
+            "scan.repo.full": ["trivy", "gitleaks", "osv", "semgrep", "syft"],
+            "scan.repo.diff": ["gitleaks", "semgrep"],
+            "scan.dependencies": ["trivy", "osv", "syft"],
             "scan.secrets": ["gitleaks"],
         }
-        return mapping.get(scan_type, ["trivy", "gitleaks", "osv"])
+        return mapping.get(scan_type, ["trivy", "gitleaks", "osv", "semgrep", "syft"])
 
     def _get_scanner(self, name: str):
         if name == "trivy":
@@ -328,6 +328,14 @@ class ScanOrchestrator:
             from app.scanners.osv import OsvAdapter
 
             return OsvAdapter()
+        elif name == "semgrep":
+            from app.scanners.semgrep import SemgrepAdapter
+
+            return SemgrepAdapter()
+        elif name == "syft":
+            from app.scanners.syft import SyftAdapter
+
+            return SyftAdapter()
         return None
 
     async def _upload_artifacts(self, context: ScanContext) -> dict:
@@ -386,6 +394,14 @@ class ScanOrchestrator:
             from app.normalizers.osv import normalize_osv_output
 
             return normalize_osv_output
+        elif name == "semgrep":
+            from app.normalizers.semgrep import normalize_semgrep_output
+
+            return normalize_semgrep_output
+        elif name == "syft":
+            from app.normalizers.syft import normalize_syft_output
+
+            return normalize_syft_output
         return None
 
     async def _persist_findings(self, context: ScanContext):
@@ -394,12 +410,17 @@ class ScanOrchestrator:
 
         async with httpx.AsyncClient() as client:
             try:
-                await client.post(
+                resp = await client.post(
                     f"{self.api_base_url}/api/v1/internal/scans/{context.scan_id}/findings",
                     json={"findings": context.findings},
                     headers={"X-Service-Key": self._internal_api_key},
                     timeout=60.0,
                 )
+                resp.raise_for_status()
+                data = resp.json()
+                print(f"[orchestrator] Persisted findings: {data}")
+            except httpx.HTTPStatusError as e:
+                print(f"[orchestrator] Failed to persist findings (HTTP {e.response.status_code}): {e.response.text}")
             except Exception as e:
                 print(f"[orchestrator] Failed to persist findings: {e}")
 
@@ -461,7 +482,7 @@ class ScanOrchestrator:
     ):
         async with httpx.AsyncClient() as client:
             try:
-                await client.patch(
+                resp = await client.patch(
                     f"{self.api_base_url}/api/v1/internal/scans/{context.scan_id}/status",
                     json={
                         "status": status,
@@ -471,5 +492,8 @@ class ScanOrchestrator:
                     headers={"X-Service-Key": self._internal_api_key},
                     timeout=30.0,
                 )
+                resp.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                print(f"[orchestrator] Failed to update scan status (HTTP {e.response.status_code}): {e.response.text}")
             except Exception as e:
                 print(f"[orchestrator] Failed to update scan status: {e}")

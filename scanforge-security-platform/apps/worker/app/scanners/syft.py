@@ -5,25 +5,28 @@ from pathlib import Path
 from app.scanners.base import ScannerAdapter, ScannerResult
 
 
-class OsvAdapter(ScannerAdapter):
-    name = "osv"
-    binary_name = "osv-scanner"
+class SyftAdapter(ScannerAdapter):
+    name = "syft"
+    binary_name = "syft"
 
     def run(self, repo_path: Path) -> ScannerResult:
         import time
         start = time.time()
 
         try:
+            output_file = repo_path / "syft-results.json"
+
             result = subprocess.run(
                 [
                     self.binary_name,
-                    "--format", "json",
-                    "--output", "osv-results.json",
-                    "-r", str(repo_path),
+                    "scan",
+                    f"dir:{repo_path}",
+                    "-o", "json",
+                    "--file", str(output_file),
                 ],
                 capture_output=True,
                 text=True,
-                timeout=600,
+                timeout=300,
                 cwd=str(repo_path),
             )
 
@@ -31,7 +34,6 @@ class OsvAdapter(ScannerAdapter):
 
             output = {}
             artifacts = []
-            output_file = repo_path / "osv-results.json"
 
             if output_file.exists():
                 with open(output_file) as f:
@@ -42,9 +44,8 @@ class OsvAdapter(ScannerAdapter):
 
                 artifacts.append(output_file)
 
-            # osv-scanner returns exit code 1 when vulnerabilities are found
-            # but still produces valid output — treat as success if output exists
-            has_output = bool(output and output != {"raw": ""})
+            # Treat as success if output file has artifacts key
+            has_output = bool(output and "artifacts" in output)
             return ScannerResult(
                 scanner_name=self.name,
                 success=result.returncode == 0 or has_output,
@@ -72,3 +73,15 @@ class OsvAdapter(ScannerAdapter):
                 artifact_paths=[],
                 error=str(e),
             )
+
+    def get_version(self) -> str:
+        try:
+            result = subprocess.run(
+                [self.binary_name, "version"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            return result.stdout.strip()
+        except Exception:
+            return ""

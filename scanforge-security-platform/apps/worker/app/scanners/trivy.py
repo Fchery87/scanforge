@@ -44,13 +44,17 @@ class TrivyAdapter(ScannerAdapter):
 
                 artifacts.append(output_file)
 
+            # Trivy may return non-zero when it finds vulnerabilities
+            # but still produces valid output — treat as success if output exists
+            has_output = bool(output and output != {"raw": ""})
             return ScannerResult(
                 scanner_name=self.name,
-                success=result.returncode == 0,
+                success=result.returncode == 0 or has_output,
                 raw_output=output,
                 artifact_paths=artifacts,
                 version=self.get_version(),
                 duration_ms=duration_ms,
+                error=result.stderr.strip() if result.returncode != 0 and not has_output else "",
             )
 
         except subprocess.TimeoutExpired:

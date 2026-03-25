@@ -101,9 +101,9 @@ class FindingService:
 
     async def upsert_from_scan(
         self,
-        scan_id: UUID,
-        repository_id: UUID,
-        project_id: UUID,
+        scan_id: str,
+        repository_id: str,
+        project_id: str,
         normalized_findings: list[dict],
     ) -> tuple[int, int]:
         new_count = 0
@@ -111,8 +111,8 @@ class FindingService:
 
         for finding_data in normalized_findings:
             fingerprint = finding_data["canonical_fingerprint"]
-            instance_data = finding_data.pop("instance", {})
-            references_data = finding_data.pop("references", [])
+            instance_data = finding_data.pop("instance", None) or {}
+            references_data = finding_data.pop("references", None) or []
 
             existing = await self.db.execute(
                 select(Finding).where(

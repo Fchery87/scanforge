@@ -162,9 +162,9 @@ async def persist_scan_findings(
     service = FindingService(db)
     findings_dicts = [f.model_dump() for f in data.findings]
     new_count, updated_count = await service.upsert_from_scan(
-        scan_id=scan_id,
-        repository_id=UUID(repo_id),
-        project_id=UUID(proj_id),
+        scan_id=str(scan_id),
+        repository_id=str(repo_id),
+        project_id=str(proj_id),
         normalized_findings=findings_dicts,
     )
 

@@ -5,9 +5,9 @@ from pathlib import Path
 from app.scanners.base import ScannerAdapter, ScannerResult
 
 
-class OsvAdapter(ScannerAdapter):
-    name = "osv"
-    binary_name = "osv-scanner"
+class SemgrepAdapter(ScannerAdapter):
+    name = "semgrep"
+    binary_name = "semgrep"
 
     def run(self, repo_path: Path) -> ScannerResult:
         import time
@@ -17,9 +17,11 @@ class OsvAdapter(ScannerAdapter):
             result = subprocess.run(
                 [
                     self.binary_name,
-                    "--format", "json",
-                    "--output", "osv-results.json",
-                    "-r", str(repo_path),
+                    "scan",
+                    "--json",
+                    "--config", "auto",
+                    "--json-output", "semgrep-results.json",
+                    str(repo_path),
                 ],
                 capture_output=True,
                 text=True,
@@ -31,7 +33,7 @@ class OsvAdapter(ScannerAdapter):
 
             output = {}
             artifacts = []
-            output_file = repo_path / "osv-results.json"
+            output_file = repo_path / "semgrep-results.json"
 
             if output_file.exists():
                 with open(output_file) as f:
@@ -42,7 +44,7 @@ class OsvAdapter(ScannerAdapter):
 
                 artifacts.append(output_file)
 
-            # osv-scanner returns exit code 1 when vulnerabilities are found
+            # Semgrep returns exit code 1 when findings are found
             # but still produces valid output — treat as success if output exists
             has_output = bool(output and output != {"raw": ""})
             return ScannerResult(
