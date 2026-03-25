@@ -3,7 +3,7 @@ import os
 import shutil
 import subprocess
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import mkdtemp
 from typing import TYPE_CHECKING
@@ -32,6 +32,8 @@ class ScanContext:
     scanner_results: dict = None
     findings: list = None
     artifact_uris: dict = None
+    scanner_run_ids: dict = None
+    changed_files: list[str] | None = None
     critical_count: int = 0
     high_count: int = 0
     scan_failed: bool = False
@@ -39,13 +41,15 @@ class ScanContext:
 
     def __post_init__(self):
         if self.start_time is None:
-            self.start_time = datetime.utcnow()
+            self.start_time = datetime.now(UTC).replace(tzinfo=None)
         if self.scanner_results is None:
             self.scanner_results = {}
         if self.findings is None:
             self.findings = []
         if self.artifact_uris is None:
             self.artifact_uris = {}
+        if self.scanner_run_ids is None:
+            self.scanner_run_ids = {}
 
 
 class ScanOrchestrator:
@@ -85,6 +89,8 @@ class ScanOrchestrator:
 
             await self._update_status(context, "repo_preparing")
             context.repo_path = await self._prepare_repository(context)
+            if job.job_type == "scan.repo.diff":
+                context.changed_files = await self._collect_changed_files(context.repo_path)
 
             await self._update_status(context, "scanners_running")
             context.scanner_results = await self._run_scanners(context, job.job_type)
@@ -94,6 +100,8 @@ class ScanOrchestrator:
 
             await self._update_status(context, "normalizing")
             context.findings = await self._normalize_results(context)
+            if job.job_type == "scan.repo.diff":
+                context.findings = self._filter_findings_to_changed_files(context.findings, context.changed_files or [])
 
             context.critical_count = sum(1 for f in context.findings if f.get("severity") == "critical")
             context.high_count = sum(1 for f in context.findings if f.get("severity") == "high")
@@ -111,6 +119,9 @@ class ScanOrchestrator:
                     "critical_count": context.critical_count,
                     "high_count": context.high_count,
                     "scanners_run": list(context.scanner_results.keys()),
+                    "scope": "diff" if job.job_type == "scan.repo.diff" else "full",
+                    "changed_files": context.changed_files or [],
+                    "duration_ms": int(duration * 1000),
                     "duration_seconds": round(duration, 1),
                     "artifact_uris": context.artifact_uris,
                 },
@@ -179,6 +190,27 @@ class ScanOrchestrator:
 
         return repo_dir
 
+    async def _collect_changed_files(self, repo_path: Path) -> list[str]:
+        commands = [
+            ["git", "diff", "--name-only", "HEAD~1", "HEAD"],
+            ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"],
+        ]
+        for command in commands:
+            try:
+                result = await asyncio.to_thread(
+                    subprocess.run,
+                    command,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    cwd=str(repo_path),
+                )
+                if result.returncode == 0:
+                    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+            except Exception:
+                continue
+        return []
+
     async def _get_clone_url(self, context: ScanContext) -> str:
         """Build an authenticated clone URL via the internal API."""
 
@@ -243,6 +275,8 @@ class ScanOrchestrator:
 
             version = scanner.get_version() if hasattr(scanner, "get_version") else None
             run_id = await self._create_scanner_run(context, scanner_name, version)
+            if run_id:
+                context.scanner_run_ids[scanner_name] = run_id
             start = datetime.utcnow()
 
             try:
@@ -339,11 +373,13 @@ class ScanOrchestrator:
         return None
 
     async def _upload_artifacts(self, context: ScanContext) -> dict:
-        uris = {}
+        uris = {"scanner_runs": {}}
 
         for scanner_name, result in context.scanner_results.items():
             if not result.success:
                 continue
+
+            run_uploads = {}
 
             if result.raw_output:
                 try:
@@ -353,6 +389,7 @@ class ScanOrchestrator:
                         output_data=result.raw_output,
                     )
                     uris[f"{scanner_name}_raw"] = uri
+                    run_uploads["raw_output_uri"] = uri
                 except Exception as e:
                     print(f"[orchestrator] Failed to upload {scanner_name} raw output: {e}")
 
@@ -362,8 +399,19 @@ class ScanOrchestrator:
                         key = f"scans/{context.scan_id}/{scanner_name}/{artifact_path.name}"
                         meta = self.r2.upload_file(artifact_path, key)
                         uris[f"{scanner_name}_{artifact_path.name}"] = meta["storage_uri"]
+                        run_uploads["artifact_uri"] = meta["storage_uri"]
                     except Exception as e:
                         print(f"[orchestrator] Failed to upload artifact {artifact_path}: {e}")
+
+            if run_uploads:
+                uris["scanner_runs"][scanner_name] = run_uploads
+                run_id = context.scanner_run_ids.get(scanner_name)
+                if run_id:
+                    await self._update_scanner_run(
+                        run_id,
+                        artifact_uri=run_uploads.get("artifact_uri") or run_uploads.get("raw_output_uri"),
+                        metadata_json=run_uploads,
+                    )
 
         return uris
 
@@ -403,6 +451,19 @@ class ScanOrchestrator:
 
             return normalize_syft_output
         return None
+
+    def _filter_findings_to_changed_files(self, findings: list[dict], changed_files: list[str]) -> list[dict]:
+        if not changed_files:
+            return findings
+
+        changed = {path.strip("./") for path in changed_files}
+        filtered = []
+        for finding in findings:
+            instance = finding.get("instance") or {}
+            path = (instance.get("path") or "").strip("./")
+            if not path or path in changed:
+                filtered.append(finding)
+        return filtered
 
     async def _persist_findings(self, context: ScanContext):
         if not context.findings:

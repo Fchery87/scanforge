@@ -2,7 +2,7 @@ from datetime import datetime
 
 from sqlalchemy import DateTime, Float, ForeignKey, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.db.mixins import TimestampMixin, UUIDPrimaryKeyMixin
@@ -25,6 +25,9 @@ class Finding(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     metadata_json: Mapped[dict | None] = mapped_column(JSONB)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    instances: Mapped[list["FindingInstance"]] = relationship("FindingInstance", back_populates="finding", lazy="selectin")
+    references: Mapped[list["FindingReference"]] = relationship("FindingReference", back_populates="finding", lazy="selectin")
+    events: Mapped[list["FindingEvent"]] = relationship("FindingEvent", back_populates="finding", lazy="selectin")
 
 class FindingInstance(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "finding_instances"
@@ -38,6 +41,7 @@ class FindingInstance(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     installed_version: Mapped[str | None] = mapped_column(String(128))
     fixed_version: Mapped[str | None] = mapped_column(String(128))
     evidence_json: Mapped[dict | None] = mapped_column(JSONB)
+    finding: Mapped["Finding"] = relationship("Finding", back_populates="instances", lazy="noload")
 
 class FindingReference(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "finding_references"
@@ -45,6 +49,7 @@ class FindingReference(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     reference_type: Mapped[str] = mapped_column(String(50), nullable=False)
     reference_value: Mapped[str] = mapped_column(String(255), nullable=False)
     url: Mapped[str | None] = mapped_column(String(2048))
+    finding: Mapped["Finding"] = relationship("Finding", back_populates="references", lazy="noload")
 
 class FindingEvent(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "finding_events"
@@ -53,3 +58,4 @@ class FindingEvent(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     actor_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     reason: Mapped[str | None] = mapped_column(Text)
     metadata_json: Mapped[dict | None] = mapped_column(JSONB)
+    finding: Mapped["Finding"] = relationship("Finding", back_populates="events", lazy="noload")

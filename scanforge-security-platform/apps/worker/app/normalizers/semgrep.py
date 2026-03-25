@@ -20,11 +20,15 @@ CATEGORY_MAP = {
 def compute_semgrep_fingerprint(
     check_id: str,
     path: str,
+    line_start: int,
+    line_end: int,
     repo_id: str,
 ) -> str:
     components = [
         check_id,
         path,
+        str(line_start),
+        str(line_end),
         repo_id,
     ]
     return hashlib.sha256("|".join(components).encode()).hexdigest()
@@ -71,6 +75,8 @@ def normalize_semgrep_output(raw_output: dict, repository_id: str) -> list[dict]
         fingerprint = compute_semgrep_fingerprint(
             check_id=check_id,
             path=path,
+            line_start=start.get("line", 1),
+            line_end=end.get("line", 1),
             repo_id=repository_id,
         )
 

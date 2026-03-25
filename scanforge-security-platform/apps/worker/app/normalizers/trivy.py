@@ -103,4 +103,42 @@ def normalize_trivy_output(raw_output: dict, repository_id: str) -> list[dict]:
             }
             findings.append(finding)
 
+        for misconfig in result.get("Misconfigurations", []) or []:
+            rule_id = misconfig.get("ID", "unknown")
+            title = misconfig.get("Title", rule_id)
+            severity = SEVERITY_MAP.get(misconfig.get("Severity", "UNKNOWN").upper(), "info")
+
+            fingerprint = hashlib.sha256(
+                f"{rule_id}|{repository_id}|{target}".encode()
+            ).hexdigest()
+
+            findings.append(
+                {
+                    "category": "iac_misconfiguration",
+                    "severity": severity,
+                    "title": title,
+                    "description": misconfig.get("Description", ""),
+                    "canonical_fingerprint": fingerprint,
+                    "primary_scanner": "trivy",
+                    "confidence_score": 0.9,
+                    "instance": {
+                        "path": target,
+                        "rule_id": rule_id,
+                        "type": result_type,
+                        "resolution": misconfig.get("Resolution"),
+                    },
+                    "references": (
+                        [
+                            {
+                                "type": "documentation",
+                                "value": rule_id,
+                                "url": misconfig.get("PrimaryURL"),
+                            }
+                        ]
+                        if misconfig.get("PrimaryURL")
+                        else []
+                    ),
+                }
+            )
+
     return findings

@@ -93,8 +93,9 @@ export default function ScansPage() {
   }, [org_id, project_id, page]);
 
   function duration(scan: any) {
-    if (!scan.summary_json?.duration_ms) return "\u2014";
-    return `${(scan.summary_json.duration_ms / 1000).toFixed(1)}s`;
+    if (scan.summary_json?.duration_ms) return `${(scan.summary_json.duration_ms / 1000).toFixed(1)}s`;
+    if (scan.summary_json?.duration_seconds) return `${Number(scan.summary_json.duration_seconds).toFixed(1)}s`;
+    return "\u2014";
   }
 
   return (
