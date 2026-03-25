@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import Link from "next/link";
-import { Building2, Plus, ArrowRight, Search } from "lucide-react";
+import { Building2, Plus, Search, Lock, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -40,11 +41,8 @@ function gradeBadgeColor(grade: string | null) {
   return "border-danger/30 bg-danger/10 text-danger";
 }
 
-function orgInitial(name: string) {
-  return name.charAt(0).toUpperCase();
-}
-
 export default function OrganizationsPage() {
+  const router = useRouter();
   const [orgs, setOrgs] = useState<any[]>([]);
   const [orgStats, setOrgStats] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
@@ -180,7 +178,7 @@ export default function OrganizationsPage() {
           }
         />
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           {filteredOrgs.map((org, index) => {
             const grade = deriveGrade(orgStats[org.id]);
             return (
@@ -197,22 +195,40 @@ export default function OrganizationsPage() {
                 {/* Top accent line on hover */}
                 <div className="absolute top-0 left-[15%] right-[15%] h-[1px] bg-gradient-to-r from-transparent via-primary/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
-                <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold text-lg font-display flex-shrink-0">
-                  {orgInitial(org.name)}
+                {/* Lock icon */}
+                <div className="h-11 w-11 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Lock className="text-primary h-5 w-5" />
                 </div>
+
+                {/* Org name + slug */}
                 <div className="flex-1 min-w-0">
                   <h3 className="text-sm font-semibold text-text-primary truncate">{org.name}</h3>
                   <span className="text-xs text-text-tertiary font-mono">{org.slug}</span>
                 </div>
+
+                {/* Grade badge */}
                 {grade && (
                   <span className={cn(
-                    "inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-bold font-display",
+                    "inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-bold font-display flex-shrink-0",
                     gradeBadgeColor(grade)
                   )}>
                     {grade}
                   </span>
                 )}
-                <ArrowRight className="h-4 w-4 text-text-tertiary flex-shrink-0 transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-primary" />
+
+                {/* Settings button */}
+                <button
+                  type="button"
+                  aria-label={`Settings for ${org.name}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    router.push(`/dashboard/${org.id}/settings`);
+                  }}
+                  className="h-8 w-8 rounded-lg flex items-center justify-center text-text-tertiary hover:bg-surface-hover hover:text-text-primary transition-colors flex-shrink-0"
+                >
+                  <Settings className="h-4 w-4" />
+                </button>
               </Link>
             );
           })}

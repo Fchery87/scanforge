@@ -3,26 +3,14 @@
 import { Suspense, useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { Search, List, Layers, Download, X } from "lucide-react";
+import { Search, Download, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "@/components/ui/table";
 import { PageHeader } from "@/components/scanforge/page-header";
 import { EmptyState } from "@/components/scanforge/empty-state";
 import { SkeletonTable } from "@/components/scanforge/loading-skeleton";
 import { FindingsTable } from "@/components/scanforge/findings-table";
-import { FilterBar } from "@/components/scanforge/filter-bar";
-import { SeverityBadge } from "@/components/scanforge/severity-badge";
-import { StatusBadge } from "@/components/scanforge/status-badge";
 import FindingDrawer from "./FindingDrawer";
 
 const SEVERITIES = ["critical", "high", "medium", "low", "info"];
@@ -35,20 +23,166 @@ const CATEGORIES = [
 ];
 const STATUSES = ["open", "fixed", "suppressed", "accepted_risk", "duplicate"];
 
-function findingAge(firstSeenAt: string): { label: string; color: string } {
-  const days = Math.floor(
-    (Date.now() - new Date(firstSeenAt).getTime()) / 86400000
-  );
-  if (days <= 7) return { label: `${days}d`, color: "text-success" };
-  if (days <= 30) return { label: `${days}d`, color: "text-warning" };
-  if (days <= 90) return { label: `${days}d`, color: "text-warning" };
-  return { label: `${days}d`, color: "text-danger" };
+// ─── Filter Pill ─────────────────────────────────────────────────────────────
+
+interface FilterPillProps {
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (v: string) => void;
 }
+
+function FilterPill({ label, value, options, onChange }: FilterPillProps) {
+  const isActive = value !== "";
+  const activeOption = options.find((o) => o.value === value);
+  const displayLabel = activeOption ? activeOption.label : label;
+
+  return (
+    <div className="relative">
+      <div
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
+          isActive
+            ? "border-primary/30 bg-primary/5 text-primary"
+            : "border-border bg-surface text-text-secondary hover:border-border-strong hover:text-text-primary"
+        )}
+      >
+        <ChevronRight
+          className={cn(
+            "h-3 w-3 rotate-90 transition-colors",
+            isActive ? "text-primary/70" : "text-text-tertiary"
+          )}
+        />
+        <span>{displayLabel}</span>
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          aria-label={label}
+        >
+          <option value="">{label}</option>
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
+
+// ─── Pagination ───────────────────────────────────────────────────────────────
+
+interface PaginationProps {
+  page: number;
+  total: number;
+  limit: number;
+  onPageChange: (p: number) => void;
+}
+
+function Pagination({ page, total, limit, onPageChange }: PaginationProps) {
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const start = total === 0 ? 0 : page * limit + 1;
+  const end = Math.min((page + 1) * limit, total);
+
+  // Build page number window: always show first, last, current ±1, plus ellipsis
+  const buildPages = (): (number | "ellipsis-start" | "ellipsis-end")[] => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, i) => i);
+    }
+    const pages: (number | "ellipsis-start" | "ellipsis-end")[] = [];
+    const left = Math.max(1, page - 1);
+    const right = Math.min(totalPages - 2, page + 1);
+
+    pages.push(0);
+    if (left > 1) pages.push("ellipsis-start");
+    for (let i = left; i <= right; i++) pages.push(i);
+    if (right < totalPages - 2) pages.push("ellipsis-end");
+    pages.push(totalPages - 1);
+    return pages;
+  };
+
+  const pages = buildPages();
+
+  return (
+    <div className="flex items-center justify-between px-1 py-4 mt-2">
+      <p className="text-xs text-text-tertiary font-mono">
+        Showing{" "}
+        <span className="text-text-secondary font-medium">
+          {start}–{end}
+        </span>{" "}
+        of{" "}
+        <span className="text-text-secondary font-medium">{total}</span>{" "}
+        Findings
+      </p>
+
+      <div className="flex items-center gap-1">
+        <button
+          disabled={page === 0}
+          onClick={() => onPageChange(page - 1)}
+          aria-label="Previous page"
+          className={cn(
+            "h-8 w-8 rounded-lg text-xs font-medium flex items-center justify-center transition-colors",
+            page === 0
+              ? "text-text-tertiary opacity-40 cursor-not-allowed"
+              : "text-text-secondary hover:bg-surface-hover"
+          )}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+
+        {pages.map((p, i) =>
+          p === "ellipsis-start" || p === "ellipsis-end" ? (
+            <span
+              key={`${p}-${i}`}
+              className="h-8 w-8 flex items-center justify-center text-xs text-text-tertiary select-none"
+            >
+              &hellip;
+            </span>
+          ) : (
+            <button
+              key={p}
+              onClick={() => onPageChange(p as number)}
+              aria-label={`Page ${(p as number) + 1}`}
+              aria-current={p === page ? "page" : undefined}
+              className={cn(
+                "h-8 w-8 rounded-lg text-xs font-medium flex items-center justify-center transition-colors",
+                p === page
+                  ? "bg-primary text-white shadow-sm"
+                  : "text-text-secondary hover:bg-surface-hover"
+              )}
+            >
+              {(p as number) + 1}
+            </button>
+          )
+        )}
+
+        <button
+          disabled={(page + 1) * limit >= total}
+          onClick={() => onPageChange(page + 1)}
+          aria-label="Next page"
+          className={cn(
+            "h-8 w-8 rounded-lg text-xs font-medium flex items-center justify-center transition-colors",
+            (page + 1) * limit >= total
+              ? "text-text-tertiary opacity-40 cursor-not-allowed"
+              : "text-text-secondary hover:bg-surface-hover"
+          )}
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Content ─────────────────────────────────────────────────────────────
 
 function FindingsContent() {
   const { org_id, project_id } = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
+
   const [findings, setFindings] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -66,10 +200,10 @@ function FindingsContent() {
   const [repos, setRepos] = useState<any[]>([]);
   const [sortBy, setSortBy] = useState<string>("first_seen_at");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [viewMode, setViewMode] = useState<"flat" | "grouped">("flat");
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const limit = 30;
 
+  // ── URL sync ────────────────────────────────────────────────────────────────
   const updateUrl = useCallback(
     (overrides?: Record<string, string>) => {
       const params = new URLSearchParams();
@@ -89,6 +223,7 @@ function FindingsContent() {
     [severity, category, repositoryId, scanner, router]
   );
 
+  // ── Data fetching ───────────────────────────────────────────────────────────
   const fetchFindings = useCallback(async () => {
     setLoading(true);
     const params: Record<string, string> = {
@@ -139,6 +274,7 @@ function FindingsContent() {
   useEffect(() => {
     fetchFindings();
   }, [fetchFindings]);
+
   useEffect(() => {
     fetchRepos();
   }, [fetchRepos]);
@@ -155,6 +291,7 @@ function FindingsContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
+  // ── Selection ───────────────────────────────────────────────────────────────
   const toggleSelect = (id: string) => {
     setSelected((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
@@ -169,6 +306,7 @@ function FindingsContent() {
     );
   };
 
+  // ── Keyboard navigation ─────────────────────────────────────────────────────
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (
@@ -200,6 +338,7 @@ function FindingsContent() {
     setFocusedIndex(-1);
   }, [findings]);
 
+  // ── Sort ────────────────────────────────────────────────────────────────────
   const toggleSort = (col: string) => {
     if (sortBy === col) setSortDir(sortDir === "asc" ? "desc" : "asc");
     else {
@@ -236,16 +375,7 @@ function FindingsContent() {
   const sortedFindingsRef = useRef(sortedFindings);
   sortedFindingsRef.current = sortedFindings;
 
-  const groupedFindings = sortedFindings.reduce(
-    (acc: Record<string, any[]>, f: any) => {
-      const key = f.category;
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(f);
-      return acc;
-    },
-    {}
-  );
-
+  // ── Bulk actions ────────────────────────────────────────────────────────────
   const handleBulkResolve = async () => {
     if (selected.length === 0) return;
     try {
@@ -294,33 +424,26 @@ function FindingsContent() {
   const hasActiveFilters =
     severity || category || status || search || repositoryId || scanner;
 
+  const clearAllFilters = () => {
+    setSeverity("");
+    setCategory("");
+    setStatus("");
+    setSearch("");
+    setRepositoryId("");
+    setScanner("");
+    setPage(0);
+  };
+
+  // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div>
+      {/* Page header */}
       <PageHeader
-        title="Findings"
-        description={`${total} findings across all repositories`}
-        actions={
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => handleExportFiltered("csv")}
-              className="gap-1.5"
-            >
-              <Download className="h-3.5 w-3.5" /> CSV
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => handleExportFiltered("json")}
-              className="gap-1.5"
-            >
-              <Download className="h-3.5 w-3.5" /> JSON
-            </Button>
-          </div>
-        }
+        title="Security Findings Inventory"
+        description="Manage your team's security issues and vulnerabilities across repositories."
       />
 
+      {/* Bulk action bar */}
       {selected.length > 0 && (
         <div className="flex items-center gap-3 mb-4 px-4 py-2.5 rounded-xl border border-border bg-surface animate-fade-up">
           <Badge variant="primary" className="text-xs">
@@ -348,124 +471,109 @@ function FindingsContent() {
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-3 mb-6">
-        <FilterBar
-          searchValue={search}
-          onSearchChange={(v) => {
-            setSearch(v);
+      {/* Filter bar */}
+      <div className="flex flex-wrap items-center gap-2 mb-6">
+        {/* Search input */}
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-tertiary pointer-events-none" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(0);
+            }}
+            placeholder="Search findings, repositories..."
+            className="w-full rounded-full border border-border bg-surface pl-9 pr-4 py-1.5 text-xs text-text-primary placeholder:text-text-tertiary outline-none transition-colors focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
+          />
+        </div>
+
+        {/* Severity filter */}
+        <FilterPill
+          label="Severity (All)"
+          value={severity}
+          options={SEVERITIES.map((s) => ({
+            value: s,
+            label: s.charAt(0).toUpperCase() + s.slice(1),
+          }))}
+          onChange={(v) => {
+            setSeverity(v);
             setPage(0);
           }}
-          searchPlaceholder="Search findings..."
-          filters={[
-            {
-              key: "severity",
-              label: "All Severities",
-              options: SEVERITIES.map((s) => ({
-                value: s,
-                label: s.charAt(0).toUpperCase() + s.slice(1),
-              })),
-              value: severity,
-              onChange: (v) => {
-                setSeverity(v);
-                setPage(0);
-              },
-            },
-            {
-              key: "category",
-              label: "All Categories",
-              options: CATEGORIES.map((c) => ({
-                value: c,
-                label: c.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()),
-              })),
-              value: category,
-              onChange: (v) => {
-                setCategory(v);
-                setPage(0);
-              },
-            },
-            {
-              key: "status",
-              label: "All Statuses",
-              options: STATUSES.map((s) => ({
-                value: s,
-                label: s.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()),
-              })),
-              value: status,
-              onChange: (v) => {
-                setStatus(v);
-                setPage(0);
-              },
-            },
-            {
-              key: "repositoryId",
-              label: "All Repositories",
-              options: repos.map((r: any) => ({
-                value: r.id,
-                label: r.full_name,
-              })),
-              value: repositoryId,
-              onChange: (v) => {
-                setRepositoryId(v);
-                setPage(0);
-              },
-            },
-            {
-              key: "scanner",
-              label: "All Scanners",
-              options: [
-                { value: "trivy", label: "Trivy" },
-                { value: "gitleaks", label: "Gitleaks" },
-                { value: "osv", label: "OSV-Scanner" },
-              ],
-              value: scanner,
-              onChange: (v) => {
-                setScanner(v);
-                setPage(0);
-              },
-            },
-          ]}
-          onClearAll={
-            hasActiveFilters
-              ? () => {
-                  setSeverity("");
-                  setCategory("");
-                  setStatus("");
-                  setSearch("");
-                  setRepositoryId("");
-                  setScanner("");
-                  setPage(0);
-                }
-              : undefined
-          }
-          className="flex-1"
         />
 
-        <div className="flex items-center rounded-lg border border-border bg-surface p-0.5">
+        {/* Status filter */}
+        <FilterPill
+          label="Status (Open)"
+          value={status}
+          options={STATUSES.map((s) => ({
+            value: s,
+            label: s
+              .replace(/_/g, " ")
+              .replace(/\b\w/g, (l) => l.toUpperCase()),
+          }))}
+          onChange={(v) => {
+            setStatus(v);
+            setPage(0);
+          }}
+        />
+
+        {/* Repository filter */}
+        <FilterPill
+          label="Repository (All)"
+          value={repositoryId}
+          options={repos.map((r: any) => ({
+            value: r.id,
+            label: r.full_name,
+          }))}
+          onChange={(v) => {
+            setRepositoryId(v);
+            setPage(0);
+          }}
+        />
+
+        {/* Category filter (Assignee slot in the design) */}
+        <FilterPill
+          label="Category (All)"
+          value={category}
+          options={CATEGORIES.map((c) => ({
+            value: c,
+            label: c
+              .replace(/_/g, " ")
+              .replace(/\b\w/g, (l) => l.toUpperCase()),
+          }))}
+          onChange={(v) => {
+            setCategory(v);
+            setPage(0);
+          }}
+        />
+
+        {/* Clear filters */}
+        {hasActiveFilters && (
           <button
-            onClick={() => setViewMode("flat")}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-              viewMode === "flat"
-                ? "bg-surface-elevated text-text-primary shadow-sm"
-                : "text-text-tertiary hover:text-text-secondary"
-            )}
+            onClick={clearAllFilters}
+            className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium text-text-tertiary hover:border-border-strong hover:text-text-secondary transition-colors"
+            aria-label="Clear all filters"
           >
-            <List className="h-3.5 w-3.5" /> List
+            <X className="h-3 w-3" />
+            Clear
           </button>
-          <button
-            onClick={() => setViewMode("grouped")}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-              viewMode === "grouped"
-                ? "bg-surface-elevated text-text-primary shadow-sm"
-                : "text-text-tertiary hover:text-text-secondary"
-            )}
-          >
-            <Layers className="h-3.5 w-3.5" /> Grouped
-          </button>
-        </div>
+        )}
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Download Report */}
+        <button
+          onClick={() => handleExportFiltered("csv")}
+          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary/90 active:bg-primary/80 transition-colors"
+        >
+          <Download className="h-3.5 w-3.5" />
+          Download Report
+        </button>
       </div>
 
+      {/* Table area */}
       {loading ? (
         <SkeletonTable rows={8} />
       ) : findings.length === 0 ? (
@@ -474,7 +582,7 @@ function FindingsContent() {
           title="No findings found"
           description="Try adjusting your filters or run a new scan"
         />
-      ) : viewMode === "flat" ? (
+      ) : (
         <>
           <FindingsTable
             findings={sortedFindings}
@@ -487,124 +595,17 @@ function FindingsContent() {
             onSort={toggleSort}
             focusedIndex={focusedIndex}
           />
-          <div className="flex items-center justify-between px-2 py-4 mt-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={page === 0}
-              onClick={() => setPage(page - 1)}
-            >
-              Previous
-            </Button>
-            <span className="text-xs text-text-tertiary font-mono">
-              {page * limit + 1}–{Math.min((page + 1) * limit, total)} of{" "}
-              {total}
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={(page + 1) * limit >= total}
-              onClick={() => setPage(page + 1)}
-            >
-              Next
-            </Button>
-          </div>
-        </>
-      ) : (
-        <>
-          {Object.entries(groupedFindings).map(([cat, items]) => (
-            <div key={cat} className="mb-6 animate-fade-up">
-              <h4 className="flex items-center gap-2 mb-3 text-sm font-semibold font-display text-text-primary capitalize">
-                {cat.replace(/_/g, " ")}
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
-                  {(items as any[]).length}
-                </Badge>
-              </h4>
-              <div className="rounded-xl border border-border bg-surface overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent border-b border-border">
-                      <TableHead className="w-10">
-                        <Checkbox
-                          checked={
-                            selected.length === sortedFindings.length &&
-                            sortedFindings.length > 0
-                          }
-                          onCheckedChange={toggleAll}
-                          aria-label="Select all"
-                        />
-                      </TableHead>
-                      <TableHead>Severity</TableHead>
-                      <TableHead>Title</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Repository</TableHead>
-                      <TableHead>First Seen</TableHead>
-                      <TableHead>Age</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {(items as any[]).map((f) => {
-                      const age = findingAge(f.first_seen_at);
-                      return (
-                        <TableRow
-                          key={f.id}
-                          className={cn(
-                            "cursor-pointer transition-colors",
-                            selected.includes(f.id) && "bg-primary/[0.03]"
-                          )}
-                        >
-                          <TableCell>
-                            <Checkbox
-                              checked={selected.includes(f.id)}
-                              onCheckedChange={() => toggleSelect(f.id)}
-                              aria-label={`Select finding`}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <SeverityBadge severity={f.severity} />
-                          </TableCell>
-                          <TableCell>
-                            <button
-                              onClick={() => setSelectedFinding(f.id)}
-                              className="text-left text-sm text-text-primary hover:text-primary transition-colors font-medium truncate max-w-[300px] block"
-                            >
-                              {f.title}
-                            </button>
-                          </TableCell>
-                          <TableCell>
-                            <StatusBadge status={f.status} showIcon={false} />
-                          </TableCell>
-                          <TableCell>
-                            <span className="font-mono text-xs text-text-tertiary">
-                              {f.repository_id?.slice(0, 8)}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <span className="text-xs text-text-tertiary">
-                              {new Date(f.first_seen_at).toLocaleDateString()}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <span
-                              className={cn(
-                                "text-xs font-medium font-mono",
-                                age.color
-                              )}
-                            >
-                              {age.label}
-                            </span>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          ))}
+
+          <Pagination
+            page={page}
+            total={total}
+            limit={limit}
+            onPageChange={setPage}
+          />
         </>
       )}
 
+      {/* Finding detail drawer */}
       {selectedFinding && (
         <FindingDrawer
           orgId={org_id as string}
@@ -618,6 +619,8 @@ function FindingsContent() {
     </div>
   );
 }
+
+// ─── Page export ──────────────────────────────────────────────────────────────
 
 export default function FindingsPage() {
   return (

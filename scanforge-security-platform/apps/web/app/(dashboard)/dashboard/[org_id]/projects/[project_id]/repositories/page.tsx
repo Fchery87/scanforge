@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
-import { Database, GitBranch, ExternalLink, Plus, Calendar, Github } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { PageHeader } from "@/components/scanforge/page-header";
 import { EmptyState } from "@/components/scanforge/empty-state";
 import { SkeletonCards } from "@/components/scanforge/loading-skeleton";
@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { Database } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -20,7 +21,54 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import ScheduleSection from "./ScheduleSection";
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function getRepoIcon(name: string): { icon: string; bg: string; color: string } {
+  const lower = name.toLowerCase();
+  if (lower.includes("python") || lower.includes("api") || lower.includes("backend"))
+    return { icon: "🐍", bg: "bg-success/10", color: "text-success" };
+  if (lower.includes("frontend") || lower.includes("web") || lower.includes("react") || lower.includes("next"))
+    return { icon: "⚛", bg: "bg-info/10", color: "text-info" };
+  if (lower.includes("go") || lower.includes("service"))
+    return { icon: "🔷", bg: "bg-accent/10", color: "text-accent" };
+  if (lower.includes("data") || lower.includes("pipeline"))
+    return { icon: "📊", bg: "bg-warning/10", color: "text-warning" };
+  return { icon: "📦", bg: "bg-secondary/10", color: "text-secondary" };
+}
+
+function deriveGrade(stats: any): string {
+  if (!stats) return "—";
+  const penalty = (stats.by_severity?.critical ?? 0) * 25 + (stats.open ?? 0) * 3;
+  const score = Math.max(0, 100 - penalty);
+  if (score >= 95) return "A+";
+  if (score >= 90) return "A";
+  if (score >= 80) return "B";
+  if (score >= 70) return "C";
+  if (score >= 60) return "D";
+  return "F";
+}
+
+function gradeBadgeClasses(grade: string): string {
+  if (grade.startsWith("A")) return "bg-success text-white";
+  if (grade === "B") return "bg-primary text-white";
+  if (grade === "C") return "bg-warning text-white";
+  if (grade === "D") return "bg-severity-high text-white";
+  return "bg-danger text-white";
+}
+
+function timeAgo(dateStr: string): string {
+  const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hours ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} days ago`;
+}
+
+// ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function RepositoriesPage() {
   const { org_id, project_id } = useParams();
@@ -28,8 +76,8 @@ export default function RepositoriesPage() {
   const [repos, setRepos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [expandedRepo, setExpandedRepo] = useState<string | null>(null);
   const [repoStats, setRepoStats] = useState<Record<string, any>>({});
+  const [repoFilter, setRepoFilter] = useState("");
 
   const [githubRepos, setGithubRepos] = useState<any[]>([]);
   const [repoSearch, setRepoSearch] = useState("");
@@ -121,24 +169,28 @@ export default function RepositoriesPage() {
       .catch(() => setLoading(false));
   }, [org_id, project_id]);
 
-  const filteredRepos = githubRepos.filter((r) =>
+  const filteredGithubRepos = githubRepos.filter((r) =>
     r.full_name.toLowerCase().includes(repoSearch.toLowerCase())
+  );
+
+  const filteredConnectedRepos = repos.filter((r) =>
+    !repoFilter || r.full_name?.toLowerCase().includes(repoFilter.toLowerCase())
   );
 
   return (
     <div>
       <PageHeader
-        title="Repositories"
-        description={`${repos.length} connected repositories`}
+        title="Connected Repositories Workspace"
+        description="Continuous code repository monitoring and vulnerability management."
         actions={
-          <Button onClick={handleOpenModal}>
+          <Button onClick={handleOpenModal} className="bg-primary hover:bg-primary/90 text-white">
             <Plus className="h-4 w-4 mr-1" /> Connect Repository
           </Button>
         }
       />
 
       {loading ? (
-        <SkeletonCards count={3} />
+        <SkeletonCards count={4} />
       ) : repos.length === 0 ? (
         <EmptyState
           icon={Database}
@@ -146,68 +198,80 @@ export default function RepositoriesPage() {
           description="Connect your first repository to start scanning"
         />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {repos.map((repo) => (
-            <div key={repo.id}>
-              <Link
-                href={`/dashboard/${org_id}/projects/${project_id}/repositories/${repo.id}`}
-                className="block rounded-xl border border-border bg-surface p-5 hover:border-border/80 hover:bg-surface-hover transition-all"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-elevated">
-                    <Database className="h-5 w-5 text-text-secondary" strokeWidth={1.5} />
-                  </div>
-                  <Badge variant="outline" className="text-xs">{repo.provider}</Badge>
-                </div>
-                <h3 className="font-semibold text-text-primary mb-2">{repo.full_name}</h3>
-                <div className="flex items-center gap-3 text-xs text-text-tertiary mb-3">
-                  <span className="flex items-center gap-1"><GitBranch className="h-3.5 w-3.5" /> {repo.default_branch ?? "main"}</span>
-                  <span className={cn(
-                    "inline-flex items-center gap-1",
-                    repo.is_active ? "text-success" : "text-text-tertiary"
-                  )}>
-                    <span className={cn("h-1.5 w-1.5 rounded-full", repo.is_active ? "bg-success" : "bg-text-tertiary")} />
-                    {repo.is_active ? "Active" : "Inactive"}
-                  </span>
-                </div>
-                {repoStats[repo.id] && (
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-sm font-medium text-text-primary">
-                      {repoStats[repo.id].open ?? 0} open
-                    </span>
-                    {repoStats[repo.id].open > 0 && (
-                      <span className="h-2 w-2 rounded-full bg-warning" />
+        <div className="space-y-4">
+          {/* Search bar */}
+          <div className="relative max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-tertiary pointer-events-none" />
+            <Input
+              placeholder="Filter repositories..."
+              value={repoFilter}
+              onChange={(e) => setRepoFilter(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+
+          {/* Repository card grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {filteredConnectedRepos.map((repo) => {
+              const icon = getRepoIcon(repo.full_name ?? repo.repo_name ?? "");
+              const stats = repoStats[repo.id];
+              const grade = deriveGrade(stats);
+              const lastScanDate = repo.updated_at ?? repo.created_at;
+              const lastScanLabel = lastScanDate ? timeAgo(lastScanDate) : "Never";
+
+              return (
+                <Link
+                  key={repo.id}
+                  href={`/dashboard/${org_id}/projects/${project_id}/repositories/${repo.id}`}
+                  className="rounded-xl border border-border bg-surface p-4 hover:border-border-strong hover:bg-surface-hover transition-all group flex items-center gap-4"
+                >
+                  {/* Tech icon */}
+                  <div
+                    className={cn(
+                      "h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0 text-lg",
+                      icon.bg
                     )}
-                  </div>
-                )}
-                {repo.html_url && (
-                  <span
-                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                    onClick={(e) => e.stopPropagation()}
+                    aria-hidden="true"
                   >
-                    <ExternalLink className="h-3 w-3" /> View on {repo.provider}
-                  </span>
-                )}
-              </Link>
-              <button
-                className="w-full mt-1 flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-xs text-text-secondary hover:bg-surface-hover transition-colors"
-                onClick={() => setExpandedRepo(expandedRepo === repo.id ? null : repo.id)}
-              >
-                <Calendar className="h-3.5 w-3.5" /> Schedules
-              </button>
-              {expandedRepo === repo.id && (
-                <ScheduleSection
-                  orgId={org_id as string}
-                  projectId={project_id as string}
-                  repoId={repo.id}
-                  repoName={repo.full_name}
-                />
-              )}
-            </div>
-          ))}
+                    {icon.icon}
+                  </div>
+
+                  {/* Repo info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm text-text-primary truncate leading-tight">
+                      {repo.full_name ?? repo.repo_name}
+                    </p>
+                    <p className="text-xs text-text-tertiary mt-0.5">
+                      Last scan: {lastScanLabel}
+                    </p>
+                  </div>
+
+                  {/* Letter grade badge */}
+                  <div
+                    className={cn(
+                      "h-8 w-8 rounded-full text-xs font-bold font-display flex items-center justify-center flex-shrink-0",
+                      grade === "—"
+                        ? "bg-surface-elevated text-text-tertiary"
+                        : gradeBadgeClasses(grade)
+                    )}
+                    aria-label={`Security grade: ${grade}`}
+                  >
+                    {grade}
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+
+          {filteredConnectedRepos.length === 0 && repoFilter && (
+            <p className="text-sm text-text-tertiary text-center py-8">
+              No repositories match &ldquo;{repoFilter}&rdquo;
+            </p>
+          )}
         </div>
       )}
 
+      {/* Connect Repository dialog */}
       <Dialog open={showModal} onOpenChange={setShowModal}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -243,7 +307,7 @@ export default function RepositoriesPage() {
                 <p className="text-sm text-text-tertiary py-4">Loading repositories...</p>
               ) : (
                 <div className="max-h-64 overflow-y-auto space-y-1 rounded-lg border border-border">
-                  {filteredRepos.map((r) => (
+                  {filteredGithubRepos.map((r) => (
                     <label
                       key={r.external_repo_id}
                       className="flex items-center gap-3 px-3 py-2 hover:bg-surface-hover cursor-pointer"
