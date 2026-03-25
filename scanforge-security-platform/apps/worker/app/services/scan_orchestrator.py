@@ -1,5 +1,7 @@
 import asyncio
+import os
 import shutil
+import subprocess
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -61,6 +63,7 @@ class ScanOrchestrator:
         self.r2 = r2
         self.api_base_url = api_base_url
         self._notifier: NotificationDispatcher | None = None
+        self._internal_api_key = os.environ.get("INTERNAL_API_KEY", "")
 
     def set_notifier(self, notifier: "NotificationDispatcher"):
         self._notifier = notifier
@@ -101,7 +104,8 @@ class ScanOrchestrator:
             await self._update_status(context, "done")
             duration = (datetime.utcnow() - context.start_time).total_seconds()
             await self._update_scan_status(
-                context, "completed",
+                context,
+                "completed",
                 summary={
                     "finding_count": len(context.findings),
                     "critical_count": context.critical_count,
@@ -109,7 +113,7 @@ class ScanOrchestrator:
                     "scanners_run": list(context.scanner_results.keys()),
                     "duration_seconds": round(duration, 1),
                     "artifact_uris": context.artifact_uris,
-                }
+                },
             )
 
             await self._send_notifications(context)
@@ -124,7 +128,8 @@ class ScanOrchestrator:
             retry_count = await self.queue.increment_retry(context.job_id)
 
             await self._update_scan_status(
-                context, "failed",
+                context,
+                "failed",
                 error=str(e),
                 summary={"retry_count": retry_count},
             )
@@ -144,8 +149,49 @@ class ScanOrchestrator:
                 shutil.rmtree(context.repo_path, ignore_errors=True)
 
     async def _prepare_repository(self, context: ScanContext) -> Path:
+        """Clone the repository using a GitHub App installation token."""
         repo_dir = Path(mkdtemp(prefix="scan_repo_"))
+
+        # Fetch the installation token from the API
+        clone_url = await self._get_clone_url(context)
+
+        try:
+            result = await asyncio.to_thread(
+                subprocess.run,
+                [
+                    "git",
+                    "clone",
+                    "--depth",
+                    "1",
+                    "--single-branch",
+                    *(["--branch", context.branch] if context.branch else []),
+                    clone_url,
+                    str(repo_dir),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(f"git clone failed: {result.stderr.strip()}")
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("git clone timed out after 5 minutes")
+
         return repo_dir
+
+    async def _get_clone_url(self, context: ScanContext) -> str:
+        """Build an authenticated clone URL via the internal API."""
+
+        async with httpx.AsyncClient() as client:
+            # Ask the API for repo details + installation token
+            resp = await client.get(
+                f"{self.api_base_url}/api/v1/internal/repositories/{context.repository_id}/clone-url",
+                headers={"X-Service-Key": self._internal_api_key},
+                timeout=30.0,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data["clone_url"]
 
     async def _run_scanners(
         self,
@@ -211,12 +257,15 @@ class ScanOrchestrator:
     def _get_scanner(self, name: str):
         if name == "trivy":
             from app.scanners.trivy import TrivyAdapter
+
             return TrivyAdapter()
         elif name == "gitleaks":
             from app.scanners.gitleaks import GitleaksAdapter
+
             return GitleaksAdapter()
         elif name == "osv":
             from app.scanners.osv import OsvAdapter
+
             return OsvAdapter()
         return None
 
@@ -266,12 +315,15 @@ class ScanOrchestrator:
     def _get_normalizer(self, name: str):
         if name == "trivy":
             from app.normalizers.trivy import normalize_trivy_output
+
             return normalize_trivy_output
         elif name == "gitleaks":
             from app.normalizers.gitleaks import normalize_gitleaks_output
+
             return normalize_gitleaks_output
         elif name == "osv":
             from app.normalizers.osv import normalize_osv_output
+
             return normalize_osv_output
         return None
 
@@ -284,6 +336,7 @@ class ScanOrchestrator:
                 await client.post(
                     f"{self.api_base_url}/api/v1/internal/scans/{context.scan_id}/findings",
                     json={"findings": context.findings},
+                    headers={"X-Service-Key": self._internal_api_key},
                     timeout=60.0,
                 )
             except Exception as e:
@@ -354,9 +407,8 @@ class ScanOrchestrator:
                         "error_message": error,
                         "summary_json": summary,
                     },
+                    headers={"X-Service-Key": self._internal_api_key},
                     timeout=30.0,
                 )
             except Exception as e:
                 print(f"[orchestrator] Failed to update scan status: {e}")
-
-

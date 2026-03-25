@@ -1,8 +1,10 @@
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.db.session import get_db
 from app.middleware.auth import UserContext, get_current_user
 from app.schemas.common import PaginatedResponse, PaginationParams
@@ -15,6 +17,8 @@ from app.schemas.scans import (
 from app.services.projects import ProjectService
 from app.services.repositories import RepositoryService
 from app.services.scans import ScanService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -38,11 +42,45 @@ async def create_scan(
 
     scan_service = ScanService(db)
     try:
-        scan, _, _ = await scan_service.create(
-            data.repository_id, data, current_user.user_id
-        )
+        scan, _, _ = await scan_service.create(data.repository_id, data, current_user.user_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+
+    # ── Enqueue to Redis so the worker picks up this scan ──
+    scan_type_map = {
+        "full": "scan.repo.full",
+        "diff": "scan.repo.diff",
+        "dependencies": "scan.dependencies",
+        "secrets": "scan.secrets",
+    }
+    job_type = scan_type_map.get(data.scan_type, "scan.repo.full")
+
+    try:
+        from app.clients.queue import QueueClient
+
+        queue = QueueClient(
+            redis_url=settings.UPSTASH_REDIS_REST_URL,
+            redis_token=settings.UPSTASH_REDIS_REST_TOKEN,
+        )
+        job_id = await queue.enqueue(
+            job_type,
+            {
+                "scan_id": str(scan.id),
+                "repository_id": str(scan.repository_id),
+                "project_id": str(scan.project_id),
+                "branch": scan.branch_name,
+                "commit_sha": scan.commit_sha,
+                "user_id": str(current_user.user_id),
+            },
+        )
+        logger.info("Enqueued scan %s as job %s (%s)", scan.id, job_id, job_type)
+    except Exception as e:
+        logger.error("Failed to enqueue scan %s: %s", scan.id, e)
+        # Update scan to failed so UI shows the error
+        scan.status = "failed"
+        scan.error_message = f"Failed to enqueue: {e}"
+        await db.commit()
+        await db.refresh(scan)
 
     return scan
 

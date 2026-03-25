@@ -102,6 +102,41 @@ async def persist_scan_findings(
     return {"inserted": new_count, "updated": updated_count}
 
 
+@router.get("/repositories/{repo_id}/clone-url")
+async def get_repository_clone_url(
+    repo_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return an authenticated clone URL for the worker to use."""
+    repo = await db.get(Repository, str(repo_id))
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    # Get the org's GitHub integration
+    project = await db.get(Project, str(repo.project_id))
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    result = await db.execute(
+        select(OrganizationIntegration).where(OrganizationIntegration.organization_id == project.organization_id)
+    )
+    integration = result.scalar_one_or_none()
+    if not integration:
+        raise HTTPException(status_code=404, detail="No GitHub integration for this org")
+
+    # Get an installation access token
+    from app.services.github import GitHubService
+
+    gh = GitHubService(db)
+    token = await gh._get_installation_token(integration.installation_id)
+
+    # Build authenticated clone URL: https://x-access-token:<token>@github.com/owner/repo.git
+    clone_url = repo.clone_url or f"https://github.com/{repo.full_name}.git"
+    authed_url = clone_url.replace("https://", f"https://x-access-token:{token}@")
+
+    return {"clone_url": authed_url}
+
+
 @router.get("/onboarding")
 async def get_onboarding_checklist(
     org_id: str | None = None,
