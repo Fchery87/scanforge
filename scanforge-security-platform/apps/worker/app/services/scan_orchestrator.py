@@ -193,6 +193,36 @@ class ScanOrchestrator:
             data = resp.json()
             return data["clone_url"]
 
+    async def _create_scanner_run(self, context: ScanContext, scanner_name: str, version: str | None = None) -> str | None:
+        """Create a ScannerRun record via internal API and return its ID."""
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.post(
+                    f"{self.api_base_url}/api/v1/internal/scans/{context.scan_id}/scanner-runs",
+                    json={"scanner_name": scanner_name, "scanner_version": version},
+                    headers={"X-Service-Key": self._internal_api_key},
+                    timeout=30.0,
+                )
+                resp.raise_for_status()
+                return resp.json()["id"]
+            except Exception as e:
+                print(f"[orchestrator] Failed to create scanner run for {scanner_name}: {e}")
+                return None
+
+    async def _update_scanner_run(self, run_id: str, **kwargs) -> None:
+        """Update a ScannerRun record via internal API."""
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.patch(
+                    f"{self.api_base_url}/api/v1/internal/scanner-runs/{run_id}",
+                    json=kwargs,
+                    headers={"X-Service-Key": self._internal_api_key},
+                    timeout=30.0,
+                )
+                resp.raise_for_status()
+            except Exception as e:
+                print(f"[orchestrator] Failed to update scanner run {run_id}: {e}")
+
     async def _run_scanners(
         self,
         context: ScanContext,
@@ -211,13 +241,36 @@ class ScanOrchestrator:
                     artifact_paths=[],
                 )
 
+            version = scanner.get_version() if hasattr(scanner, "get_version") else None
+            run_id = await self._create_scanner_run(context, scanner_name, version)
+            start = datetime.utcnow()
+
             try:
                 result = await asyncio.wait_for(
                     asyncio.to_thread(scanner.run, context.repo_path),
                     timeout=self.SCAN_TIMEOUT,
                 )
+                duration_ms = int((datetime.utcnow() - start).total_seconds() * 1000)
+                result.duration_ms = duration_ms
+
+                if run_id:
+                    await self._update_scanner_run(
+                        run_id,
+                        status="completed" if result.success else "failed",
+                        duration_ms=duration_ms,
+                        exit_code=0 if result.success else 1,
+                        error_message=result.error or None,
+                    )
                 return scanner_name, result
             except TimeoutError:
+                if run_id:
+                    duration_ms = int((datetime.utcnow() - start).total_seconds() * 1000)
+                    await self._update_scanner_run(
+                        run_id,
+                        status="failed",
+                        duration_ms=duration_ms,
+                        error_message="Scanner timed out after 30 minutes",
+                    )
                 return scanner_name, ScannerResult(
                     scanner_name=scanner_name,
                     success=False,
@@ -226,6 +279,14 @@ class ScanOrchestrator:
                     error="Scanner timed out after 30 minutes",
                 )
             except Exception as e:
+                if run_id:
+                    duration_ms = int((datetime.utcnow() - start).total_seconds() * 1000)
+                    await self._update_scanner_run(
+                        run_id,
+                        status="failed",
+                        duration_ms=duration_ms,
+                        error_message=str(e),
+                    )
                 return scanner_name, ScannerResult(
                     scanner_name=scanner_name,
                     success=False,

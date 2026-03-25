@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.enums import ScanStatus
 from app.db.models import Finding, OrganizationIntegration, Project, Repository, Scan
+from app.db.models.scan import ScannerRun
 from app.db.session import get_db
 from app.middleware.auth import UserContext, get_current_user
 from app.middleware.service_auth import require_service_auth
@@ -60,14 +61,82 @@ async def update_scan_status_internal(
     return scan
 
 
+class CreateScannerRunRequest(BaseModel):
+    scanner_name: str
+    scanner_version: str | None = None
+
+
+class UpdateScannerRunRequest(BaseModel):
+    status: str
+    duration_ms: int | None = None
+    exit_code: int | None = None
+    error_message: str | None = None
+    artifact_uri: str | None = None
+    metadata_json: dict | None = None
+
+
+@router.post("/scans/{scan_id}/scanner-runs")
+async def create_scanner_run(
+    scan_id: UUID,
+    data: CreateScannerRunRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    scan = await db.get(Scan, str(scan_id))
+    if not scan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan not found")
+
+    run = ScannerRun(
+        scan_id=str(scan_id),
+        scanner_name=data.scanner_name,
+        scanner_version=data.scanner_version,
+        status=ScanStatus.RUNNING,
+    )
+    db.add(run)
+    await db.commit()
+    await db.refresh(run)
+    return {"id": run.id, "scanner_name": run.scanner_name, "status": run.status.value}
+
+
+@router.patch("/scanner-runs/{run_id}")
+async def update_scanner_run(
+    run_id: UUID,
+    data: UpdateScannerRunRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    run = await db.get(ScannerRun, str(run_id))
+    if not run:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scanner run not found")
+
+    run.status = ScanStatus(data.status)
+    if data.duration_ms is not None:
+        run.duration_ms = data.duration_ms
+    if data.exit_code is not None:
+        run.exit_code = data.exit_code
+    if data.error_message is not None:
+        run.error_message = data.error_message
+    if data.artifact_uri is not None:
+        run.artifact_uri = data.artifact_uri
+    if data.metadata_json is not None:
+        run.metadata_json = data.metadata_json
+
+    await db.commit()
+    await db.refresh(run)
+    return {"id": run.id, "status": run.status.value}
+
+
 class FindingItem(BaseModel):
-    rule_id: str
+    model_config = {"extra": "allow"}
+
+    canonical_fingerprint: str
     severity: str
     category: str
     title: str
     description: str | None = None
-    file_path: str | None = None
-    line_number: int | None = None
+    primary_scanner: str | None = None
+    confidence_score: float | None = None
+    fixed_version: str | None = None
+    instance: dict | None = None
+    references: list[dict] | None = None
 
 
 class PersistFindingsRequest(BaseModel):
