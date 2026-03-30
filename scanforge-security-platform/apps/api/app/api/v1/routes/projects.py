@@ -48,7 +48,7 @@ async def create_project(
     return await service.create(data.organization_id, data, current_user.user_id)
 
 
-@router.get("/", response_model=PaginatedResponse[ProjectResponse])
+@router.get("/", response_model=PaginatedResponse[ProjectWithStats])
 async def list_projects(
     org_id: UUID,
     pagination: PaginationParams = Depends(),

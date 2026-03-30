@@ -27,6 +27,7 @@ class ExportService:
             export_type=data.export_type,
             format=data.format,
             status="pending",
+            title=data.title,
             requested_by_user_id=str(user_id),
             filter_criteria_json=data.filters,
             expires_at=datetime.now(UTC) + timedelta(days=7),

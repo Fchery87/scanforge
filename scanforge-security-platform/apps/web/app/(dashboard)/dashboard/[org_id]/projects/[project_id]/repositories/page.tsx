@@ -77,6 +77,7 @@ export default function RepositoriesPage() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [repoStats, setRepoStats] = useState<Record<string, any>>({});
+  const [repoStatsUnavailable, setRepoStatsUnavailable] = useState<Record<string, boolean>>({});
   const [repoFilter, setRepoFilter] = useState("");
 
   const [githubRepos, setGithubRepos] = useState<any[]>([]);
@@ -156,14 +157,22 @@ export default function RepositoriesPage() {
         const repoList = res.items ?? [];
         setRepos(repoList);
         const statsMap: Record<string, any> = {};
+        const unavailableMap: Record<string, boolean> = {};
         await Promise.allSettled(
           repoList.map((repo) =>
             api.findings.stats(org_id as string, project_id as string, { repositoryId: repo.id })
-              .then((s) => { statsMap[repo.id] = s; })
-              .catch(() => { statsMap[repo.id] = { open: 0 }; })
+              .then((s) => {
+                statsMap[repo.id] = s;
+                unavailableMap[repo.id] = false;
+              })
+              .catch(() => {
+                statsMap[repo.id] = null;
+                unavailableMap[repo.id] = true;
+              })
           )
         );
         setRepoStats(statsMap);
+        setRepoStatsUnavailable(unavailableMap);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -215,6 +224,7 @@ export default function RepositoriesPage() {
             {filteredConnectedRepos.map((repo) => {
               const icon = getRepoIcon(repo.full_name ?? repo.repo_name ?? "");
               const stats = repoStats[repo.id];
+              const statsUnavailable = repoStatsUnavailable[repo.id] ?? false;
               const grade = deriveGrade(stats);
               const lastScanDate = repo.updated_at ?? repo.created_at;
               const lastScanLabel = lastScanDate ? timeAgo(lastScanDate) : "Never";
@@ -243,6 +253,7 @@ export default function RepositoriesPage() {
                     </p>
                     <p className="text-xs text-text-tertiary mt-0.5">
                       Last scan: {lastScanLabel}
+                      {statsUnavailable && " · stats unavailable"}
                     </p>
                   </div>
 
@@ -250,13 +261,13 @@ export default function RepositoriesPage() {
                   <div
                     className={cn(
                       "h-8 w-8 rounded-full text-xs font-bold font-display flex items-center justify-center flex-shrink-0",
-                      grade === "—"
+                      statsUnavailable || grade === "—"
                         ? "bg-surface-elevated text-text-tertiary"
                         : gradeBadgeClasses(grade)
                     )}
-                    aria-label={`Security grade: ${grade}`}
+                    aria-label={statsUnavailable ? "Security grade unavailable" : `Security grade: ${grade}`}
                   >
-                    {grade}
+                    {statsUnavailable ? "?" : grade}
                   </div>
                 </Link>
               );
@@ -267,6 +278,12 @@ export default function RepositoriesPage() {
             <p className="text-sm text-text-tertiary text-center py-8">
               No repositories match &ldquo;{repoFilter}&rdquo;
             </p>
+          )}
+
+          {Object.values(repoStatsUnavailable).some(Boolean) && (
+            <div className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-text-secondary">
+              Some repository grades are unavailable because findings stats could not be loaded.
+            </div>
           )}
         </div>
       )}

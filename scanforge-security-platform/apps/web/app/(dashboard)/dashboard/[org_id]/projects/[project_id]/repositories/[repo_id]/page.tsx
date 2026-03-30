@@ -18,19 +18,32 @@ export default function RepoDetailPage() {
   const router = useRouter();
   const [repo, setRepo] = useState<any>(null);
   const [scans, setScans] = useState<any[]>([]);
+  const [repoStats, setRepoStats] = useState<any>(null);
+  const [repoStatsUnavailable, setRepoStatsUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!org_id || !project_id || !repo_id) return;
-    Promise.all([
-      api.repositories.list(org_id, project_id).then((res: any) => {
-        const found = (res.items ?? []).find((r: any) => r.id === repo_id);
-        setRepo(found);
-      }),
-      api.scans.list(org_id, project_id, 0, 20).then((res: any) => {
-        setScans((res.items ?? []).filter((s: any) => s.repository_id === repo_id));
-      }),
-    ]).then(() => setLoading(false)).catch(() => setLoading(false));
+    Promise.allSettled([
+      api.repositories.get(org_id, project_id, repo_id),
+      api.scans.list(org_id, project_id, 0, 20),
+      api.findings.stats(org_id, project_id, { repositoryId: repo_id }),
+    ]).then(([repoResult, scansResult, statsResult]) => {
+      if (repoResult.status === "fulfilled") {
+        setRepo(repoResult.value);
+      }
+      if (scansResult.status === "fulfilled") {
+        setScans((scansResult.value.items ?? []).filter((s: any) => s.repository_id === repo_id));
+      }
+      if (statsResult.status === "fulfilled") {
+        setRepoStats(statsResult.value);
+        setRepoStatsUnavailable(false);
+      } else {
+        setRepoStats(null);
+        setRepoStatsUnavailable(true);
+      }
+      setLoading(false);
+    }).catch(() => setLoading(false));
   }, [org_id, project_id, repo_id]);
 
   if (loading) return <SkeletonTable rows={5} />;
@@ -39,11 +52,7 @@ export default function RepoDetailPage() {
   const handleDisconnect = async () => {
     if (!confirm(`Disconnect "${repo.full_name}"? This will not delete existing findings.`)) return;
     try {
-      const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-      await fetch(`${API_BASE}/api/v1/organizations/${org_id}/projects/${project_id}/repositories/${repo_id}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
+      await api.repositories.remove(org_id, project_id, repo_id);
       router.push(`/dashboard/${org_id}/projects/${project_id}/repositories`);
     } catch {
       alert("Failed to disconnect repository");
@@ -83,7 +92,12 @@ export default function RepoDetailPage() {
           { label: "Total Scans", value: scans.length },
           { label: "Completed", value: scans.filter((s) => s.status === "completed").length },
           { label: "Failed", value: scans.filter((s) => s.status === "failed").length },
-          { label: "Filtered Findings", value: <Link href={`/dashboard/${org_id}/projects/${project_id}/findings?repositoryId=${repo_id}`} className="text-primary hover:underline">View Findings &rarr;</Link> },
+          {
+            label: repoStatsUnavailable ? "Findings Data" : "Open Findings",
+            value: repoStatsUnavailable
+              ? "Unavailable"
+              : repoStats?.open ?? 0,
+          },
         ].map((stat) => (
           <div key={stat.label} className="rounded-xl border border-border bg-surface p-4 text-center">
             <span className="text-2xl font-bold font-display tracking-tight">{stat.value}</span>
@@ -91,6 +105,18 @@ export default function RepoDetailPage() {
           </div>
         ))}
       </div>
+
+      <div className="mb-6">
+        <Link href={`/dashboard/${org_id}/projects/${project_id}/findings?repositoryId=${repo_id}`} className="text-sm text-primary hover:underline">
+          View filtered findings for this repository &rarr;
+        </Link>
+      </div>
+
+      {repoStatsUnavailable && (
+        <div className="mb-6 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-text-secondary">
+          Repository findings stats are temporarily unavailable.
+        </div>
+      )}
 
       <div className="mb-8">
         <h3 className="text-lg font-semibold font-display text-text-primary mb-4">Scan History</h3>

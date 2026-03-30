@@ -15,6 +15,7 @@ export default function ScorecardDashboardPage() {
   const { org_id } = useParams<{ org_id: string }>();
   const [projects, setProjects] = useState<any[]>([]);
   const [scorecards, setScorecards] = useState<Record<string, any>>({});
+  const [failedProjectIds, setFailedProjectIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -23,20 +24,32 @@ export default function ScorecardDashboardPage() {
       const projs = res.items ?? [];
       setProjects(projs);
       const cards: Record<string, any> = {};
+      const failed: string[] = [];
       await Promise.allSettled(
         projs.map((p: any) =>
-          api.scorecard.get(org_id as string, p.id).then((sc: any) => { cards[p.id] = sc; }).catch(() => {})
+          api.scorecard
+            .get(org_id as string, p.id)
+            .then((sc: any) => {
+              cards[p.id] = sc;
+            })
+            .catch(() => {
+              failed.push(p.id);
+            })
         )
       );
       setScorecards(cards);
+      setFailedProjectIds(failed);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [org_id]);
 
-  const avgScore = scorecards && Object.keys(scorecards).length > 0
+  const availableScorecardCount = Object.keys(scorecards).length;
+  const unavailableScorecardCount = failedProjectIds.length;
+
+  const avgScore = scorecards && availableScorecardCount > 0
     ? Math.round(
         Object.values(scorecards).reduce((sum: number, sc: any) => sum + (sc.overall_score || 0), 0) /
-        Object.keys(scorecards).length
+        availableScorecardCount
       )
     : null;
 
@@ -65,9 +78,16 @@ export default function ScorecardDashboardPage() {
           <div>
             <h2 className="font-display text-lg text-text-primary">Organization Security Score</h2>
             <p className="text-text-secondary text-sm">
-              Average across {Object.keys(scorecards).length} project{Object.keys(scorecards).length !== 1 ? "s" : ""}
+              Average across {availableScorecardCount} project{availableScorecardCount !== 1 ? "s" : ""}
+              {unavailableScorecardCount > 0 && ` · ${unavailableScorecardCount} unavailable`}
             </p>
           </div>
+        </div>
+      )}
+
+      {unavailableScorecardCount > 0 && (
+        <div className="mb-6 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-text-secondary">
+          {unavailableScorecardCount} project scorecard{unavailableScorecardCount !== 1 ? "s are" : " is"} unavailable and excluded from the organization average.
         </div>
       )}
 
@@ -110,7 +130,7 @@ export default function ScorecardDashboardPage() {
                       </div>
                       <div className="flex items-center gap-4 mt-3">
                         <span className="flex items-center gap-1 text-danger text-xs">
-                          <AlertTriangle size={12} /> {sc.critical_count ?? 0}
+                          <AlertTriangle size={12} /> {sc.open_critical ?? 0}
                         </span>
                         <span className="flex items-center gap-1 text-success text-xs">
                           <CheckCircle size={12} /> {sc.fixed_30d ?? 0} fixed
@@ -118,7 +138,7 @@ export default function ScorecardDashboardPage() {
                       </div>
                     </>
                   ) : (
-                    <p className="text-text-tertiary text-sm">No scan data</p>
+                    <p className="text-text-tertiary text-sm">Scorecard unavailable</p>
                   )}
                 </Link>
               );

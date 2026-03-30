@@ -28,7 +28,7 @@ import {
 import { cn } from "@/lib/utils";
 
 const TYPES = ["findings", "pipeline", "summary"];
-const FORMATS = ["csv", "json", "pdf", "sarif"];
+const FORMATS = ["csv", "json", "pdf"];
 
 export default function ExportsPage() {
   const { org_id, project_id } = useParams();
@@ -37,17 +37,27 @@ export default function ExportsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ export_type: "findings", format: "csv", title: "", filters: { severity: "", category: "", status: "" } });
   const [creating, setCreating] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [createError, setCreateError] = useState("");
 
   useEffect(() => {
     if (!org_id || !project_id) return;
     api.exports.list(org_id as string, project_id as string)
-      .then((res) => { setExports(res.items ?? []); setLoading(false); })
-      .catch(() => setLoading(false));
+      .then((res) => {
+        setExports(res.items ?? []);
+        setLoadError("");
+        setLoading(false);
+      })
+      .catch((err: any) => {
+        setLoadError(err.message || "Failed to load exports");
+        setLoading(false);
+      });
   }, [org_id, project_id]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setCreating(true);
+    setCreateError("");
     try {
       const filters = Object.fromEntries(
         Object.entries(form.filters).filter(([, v]) => v !== "")
@@ -61,7 +71,9 @@ export default function ExportsPage() {
       setExports([exp, ...exports]);
       setShowCreate(false);
       setForm({ export_type: "findings", format: "csv", title: "", filters: { severity: "", category: "", status: "" } });
-    } catch {} finally { setCreating(false); }
+    } catch (err: any) {
+      setCreateError(err.message || "Failed to generate export");
+    } finally { setCreating(false); }
   }
 
   return (
@@ -82,6 +94,7 @@ export default function ExportsPage() {
             <DialogTitle>Generate Export</DialogTitle>
             <DialogDescription>Configure and generate a new data export.</DialogDescription>
           </DialogHeader>
+          {createError && <p className="text-sm text-danger">{createError}</p>}
           <form onSubmit={handleCreate} className="space-y-4">
             <div className="space-y-2">
               <Label>Export Type</Label>
@@ -164,6 +177,12 @@ export default function ExportsPage() {
 
       {loading ? (
         <SkeletonList rows={5} />
+      ) : loadError ? (
+        <EmptyState
+          icon={FileText}
+          title="Exports unavailable"
+          description={loadError}
+        />
       ) : exports.length === 0 ? (
         <EmptyState
           icon={FileText}

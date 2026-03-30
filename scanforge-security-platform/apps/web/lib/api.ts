@@ -65,6 +65,8 @@ export const api = {
   repositories: {
     list: (orgId: string, projectId: string) =>
       request<{ items: any[]; total: number }>(`/organizations/${orgId}/projects/${projectId}/repositories`),
+    get: (orgId: string, projectId: string, repoId: string) =>
+      request<any>(`/organizations/${orgId}/projects/${projectId}/repositories/${repoId}`),
     create: (orgId: string, projectId: string, data: {
       provider: string;
       external_repo_id?: string;
@@ -79,12 +81,16 @@ export const api = {
         method: "POST",
         body: JSON.stringify(data),
       }),
+    remove: (orgId: string, projectId: string, repoId: string) =>
+      request<void>(`/organizations/${orgId}/projects/${projectId}/repositories/${repoId}`, {
+        method: "DELETE",
+      }),
   },
 
   scans: {
     list: (orgId: string, projectId: string, skip = 0, limit = 20) =>
       request<{ items: any[]; total: number }>(`/organizations/${orgId}/projects/${projectId}/scans?skip=${skip}&limit=${limit}`),
-    create: (orgId: string, projectId: string, data: { repository_id: string; trigger_type: string; branch_name?: string }) =>
+    create: (orgId: string, projectId: string, data: { repository_id: string; trigger_type: string; branch_name?: string; scan_type?: string }) =>
       request<any>(`/organizations/${orgId}/projects/${projectId}/scans`, { method: "POST", body: JSON.stringify(data) }),
     get: (orgId: string, projectId: string, scanId: string) =>
       request<any>(`/organizations/${orgId}/projects/${projectId}/scans/${scanId}`),

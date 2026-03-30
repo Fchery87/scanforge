@@ -14,6 +14,7 @@ class Export(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     export_type: Mapped[str] = mapped_column(String(50), nullable=False)
     format: Mapped[str] = mapped_column(String(20), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    title: Mapped[str | None] = mapped_column(String(255))
     requested_by_user_id: Mapped[str | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), index=True
     )

@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.finding import Finding
 from app.db.models.scan import Scan
 from app.db.session import get_db
+from app.middleware.auth import UserContext, get_current_user
+from app.services.projects import ProjectService
 
 router = APIRouter()
 
@@ -49,7 +51,17 @@ def _grade(score: float) -> str:
     "/organizations/{org_id}/projects/{project_id}/scorecard",
     response_model=ScorecardResponse,
 )
-async def get_project_scorecard(org_id: UUID, project_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_project_scorecard(
+    org_id: UUID,
+    project_id: UUID,
+    current_user: UserContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    project_service = ProjectService(db)
+    has_access = await project_service.user_has_access(project_id, current_user.user_id)
+    if not has_access:
+        raise HTTPException(status_code=403, detail="No access to this project")
+
     now = datetime.now(UTC)
 
     sev_counts = {}

@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +10,8 @@ from app.db.models.finding import Finding
 from app.db.models.project import Project
 from app.db.models.scan import Scan
 from app.db.session import get_db
+from app.middleware.auth import UserContext, get_current_user
+from app.services.organizations import OrganizationService
 
 router = APIRouter()
 
@@ -23,7 +25,16 @@ class OrgStatsResponse(BaseModel):
 
 
 @router.get("/organizations/{org_id}/stats", response_model=OrgStatsResponse)
-async def get_org_stats(org_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_org_stats(
+    org_id: UUID,
+    current_user: UserContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    org_service = OrganizationService(db)
+    has_access = await org_service.is_member(org_id, current_user.user_id)
+    if not has_access:
+        raise HTTPException(status_code=403, detail="Not a member of this organization")
+
     project_count = (
         await db.execute(
             select(func.count())

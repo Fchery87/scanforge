@@ -15,13 +15,20 @@ export default function ScanDetailPage() {
   const router = useRouter();
   const [scan, setScan] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
-    api.scans.get(org_id, project_id, scan_id).then((data) => {
-      setScan(data);
-      setLoading(false);
-    });
-  }, [scan_id]);
+    api.scans.get(org_id, project_id, scan_id)
+      .then((data) => {
+        setScan(data);
+        setLoadError("");
+        setLoading(false);
+      })
+      .catch((err: any) => {
+        setLoadError(err.message || "Failed to load scan");
+        setLoading(false);
+      });
+  }, [org_id, project_id, scan_id]);
 
   useEffect(() => {
     if (!scan || !["queued", "running"].includes(scan.status)) return;
@@ -52,6 +59,12 @@ export default function ScanDetailPage() {
   };
 
   if (loading) return <SkeletonTable rows={5} />;
+  if (loadError) return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <h2 className="text-xl font-semibold text-text-secondary">Scan unavailable</h2>
+      <p className="mt-2 text-sm text-text-tertiary">{loadError}</p>
+    </div>
+  );
   if (!scan) return (
     <div className="flex flex-col items-center justify-center py-20 text-center">
       <h2 className="text-xl font-semibold text-text-secondary">Scan not found</h2>

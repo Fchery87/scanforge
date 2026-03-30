@@ -44,13 +44,20 @@ export default function ScansPage() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [listError, setListError] = useState("");
+  const [reposError, setReposError] = useState("");
 
   useEffect(() => {
     if (showModal && repos.length === 0) {
-      api.repositories.list(org_id as string, project_id as string).then((res: any) => {
-        setRepos(res.items || res);
-        if (res.items?.[0]) setScanForm((f) => ({ ...f, repository_id: res.items[0].id }));
-      });
+      api.repositories.list(org_id as string, project_id as string)
+        .then((res: any) => {
+          setRepos(res.items || res);
+          setReposError("");
+          if (res.items?.[0]) setScanForm((f) => ({ ...f, repository_id: res.items[0].id }));
+        })
+        .catch((err: any) => {
+          setReposError(err.message || "Failed to load repositories");
+        });
     }
   }, [showModal]);
 
@@ -64,6 +71,7 @@ export default function ScansPage() {
         repository_id: scanForm.repository_id,
         trigger_type: "manual",
         branch_name: scanForm.branch_name || undefined,
+        scan_type: scanForm.scan_type,
       });
       setScans((prev: any[]) => [scan, ...prev]);
       setShowModal(false);
@@ -88,8 +96,12 @@ export default function ScansPage() {
       .then((res) => {
         setScans(res.items ?? []);
         setTotal(res.total ?? 0);
+        setListError("");
         setLoading(false);
-      }).catch(() => setLoading(false));
+      }).catch((err: any) => {
+        setListError(err.message || "Failed to load scans");
+        setLoading(false);
+      });
   }, [org_id, project_id, page]);
 
   function duration(scan: any) {
@@ -112,6 +124,12 @@ export default function ScansPage() {
 
       {loading ? (
         <SkeletonTable rows={5} />
+      ) : listError ? (
+        <EmptyState
+          icon={Activity}
+          title="Scans unavailable"
+          description={listError}
+        />
       ) : scans.length === 0 ? (
         <EmptyState
           icon={Activity}
@@ -175,12 +193,14 @@ export default function ScansPage() {
             <DialogDescription>Start a new security scan for a connected repository.</DialogDescription>
           </DialogHeader>
           {error && <p className="text-sm text-danger">{error}</p>}
+          {reposError && <p className="text-sm text-danger">{reposError}</p>}
           <form onSubmit={handleTriggerScan} className="space-y-4">
             <div className="space-y-2">
               <Label>Repository</Label>
               <Select
                 value={scanForm.repository_id}
                 onValueChange={(val) => setScanForm({ ...scanForm, repository_id: val })}
+                disabled={!!reposError}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select repository…" />

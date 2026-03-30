@@ -35,21 +35,53 @@ export default function OrganizationPage() {
   const [stats, setStats] = useState<any>(null);
   const [activity, setActivity] = useState<any[]>([]);
   const [memberCount, setMemberCount] = useState(0);
+  const [statsUnavailable, setStatsUnavailable] = useState(false);
+  const [activityUnavailable, setActivityUnavailable] = useState(false);
+  const [membersUnavailable, setMembersUnavailable] = useState(false);
 
   useEffect(() => {
     if (!org_id) return;
-    Promise.all([
+    Promise.allSettled([
       api.organizations.get(org_id as string),
       api.projects.list(org_id as string, 0, 50),
-      api.organizations.stats(org_id as string).catch(() => null),
-      api.auditLogs.listOrg(org_id as string, 0, 10).catch(() => null),
-      api.members.list(org_id as string, 0, 1).catch(() => null),
-    ]).then(([orgData, projData, statsData, activityData, membersData]) => {
-      setOrg(orgData);
-      setProjects(projData.items ?? []);
-      if (statsData) setStats(statsData);
-      if (activityData) setActivity(activityData.items ?? []);
-      if (membersData) setMemberCount(membersData.total ?? membersData.items?.length ?? 0);
+      api.organizations.stats(org_id as string),
+      api.auditLogs.listOrg(org_id as string, 0, 10),
+      api.members.list(org_id as string, 0, 1),
+    ]).then((results) => {
+      const [orgResult, projectsResult, statsResult, activityResult, membersResult] = results;
+
+      if (orgResult.status !== "fulfilled" || projectsResult.status !== "fulfilled") {
+        setLoading(false);
+        return;
+      }
+
+      setOrg(orgResult.value);
+      setProjects(projectsResult.value.items ?? []);
+
+      if (statsResult.status === "fulfilled") {
+        setStats(statsResult.value);
+        setStatsUnavailable(false);
+      } else {
+        setStats(null);
+        setStatsUnavailable(true);
+      }
+
+      if (activityResult.status === "fulfilled") {
+        setActivity(activityResult.value.items ?? []);
+        setActivityUnavailable(false);
+      } else {
+        setActivity([]);
+        setActivityUnavailable(true);
+      }
+
+      if (membersResult.status === "fulfilled") {
+        setMemberCount(membersResult.value.total ?? membersResult.value.items?.length ?? 0);
+        setMembersUnavailable(false);
+      } else {
+        setMemberCount(0);
+        setMembersUnavailable(true);
+      }
+
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [org_id]);
@@ -97,7 +129,7 @@ export default function OrganizationPage() {
         </div>
         <div className="flex items-center gap-2">
           <span className="flex items-center gap-1.5 text-sm text-text-tertiary mr-2">
-            <Users className="h-4 w-4" /> {memberCount} member{memberCount !== 1 ? "s" : ""}
+            <Users className="h-4 w-4" /> {membersUnavailable ? "Members unavailable" : `${memberCount} member${memberCount !== 1 ? "s" : ""}`}
           </span>
           {projects.length > 0 && (
             <Link href={`/dashboard/${org_id}/projects`}>
@@ -120,9 +152,28 @@ export default function OrganizationPage() {
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3 mb-8 animate-fade-up stagger-1">
         <StatCard icon={Folder} value={projects.length} label="Projects" variant="primary" />
-        <StatCard icon={AlertCircle} value={stats?.open_findings ?? "—"} label="Open Findings" variant="warning" />
-        <StatCard icon={Activity} value={stats?.scans_today ?? "—"} label="Scans Today" variant="success" />
+        <StatCard
+          icon={AlertCircle}
+          value={statsUnavailable ? "Unavailable" : stats?.open_findings ?? 0}
+          label={statsUnavailable ? "Open Findings Data" : "Open Findings"}
+          variant="warning"
+        />
+        <StatCard
+          icon={Activity}
+          value={statsUnavailable ? "Unavailable" : stats?.scans_today ?? 0}
+          label={statsUnavailable ? "Scans Today Data" : "Scans Today"}
+          variant="success"
+        />
       </div>
+
+      {(statsUnavailable || activityUnavailable || membersUnavailable) && (
+        <div className="mb-6 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-text-secondary">
+          Some dashboard data is temporarily unavailable.
+          {statsUnavailable && " Organization stats failed to load."}
+          {activityUnavailable && " Recent activity failed to load."}
+          {membersUnavailable && " Member count failed to load."}
+        </div>
+      )}
 
       {/* Create Modal */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
@@ -193,26 +244,32 @@ export default function OrganizationPage() {
       )}
 
       {/* Activity */}
-      {activity.length > 0 && (
+      {(activity.length > 0 || activityUnavailable) && (
         <div className="mt-10 animate-fade-up stagger-3">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-xs font-semibold text-text-tertiary uppercase tracking-wider">Recent Activity</h2>
             <Link href={`/dashboard/${org_id}/audit-logs`} className="text-xs text-primary hover:underline font-medium">View all</Link>
           </div>
           <div className="rounded-xl border border-border bg-surface overflow-hidden">
-            {activity.map((log) => (
-              <div key={log.id} className="flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0">
-                <div className="h-2 w-2 rounded-full bg-primary flex-shrink-0" />
-                <div className="flex-1 text-sm min-w-0">
-                  <span className="font-medium text-text-primary">{log.action}</span>
-                  {log.target && <span className="text-text-secondary"> on {log.target}</span>}
-                  {log.actor_name && <span className="text-text-tertiary"> by {log.actor_name}</span>}
-                </div>
-                <span className="flex items-center gap-1 text-[11px] text-text-tertiary font-mono flex-shrink-0">
-                  <Clock className="h-3 w-3" /> {new Date(log.created_at).toLocaleDateString()}
-                </span>
+            {activityUnavailable ? (
+              <div className="px-4 py-8 text-sm text-text-tertiary">
+                Recent activity unavailable.
               </div>
-            ))}
+            ) : (
+              activity.map((log) => (
+                <div key={log.id} className="flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0">
+                  <div className="h-2 w-2 rounded-full bg-primary flex-shrink-0" />
+                  <div className="flex-1 text-sm min-w-0">
+                    <span className="font-medium text-text-primary">{log.action}</span>
+                    {log.target && <span className="text-text-secondary"> on {log.target}</span>}
+                    {log.actor_name && <span className="text-text-tertiary"> by {log.actor_name}</span>}
+                  </div>
+                  <span className="flex items-center gap-1 text-[11px] text-text-tertiary font-mono flex-shrink-0">
+                    <Clock className="h-3 w-3" /> {new Date(log.created_at).toLocaleDateString()}
+                  </span>
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}

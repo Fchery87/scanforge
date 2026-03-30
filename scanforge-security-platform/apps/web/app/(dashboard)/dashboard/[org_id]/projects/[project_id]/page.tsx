@@ -77,6 +77,7 @@ export default function ProjectOverviewPage() {
       api.repositories.list(org_id as string, project_id as string).catch(() => null),
       api.auditLogs.listProject(org_id as string, project_id as string, 0, 5).catch(() => null),
       api.findings.list(org_id as string, project_id as string, { severity: "critical", limit: "3" }).catch(() => null),
+      api.findings.list(org_id as string, project_id as string, { severity: "high", limit: "3" }).catch(() => null),
     ]).then(async ([
       projData,
       statsData,
@@ -86,6 +87,7 @@ export default function ProjectOverviewPage() {
       reposData,
       activityData,
       topFindingsData,
+      topHighFindingsData,
     ]) => {
       setProject(projData);
       setStats(statsData);
@@ -93,7 +95,9 @@ export default function ProjectOverviewPage() {
       if (scorecardData) setScorecard(scorecardData);
       if (trendData) setTrend(trendData);
       if (activityData) setActivity(activityData.items ?? []);
-      if (topFindingsData) setTopFindings(topFindingsData.items ?? []);
+      const criticalFindings = topFindingsData?.items ?? [];
+      const highFindings = topHighFindingsData?.items ?? [];
+      setTopFindings(criticalFindings.length > 0 ? criticalFindings : highFindings);
 
       if (reposData) {
         const repoList = reposData.items ?? [];
@@ -119,18 +123,12 @@ export default function ProjectOverviewPage() {
   const highPriorityCount =
     (stats?.by_severity?.critical ?? 0) + (stats?.by_severity?.high ?? 0);
 
-  // Build Top Alerts list — prefer real findings, fall back to scans, then
-  // static placeholders so the card is never empty.
+  // Build Top Alerts from real findings only. Prefer critical, then high.
   const topAlerts: { label: string; sub: string }[] =
-    topFindings.length > 0
-      ? topFindings.slice(0, 3).map((f) => ({
-          label: f.title ?? f.cve_id ?? "Critical finding",
-          sub: f.repository_name ?? f.repository_id ?? "unknown repo",
-        }))
-      : scans.slice(0, 3).map((s) => ({
-          label: `Scan in ${s.repository_id ?? "repository"}`,
-          sub: new Date(s.created_at).toLocaleDateString(),
-        }));
+    topFindings.slice(0, 3).map((f) => ({
+      label: f.title ?? "Security finding",
+      sub: f.repository_name ?? f.repository_id ?? f.primary_scanner ?? "Unknown source",
+    }));
 
   return (
     <div>
@@ -190,7 +188,7 @@ export default function ProjectOverviewPage() {
           </p>
 
           {topAlerts.length === 0 ? (
-            <p className="text-xs text-text-tertiary">No critical findings detected.</p>
+            <p className="text-xs text-text-tertiary">No critical or high findings detected.</p>
           ) : (
             <ul className="space-y-2">
               {topAlerts.map((alert, i) => (
