@@ -8,6 +8,7 @@ import { useIsMobile } from "@/hooks/use-media-query";
 import { Breadcrumb } from "@/components/scanforge/breadcrumb";
 import { CommandPalette } from "@/components/scanforge/command-palette";
 import { KeyboardShortcutsModal } from "@/components/scanforge/keyboard-shortcuts-modal";
+import { ScanForgeLogo } from "@/components/scanforge/logo";
 import {
   Tooltip,
   TooltipContent,
@@ -125,8 +126,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           {/* Logo */}
           <div className="flex items-center gap-3 border-b border-border px-4 h-14">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white flex-shrink-0">
-              <Shield size={16} strokeWidth={2.5} />
+            <div className="flex h-8 w-8 items-center justify-center rounded-sm border border-border-strong bg-surface text-accent flex-shrink-0 shadow-[0_0_10px_rgba(0,229,255,0.1)]">
+              <ScanForgeLogo className="h-4 w-4" />
             </div>
             {showLabels && (
               <div className="flex flex-col overflow-hidden animate-fade-in flex-1 min-w-0">
