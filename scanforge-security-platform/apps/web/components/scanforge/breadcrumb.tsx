@@ -52,12 +52,12 @@ export function Breadcrumb({ orgName, projectName, className }: BreadcrumbProps)
           {crumb.href && idx < crumbs.length - 1 ? (
             <Link
               href={crumb.href}
-              className="text-text-tertiary hover:text-text-secondary transition-colors"
+              className="text-text-tertiary hover:text-text-primary transition-colors hover:underline"
             >
               {crumb.label}
             </Link>
           ) : (
-            <span className={idx === crumbs.length - 1 ? "text-text-secondary font-medium" : "text-text-tertiary"}>
+            <span className={idx === crumbs.length - 1 ? "text-text-primary font-bold" : "text-text-tertiary"}>
               {crumb.label}
             </span>
           )}

@@ -6,29 +6,29 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "relative inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium font-display transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-40 active:scale-[0.97]",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-sm text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-border-strong disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {
         default:
-          "bg-primary text-white shadow-lg shadow-primary/20 hover:bg-primary-hover hover:shadow-xl hover:shadow-primary/30 hover:glow-wire",
+          "bg-text-primary text-background hover:bg-white",
         destructive:
-          "bg-danger text-white shadow-lg shadow-danger/20 hover:shadow-xl hover:shadow-danger/30",
+          "bg-critical text-white hover:bg-critical/90",
         outline:
-          "border border-border bg-transparent text-text-secondary hover:bg-surface-hover hover:text-text-primary hover:border-border-strong hover:glow-wire",
+          "border border-border bg-transparent text-text-secondary hover:bg-surface-hover hover:text-text-primary hover:border-border-strong",
         secondary:
-          "bg-gradient-to-r from-secondary to-secondary-hover text-white shadow-lg shadow-secondary/20 hover:shadow-xl hover:shadow-secondary/30",
+          "bg-surface-elevated text-text-primary hover:bg-surface-hover border border-border",
         ghost:
           "text-text-secondary hover:bg-surface-hover hover:text-text-primary",
         link:
-          "text-primary underline-offset-4 hover:underline",
+          "text-accent underline-offset-4 hover:underline",
         success:
-          "bg-success text-white shadow-lg shadow-success/20 hover:shadow-xl hover:shadow-success/30",
+          "bg-success text-background hover:bg-success/90",
       },
       size: {
         default: "h-9 px-4 py-2",
-        sm: "h-8 rounded-md px-3 text-xs",
-        lg: "h-10 rounded-lg px-6 text-base",
+        sm: "h-8 px-3 text-xs",
+        lg: "h-10 px-6 text-base",
         icon: "h-9 w-9",
       },
     },

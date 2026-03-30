@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import Link from "next/link";
-import { Building2, Plus, Search, Lock, Settings } from "lucide-react";
+import { Building2, Plus, Search, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -32,14 +32,7 @@ function deriveGrade(stats: any) {
   return "F";
 }
 
-function gradeBadgeColor(grade: string | null) {
-  if (!grade) return "";
-  if (grade.startsWith("A")) return "border-success/30 bg-success/10 text-success";
-  if (grade === "B") return "border-primary/30 bg-primary/10 text-primary";
-  if (grade === "C") return "border-warning/30 bg-warning/10 text-warning";
-  if (grade === "D") return "border-severity-high/30 bg-severity-high/10 text-severity-high";
-  return "border-danger/30 bg-danger/10 text-danger";
-}
+// Removed unused gradeBadgeColor
 
 export default function OrganizationsPage() {
   const router = useRouter();
@@ -186,49 +179,55 @@ export default function OrganizationsPage() {
                 key={org.id}
                 href={`/dashboard/${org.id}`}
                 className={cn(
-                  "group relative flex items-center gap-4 rounded-xl border border-border bg-surface p-5 transition-all duration-200",
-                  "hover:border-border-strong hover:bg-surface-hover",
+                  "group relative flex items-start gap-4 border border-border bg-background p-4 transition-colors duration-200",
+                  "hover:border-text-secondary",
                   "animate-fade-up"
                 )}
                 style={{ animationDelay: `${index * 50}ms` }}
               >
-                {/* Top accent line on hover */}
-                <div className="absolute top-0 left-[15%] right-[15%] h-[1px] bg-gradient-to-r from-transparent via-primary/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-
-                {/* Lock icon */}
-                <div className="h-11 w-11 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <Lock className="text-primary h-5 w-5" />
-                </div>
+                {/* Sharp right-side accent that appears on hover */}
+                <div className="absolute top-0 right-[-1px] bottom-0 w-[2px] bg-accent scale-y-0 group-hover:scale-y-100 transition-transform duration-200 origin-bottom" />
 
                 {/* Org name + slug */}
                 <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-semibold text-text-primary truncate">{org.name}</h3>
-                  <span className="text-xs text-text-tertiary font-mono">{org.slug}</span>
+                  <h3 className="text-base font-medium tracking-tight text-text-primary truncate">{org.name}</h3>
+                  <p className="text-xs text-text-tertiary font-mono tracking-wider uppercase mt-1 truncate">
+                    {org.slug}
+                  </p>
                 </div>
 
-                {/* Grade badge */}
-                {grade && (
-                  <span className={cn(
-                    "inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-bold font-display flex-shrink-0",
-                    gradeBadgeColor(grade)
-                  )}>
-                    {grade}
-                  </span>
-                )}
+                <div className="flex items-center gap-3 flex-shrink-0">
+                  {/* Grade badge */}
+                  {grade ? (
+                    <div className={cn(
+                      "flex h-10 w-10 items-center justify-center border",
+                      grade.startsWith('A') ? "border-success text-success bg-success/5" 
+                      : grade === 'F' ? "border-critical text-critical bg-critical/5" 
+                      : grade === 'B' ? "border-info text-info bg-info/5"
+                      : "border-border text-text-secondary bg-surface"
+                    )}>
+                      <span className="font-mono text-lg font-medium">{grade}</span>
+                    </div>
+                  ) : (
+                    <div className="flex h-10 w-10 items-center justify-center border border-border bg-surface text-text-tertiary">
+                      <span className="font-mono text-lg font-medium">-</span>
+                    </div>
+                  )}
 
-                {/* Settings button */}
-                <button
-                  type="button"
-                  aria-label={`Settings for ${org.name}`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    router.push(`/dashboard/${org.id}/settings`);
-                  }}
-                  className="h-8 w-8 rounded-lg flex items-center justify-center text-text-tertiary hover:bg-surface-hover hover:text-text-primary transition-colors flex-shrink-0"
-                >
-                  <Settings className="h-4 w-4" />
-                </button>
+                  {/* Settings button */}
+                  <button
+                    type="button"
+                    aria-label={`Settings for ${org.name}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      router.push(`/dashboard/${org.id}/settings`);
+                    }}
+                    className="h-10 w-10 flex items-center justify-center text-text-tertiary hover:bg-surface-hover hover:text-text-primary transition-colors border border-transparent hover:border-border"
+                  >
+                    <Settings className="h-4 w-4" />
+                  </button>
+                </div>
               </Link>
             );
           })}

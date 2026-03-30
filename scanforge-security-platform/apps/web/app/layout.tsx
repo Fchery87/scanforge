@@ -1,25 +1,25 @@
-import type { Metadata } from "next";
-import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
-import { ThemeProvider } from "@/components/providers/theme-provider";
-import { Toaster } from "@/components/ui/toaster";
-import "./globals.css";
+import type { Metadata } from 'next';
+import { Geist, Geist_Mono } from 'next/font/google';
+import { ThemeProvider } from '@/components/providers/theme-provider';
+import { Toaster } from '@/components/ui/toaster';
+import './globals.css';
 
-const spaceGrotesk = Space_Grotesk({
-  subsets: ["latin"],
-  variable: "--font-space",
-  display: "swap",
+const geistSans = Geist({
+  subsets: ['latin'],
+  variable: '--font-geist-sans',
+  display: 'swap',
 });
 
-const jetbrains = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-jetbrains",
-  display: "swap",
+const geistMono = Geist_Mono({
+  subsets: ['latin'],
+  variable: '--font-geist-mono',
+  display: 'swap',
 });
 
 export const metadata: Metadata = {
-  title: "ScanForge — Repository Security Platform",
+  title: 'ScanForge — Repository Security Platform',
   description:
-    "Automated security scanning and vulnerability management for your code repositories.",
+    'Automated security scanning and vulnerability management for your code repositories.',
 };
 
 export default function RootLayout({
@@ -27,9 +27,9 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html
-      lang="en"
+      lang='en'
       suppressHydrationWarning
-      className={`${spaceGrotesk.variable} ${jetbrains.variable}`}
+      className={`${geistSans.variable} ${geistMono.variable}`}
     >
       <body>
         <ThemeProvider>

@@ -85,12 +85,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const navItemClass = (href: string | null, isDisabled = false) =>
     cn(
-      "flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-150",
+      "flex items-center gap-3 px-3 py-2 text-[13px] font-medium transition-colors border-l-2",
       isDisabled
-        ? "opacity-30 cursor-not-allowed pointer-events-none text-text-secondary"
+        ? "opacity-30 cursor-not-allowed pointer-events-none text-text-secondary border-transparent"
         : href && isActive(href)
-          ? "bg-primary/10 text-primary"
-          : "text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+          ? "bg-surface-hover text-text-primary border-accent"
+          : "text-text-secondary hover:bg-surface-hover hover:text-text-primary border-transparent hover:border-border-strong"
     );
 
   const handleNavClick = useCallback(() => {
@@ -149,7 +149,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {navItems.map((item) => {
               const NavContent = (
                 <div className={navItemClass(item.href, !item.available)}>
-                  <item.icon size={17} strokeWidth={1.75} className="flex-shrink-0" />
+                  <item.icon size={16} strokeWidth={1.25} className="flex-shrink-0" />
                   {showLabels && <span className="truncate">{item.label}</span>}
                 </div>
               );
@@ -187,7 +187,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <TooltipTrigger asChild>
                     <Link href={`/dashboard/${orgId}/audit-logs`} onClick={handleNavClick}>
                       <div className={navItemClass(`/dashboard/${orgId}/audit-logs`)}>
-                        <FileText size={17} strokeWidth={1.75} className="flex-shrink-0" />
+                        <FileText size={16} strokeWidth={1.25} className="flex-shrink-0" />
                         {showLabels && <span>Audit Log</span>}
                       </div>
                     </Link>
@@ -199,7 +199,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <TooltipTrigger asChild>
                     <Link href={`/dashboard/${orgId}/settings`} onClick={handleNavClick}>
                       <div className={navItemClass(`/dashboard/${orgId}/settings`)}>
-                        <Settings size={17} strokeWidth={1.75} className="flex-shrink-0" />
+                        <Settings size={16} strokeWidth={1.25} className="flex-shrink-0" />
                         {showLabels && <span>Settings</span>}
                       </div>
                     </Link>
@@ -216,7 +216,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <TooltipTrigger asChild>
                 <Link href="/profile" onClick={handleNavClick}>
                   <div className={navItemClass("/profile")}>
-                    <User size={17} strokeWidth={1.75} className="flex-shrink-0" />
+                    <User size={16} strokeWidth={1.25} className="flex-shrink-0" />
                     {showLabels && <span>Profile</span>}
                   </div>
                 </Link>
@@ -229,7 +229,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Link href="/notifications" onClick={handleNavClick}>
                   <div className={navItemClass("/notifications")}>
                     <div className="relative flex-shrink-0">
-                      <Bell size={17} strokeWidth={1.75} />
+                      <Bell size={16} strokeWidth={1.25} />
                       {unreadCount > 0 && (
                         <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary text-[9px] font-bold text-white px-1">
                           {unreadCount > 99 ? "99+" : unreadCount}
@@ -246,7 +246,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Tooltip>
               <TooltipTrigger asChild>
                 <button className={cn(navItemClass("/dashboard"), "w-full text-left")}>
-                  <LogOut size={17} strokeWidth={1.75} className="flex-shrink-0" />
+                  <LogOut size={16} strokeWidth={1.25} className="flex-shrink-0" />
                   {showLabels && <span>Sign Out</span>}
                 </button>
               </TooltipTrigger>
