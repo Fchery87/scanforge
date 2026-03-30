@@ -10,7 +10,7 @@ help:
 	@echo ""
 	@echo "  Setup"
 	@echo "    make install           Install all dependencies (web + api + worker)"
-	@echo "    make scanner-install  Install scanner binaries (trivy, gitleaks, osv-scanner)"
+	@echo "    make scanner-install  Install scanner binaries (trivy, gitleaks, osv-scanner, syft, grype, checkov)"
 	@echo "    make db-up            Start local database with docker-compose"
 	@echo "    make db-down          Stop local database"
 	@echo ""
@@ -63,7 +63,7 @@ scanner-install:
 	@echo "Installing scanner binaries..."
 	@echo ""
 	@echo "macOS (Homebrew):"
-	@echo "  brew install trivy gitleaks"
+	@echo "  brew install trivy gitleaks checkov"
 	@echo "  go install github.com/google/osv-scanner/cmd/osv-scanner@latest"
 	@echo "  brew install anchore/syft/syft anchore/grype/grype"
 	@echo ""
@@ -71,15 +71,18 @@ scanner-install:
 	@echo "  curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin trivy"
 	@echo "  curl -sfL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_linux_amd64.tar.gz | tar -xz -C /usr/local/bin"
 	@echo "  go install github.com/google/osv-scanner/cmd/osv-scanner@latest"
+	@echo "  pip install checkov"
 	@echo "  curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh /dev/stdin -b /usr/local/bin"
 	@echo "  curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh /dev/stdin -b /usr/local/bin"
 
 scanner-check:
 	@echo "Checking scanner versions..."
-	@for bin in trivy gitleaks osv-scanner syft grype; do \
-		version=$$($$bin version 2>/dev/null | head -1 || echo "NOT FOUND"); \
-		echo "  $$bin: $$version"; \
-	done
+	@printf "  trivy: %s\n" "$$(trivy --version 2>/dev/null | head -1 || echo "NOT FOUND")"
+	@printf "  gitleaks: %s\n" "$$(gitleaks version 2>/dev/null | head -1 || echo "NOT FOUND")"
+	@printf "  osv-scanner: %s\n" "$$(osv-scanner --version 2>/dev/null | head -1 || echo "NOT FOUND")"
+	@printf "  syft: %s\n" "$$(syft version 2>/dev/null | sed -n '2p' | sed 's/^Version:[[:space:]]*//' || echo "NOT FOUND")"
+	@printf "  grype: %s\n" "$$(grype version 2>/dev/null | sed -n '2p' | sed 's/^Version:[[:space:]]*//' || echo "NOT FOUND")"
+	@printf "  checkov: %s\n" "$$(checkov --version 2>/dev/null | head -1 || echo "NOT FOUND")"
 
 # ─── Database ────────────────────────────────────────────────────────
 

@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -8,6 +9,21 @@ from app.scanners.base import ScannerAdapter, ScannerResult
 class TrivyAdapter(ScannerAdapter):
     name = "trivy"
     binary_name = "trivy"
+
+    def get_version(self) -> str:
+        try:
+            result = subprocess.run(
+                [self.binary_name, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            match = re.search(r"Version:\s*([^\s]+)", result.stdout)
+            if match:
+                return match.group(1)
+            return result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+        except Exception:
+            return ""
 
     def run(self, repo_path: Path) -> ScannerResult:
         import time

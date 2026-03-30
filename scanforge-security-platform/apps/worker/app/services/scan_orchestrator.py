@@ -342,12 +342,12 @@ class ScanOrchestrator:
 
     def _get_scanners_for_type(self, scan_type: str) -> list[str]:
         mapping = {
-            "scan.repo.full": ["trivy", "gitleaks", "osv", "semgrep", "syft"],
-            "scan.repo.diff": ["gitleaks", "semgrep"],
-            "scan.dependencies": ["trivy", "osv", "syft"],
+            "scan.repo.full": ["trivy", "gitleaks", "osv", "semgrep", "syft", "checkov", "grype"],
+            "scan.repo.diff": ["gitleaks", "semgrep", "checkov"],
+            "scan.dependencies": ["trivy", "osv", "syft", "grype"],
             "scan.secrets": ["gitleaks"],
         }
-        return mapping.get(scan_type, ["trivy", "gitleaks", "osv", "semgrep", "syft"])
+        return mapping.get(scan_type, ["trivy", "gitleaks", "osv", "semgrep", "syft", "checkov", "grype"])
 
     def _get_scanner(self, name: str):
         if name == "trivy":
@@ -370,6 +370,14 @@ class ScanOrchestrator:
             from app.scanners.syft import SyftAdapter
 
             return SyftAdapter()
+        elif name == "checkov":
+            from app.scanners.checkov import CheckovAdapter
+
+            return CheckovAdapter()
+        elif name == "grype":
+            from app.scanners.grype import GrypeAdapter
+
+            return GrypeAdapter()
         return None
 
     async def _upload_artifacts(self, context: ScanContext) -> dict:
@@ -450,6 +458,14 @@ class ScanOrchestrator:
             from app.normalizers.syft import normalize_syft_output
 
             return normalize_syft_output
+        elif name == "checkov":
+            from app.normalizers.checkov import normalize_checkov_output
+
+            return normalize_checkov_output
+        elif name == "grype":
+            from app.normalizers.grype import normalize_grype_output
+
+            return normalize_grype_output
         return None
 
     def _filter_findings_to_changed_files(self, findings: list[dict], changed_files: list[str]) -> list[dict]:

@@ -67,7 +67,7 @@ class CreateScannerRunRequest(BaseModel):
 
 
 class UpdateScannerRunRequest(BaseModel):
-    status: str
+    status: str | None = None
     duration_ms: int | None = None
     exit_code: int | None = None
     error_message: str | None = None
@@ -107,7 +107,8 @@ async def update_scanner_run(
     if not run:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scanner run not found")
 
-    run.status = ScanStatus(data.status)
+    if data.status is not None:
+        run.status = ScanStatus(data.status)
     if data.duration_ms is not None:
         run.duration_ms = data.duration_ms
     if data.exit_code is not None:

@@ -1,38 +1,37 @@
 import json
-import re
 import subprocess
 from pathlib import Path
 
 from app.scanners.base import ScannerAdapter, ScannerResult
 
 
-class SyftAdapter(ScannerAdapter):
-    name = "syft"
-    binary_name = "syft"
+class GrypeAdapter(ScannerAdapter):
+    name = "grype"
+    binary_name = "grype"
 
     def run(self, repo_path: Path) -> ScannerResult:
         import time
+
         start = time.time()
+        output_file = repo_path / "grype-results.json"
 
         try:
-            output_file = repo_path / "syft-results.json"
-
             result = subprocess.run(
                 [
                     self.binary_name,
-                    "scan",
                     f"dir:{repo_path}",
-                    "-o", "json",
-                    "--file", str(output_file),
+                    "-o",
+                    "json",
+                    "--file",
+                    str(output_file),
                 ],
                 capture_output=True,
                 text=True,
-                timeout=300,
+                timeout=600,
                 cwd=str(repo_path),
             )
 
             duration_ms = int((time.time() - start) * 1000)
-
             output = {}
             artifacts = []
 
@@ -42,11 +41,9 @@ class SyftAdapter(ScannerAdapter):
                         output = json.load(f)
                     except json.JSONDecodeError:
                         output = {"raw": f.read()}
-
                 artifacts.append(output_file)
 
-            # Treat as success if output file has artifacts key
-            has_output = bool(output and "artifacts" in output)
+            has_output = bool(output and (output.get("matches") is not None or output != {"raw": ""}))
             return ScannerResult(
                 scanner_name=self.name,
                 success=result.returncode == 0 or has_output,
@@ -56,7 +53,6 @@ class SyftAdapter(ScannerAdapter):
                 duration_ms=duration_ms,
                 error=result.stderr.strip() if result.returncode != 0 and not has_output else "",
             )
-
         except subprocess.TimeoutExpired:
             return ScannerResult(
                 scanner_name=self.name,
@@ -74,18 +70,3 @@ class SyftAdapter(ScannerAdapter):
                 artifact_paths=[],
                 error=str(e),
             )
-
-    def get_version(self) -> str:
-        try:
-            result = subprocess.run(
-                [self.binary_name, "version"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            match = re.search(r"Version:\s*([^\s]+)", result.stdout)
-            if match:
-                return match.group(1)
-            return result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
-        except Exception:
-            return ""

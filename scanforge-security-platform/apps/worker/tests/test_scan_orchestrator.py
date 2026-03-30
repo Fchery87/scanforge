@@ -88,3 +88,12 @@ def test_diff_scan_records_changed_files_scope():
 
     assert summary["scope"] == "diff"
     assert summary["changed_files"] == changed_files
+
+
+def test_scan_type_mappings_include_checkov_and_grype():
+    orchestrator = ScanOrchestrator(queue=DummyQueue(), r2=DummyR2())
+
+    assert "checkov" in orchestrator._get_scanners_for_type("scan.repo.full")
+    assert "grype" in orchestrator._get_scanners_for_type("scan.repo.full")
+    assert "checkov" in orchestrator._get_scanners_for_type("scan.repo.diff")
+    assert "grype" in orchestrator._get_scanners_for_type("scan.dependencies")

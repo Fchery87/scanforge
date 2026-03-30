@@ -18,12 +18,28 @@ class R2Client:
         self.secret_access_key = secret_access_key
         self.public_base_url = (public_base_url or "").rstrip("/")
         self._s3 = None
-        self._enabled = bool(endpoint and access_key_id and secret_access_key)
+        self._enabled = bool(endpoint and access_key_id and secret_access_key) and not self._is_placeholder_config()
+
+    def _is_placeholder_config(self) -> bool:
+        values = [
+            self.endpoint,
+            self.access_key_id,
+            self.secret_access_key,
+        ]
+        placeholders = (
+            "your-account",
+            "your-access-key",
+            "your-secret-key",
+        )
+        return any(any(token in value for token in placeholders) for value in values if value)
 
     @property
     def s3(self):
         if not self._enabled:
-            raise RuntimeError("R2 client is not configured — set R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY")
+            raise RuntimeError(
+                "R2 client is not configured — set real values for R2_ENDPOINT, R2_ACCESS_KEY_ID, "
+                "R2_SECRET_ACCESS_KEY, and optionally R2_PUBLIC_BASE_URL"
+            )
         if self._s3 is None:
             import boto3
             from botocore.config import Config

@@ -2,6 +2,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
+from app.api.v1.routes.internal import UpdateScannerRunRequest
 
 
 @pytest.mark.asyncio
@@ -44,3 +45,15 @@ async def test_internal_endpoints_require_service_auth():
             response = await client.request(method, path, json={})
             # Should be rejected (401 or 503)
             assert response.status_code in (401, 503), f"{method} {path} should reject unauthorized requests"
+
+
+def test_update_scanner_run_request_allows_partial_artifact_updates():
+    payload = UpdateScannerRunRequest.model_validate(
+        {
+            "artifact_uri": "https://artifacts.example/scans/123/output.json",
+            "metadata_json": {"raw_output_uri": "https://artifacts.example/scans/123/raw.json"},
+        }
+    )
+
+    assert payload.status is None
+    assert payload.artifact_uri == "https://artifacts.example/scans/123/output.json"
