@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -87,6 +87,10 @@ class FindingResponse(BaseModel):
     confidence_score: float | None
     fixed_version: str | None
     metadata_json: dict | None
+    assignee_user_id: UUID | None = None
+    assignee_name: str | None = None
+    assignee_email: str | None = None
+    due_date: date | None = None
     first_seen_at: datetime
     last_seen_at: datetime
     created_at: datetime
@@ -111,8 +115,13 @@ class FindingResolve(BaseModel):
 
 class FindingBulkAction(BaseModel):
     finding_ids: list[UUID]
-    action: str = Field(..., pattern="^(suppress|resolve)$")
+    action: str = Field(..., pattern="^(suppress|resolve|accept_risk|mark_duplicate)$")
     reason: str = Field(..., min_length=1)
+
+
+class FindingTriageUpdate(BaseModel):
+    assignee_user_id: UUID | None = None
+    due_date: date | None = None
 
 
 class FindingStats(BaseModel):

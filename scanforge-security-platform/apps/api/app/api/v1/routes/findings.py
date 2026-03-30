@@ -9,6 +9,7 @@ from app.schemas.common import PaginatedResponse, PaginationParams
 from app.schemas.findings import (
     FindingBulkAction,
     FindingDetailResponse,
+    FindingTriageUpdate,
     FindingResolve,
     FindingResponse,
     FindingStats,
@@ -160,6 +161,77 @@ async def reopen_finding(
     return finding
 
 
+@router.post("/{finding_id}/accept-risk", response_model=FindingResponse)
+async def accept_risk_finding(
+    project_id: UUID,
+    finding_id: UUID,
+    data: FindingSuppress,
+    current_user: UserContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    project_service = ProjectService(db)
+    has_access = await project_service.user_has_access(project_id, current_user.user_id)
+    if not has_access:
+        raise HTTPException(status_code=403, detail="No access to this project")
+
+    service = FindingService(db)
+    finding = await service.accept_risk(finding_id, current_user.user_id, data.reason)
+    if not finding or finding.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Finding not found")
+
+    return finding
+
+
+@router.post("/{finding_id}/mark-duplicate", response_model=FindingResponse)
+async def mark_duplicate_finding(
+    project_id: UUID,
+    finding_id: UUID,
+    data: FindingSuppress,
+    current_user: UserContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    project_service = ProjectService(db)
+    has_access = await project_service.user_has_access(project_id, current_user.user_id)
+    if not has_access:
+        raise HTTPException(status_code=403, detail="No access to this project")
+
+    service = FindingService(db)
+    finding = await service.mark_duplicate(finding_id, current_user.user_id, data.reason)
+    if not finding or finding.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Finding not found")
+
+    return finding
+
+
+@router.patch("/{finding_id}/triage", response_model=FindingResponse)
+async def update_finding_triage(
+    project_id: UUID,
+    finding_id: UUID,
+    data: FindingTriageUpdate,
+    current_user: UserContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    project_service = ProjectService(db)
+    has_access = await project_service.user_has_access(project_id, current_user.user_id)
+    if not has_access:
+        raise HTTPException(status_code=403, detail="No access to this project")
+
+    service = FindingService(db)
+    try:
+        finding = await service.update_triage(
+            finding_id,
+            current_user.user_id,
+            assignee_user_id=data.assignee_user_id,
+            due_date=data.due_date,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not finding or finding.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Finding not found")
+
+    return finding
+
+
 @router.get("/{finding_id}/events")
 async def get_finding_events(
     project_id: UUID,
@@ -198,4 +270,7 @@ async def bulk_finding_action(
         await service.bulk_suppress(data.finding_ids, current_user.user_id, data.reason)
     elif data.action == "resolve":
         await service.bulk_resolve(data.finding_ids, current_user.user_id)
-
+    elif data.action == "accept_risk":
+        await service.bulk_accept_risk(data.finding_ids, current_user.user_id, data.reason)
+    elif data.action == "mark_duplicate":
+        await service.bulk_mark_duplicate(data.finding_ids, current_user.user_id, data.reason)

@@ -1,11 +1,17 @@
-from datetime import datetime
+from __future__ import annotations
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, Text, UniqueConstraint, func
+from datetime import date, datetime
+from typing import TYPE_CHECKING
+
+from sqlalchemy import Date, DateTime, Float, ForeignKey, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.db.mixins import TimestampMixin, UUIDPrimaryKeyMixin
+
+if TYPE_CHECKING:
+    from app.db.models.user import User
 
 
 class Finding(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -23,11 +29,24 @@ class Finding(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     confidence_score: Mapped[float | None] = mapped_column(Float)
     fixed_version: Mapped[str | None] = mapped_column(String(128))
     metadata_json: Mapped[dict | None] = mapped_column(JSONB)
+    assignee_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    due_date: Mapped[date | None] = mapped_column(Date)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     instances: Mapped[list["FindingInstance"]] = relationship("FindingInstance", back_populates="finding", lazy="selectin")
     references: Mapped[list["FindingReference"]] = relationship("FindingReference", back_populates="finding", lazy="selectin")
     events: Mapped[list["FindingEvent"]] = relationship("FindingEvent", back_populates="finding", lazy="selectin")
+    assignee: Mapped[User | None] = relationship("User", foreign_keys=[assignee_user_id], lazy="selectin")
+
+    @property
+    def assignee_name(self) -> str | None:
+        assignee = self.__dict__.get("assignee")
+        return assignee.name if assignee else None
+
+    @property
+    def assignee_email(self) -> str | None:
+        assignee = self.__dict__.get("assignee")
+        return assignee.email if assignee else None
 
 class FindingInstance(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "finding_instances"

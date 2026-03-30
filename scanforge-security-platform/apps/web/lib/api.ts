@@ -124,6 +124,26 @@ export const api = {
       request<any>(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/reopen`, {
         method: "POST",
       }),
+    acceptRisk: (orgId: string, projectId: string, findingId: string, reason: string) =>
+      request<any>(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/accept-risk`, {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      }),
+    markDuplicate: (orgId: string, projectId: string, findingId: string, reason: string) =>
+      request<any>(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/mark-duplicate`, {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      }),
+    updateTriage: (
+      orgId: string,
+      projectId: string,
+      findingId: string,
+      data: { assignee_user_id?: string | null; due_date?: string | null }
+    ) =>
+      request<any>(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/triage`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
     events: (orgId: string, projectId: string, findingId: string) =>
       request<any[]>(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/events`),
     bulk: (orgId: string, projectId: string, data: { finding_ids: string[]; action: string; reason: string }) =>

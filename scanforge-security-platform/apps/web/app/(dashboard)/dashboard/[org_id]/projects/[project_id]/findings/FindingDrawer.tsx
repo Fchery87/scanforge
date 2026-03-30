@@ -42,12 +42,18 @@ export default function FindingDrawer({
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<string>("details");
   const [related, setRelated] = useState<any[]>([]);
+  const [members, setMembers] = useState<any[]>([]);
   const [actionForm, setActionForm] = useState({
     action: "",
     reason: "",
     fixedVersion: "",
   });
+  const [triageForm, setTriageForm] = useState({
+    assigneeUserId: "",
+    dueDate: "",
+  });
   const [acting, setActing] = useState(false);
+  const [savingTriage, setSavingTriage] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -55,10 +61,21 @@ export default function FindingDrawer({
       .get(orgId, projectId, findingId)
       .then((data) => {
         setFinding(data);
+        setTriageForm({
+          assigneeUserId: data.assignee_user_id ?? "",
+          dueDate: data.due_date ?? "",
+        });
         setLoading(false);
       })
       .catch(() => setLoading(false));
   }, [findingId, orgId, projectId]);
+
+  useEffect(() => {
+    api.members
+      .list(orgId, 0, 100)
+      .then((res: any) => setMembers(res.items ?? []))
+      .catch(() => setMembers([]));
+  }, [orgId]);
 
   useEffect(() => {
     if (tab !== "related" || !finding) return;
@@ -95,6 +112,20 @@ export default function FindingDrawer({
           findingId,
           actionForm.fixedVersion
         );
+      } else if (action === "accept_risk") {
+        await api.findings.acceptRisk(
+          orgId,
+          projectId,
+          findingId,
+          actionForm.reason
+        );
+      } else if (action === "mark_duplicate") {
+        await api.findings.markDuplicate(
+          orgId,
+          projectId,
+          findingId,
+          actionForm.reason
+        );
       } else if (action === "reopen") {
         await api.findings.reopen(orgId, projectId, findingId);
       }
@@ -106,6 +137,22 @@ export default function FindingDrawer({
       console.error(err);
     } finally {
       setActing(false);
+    }
+  };
+
+  const handleSaveTriage = async () => {
+    setSavingTriage(true);
+    try {
+      const updated = await api.findings.updateTriage(orgId, projectId, findingId, {
+        assignee_user_id: triageForm.assigneeUserId || null,
+        due_date: triageForm.dueDate || null,
+      });
+      setFinding(updated);
+      onUpdate();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingTriage(false);
     }
   };
 
@@ -227,6 +274,74 @@ export default function FindingDrawer({
                       </div>
                     </>
                   )}
+
+                  <Separator />
+                  <div className="space-y-3">
+                    <div>
+                      <h4 className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-2">
+                        Triage
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <label className="space-y-1.5">
+                          <span className="text-[11px] font-medium text-text-tertiary uppercase tracking-wider">
+                            Owner
+                          </span>
+                          <select
+                            value={triageForm.assigneeUserId}
+                            onChange={(e) =>
+                              setTriageForm((prev) => ({
+                                ...prev,
+                                assigneeUserId: e.target.value,
+                              }))
+                            }
+                            className="h-9 w-full rounded-md border border-border bg-surface-elevated px-3 text-sm text-text-primary outline-none focus:border-primary/50"
+                          >
+                            <option value="">Unassigned</option>
+                            {members.map((member: any) => (
+                              <option key={member.user_id} value={member.user_id}>
+                                {member.user_name || member.user_email || member.user_id}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className="space-y-1.5">
+                          <span className="text-[11px] font-medium text-text-tertiary uppercase tracking-wider">
+                            Due Date
+                          </span>
+                          <Input
+                            type="date"
+                            value={triageForm.dueDate}
+                            onChange={(e) =>
+                              setTriageForm((prev) => ({
+                                ...prev,
+                                dueDate: e.target.value,
+                              }))
+                            }
+                            className="h-9 text-sm"
+                          />
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between rounded-lg border border-border bg-surface-elevated px-3 py-2">
+                      <div className="text-xs text-text-secondary">
+                        <span className="font-medium text-text-primary">
+                          {finding.assignee_name || "Unassigned"}
+                        </span>
+                        {" · "}
+                        <span>{finding.due_date || "No target date"}</span>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleSaveTriage}
+                        disabled={savingTriage}
+                      >
+                        {savingTriage ? "Saving…" : "Save Triage"}
+                      </Button>
+                    </div>
+                  </div>
 
                   {finding.references?.length > 0 && (
                     <>
@@ -356,8 +471,14 @@ export default function FindingDrawer({
                             "h-3 w-3 rounded-full border-2 mt-1 flex-shrink-0",
                             evt.event_type === "resolved"
                               ? "border-success bg-success/20"
+                              : evt.event_type === "fixed"
+                              ? "border-success bg-success/20"
                               : evt.event_type === "suppressed"
                               ? "border-text-tertiary bg-surface-elevated"
+                              : evt.event_type === "accepted_risk"
+                              ? "border-info bg-info/20"
+                              : evt.event_type === "duplicate"
+                              ? "border-border-strong bg-surface"
                               : evt.event_type === "reopened"
                               ? "border-warning bg-warning/20"
                               : "border-border bg-surface-elevated"
@@ -436,6 +557,30 @@ export default function FindingDrawer({
                       >
                         <Ban className="h-4 w-4" /> Suppress
                       </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() =>
+                          setActionForm({
+                            ...actionForm,
+                            action: "accept_risk",
+                          })
+                        }
+                        className="flex-1 gap-1.5"
+                      >
+                        <Shield className="h-4 w-4" /> Accept Risk
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() =>
+                          setActionForm({
+                            ...actionForm,
+                            action: "mark_duplicate",
+                          })
+                        }
+                        className="flex-1 gap-1.5"
+                      >
+                        <AlertTriangle className="h-4 w-4" /> Duplicate
+                      </Button>
                     </>
                   )}
                   {actionForm.action && (
@@ -443,7 +588,11 @@ export default function FindingDrawer({
                       <h5 className="text-xs font-semibold text-text-primary">
                         {actionForm.action === "resolve"
                           ? "Resolve Finding"
-                          : "Suppress Finding"}
+                          : actionForm.action === "suppress"
+                          ? "Suppress Finding"
+                          : actionForm.action === "accept_risk"
+                          ? "Accept Risk"
+                          : "Mark Duplicate"}
                       </h5>
                       {actionForm.action === "resolve" && (
                         <Input
@@ -497,7 +646,9 @@ export default function FindingDrawer({
                 </>
               )}
               {(finding.status === "fixed" ||
-                finding.status === "suppressed") && (
+                finding.status === "suppressed" ||
+                finding.status === "accepted_risk" ||
+                finding.status === "duplicate") && (
                 <Button
                   variant="outline"
                   onClick={() => handleAction("reopen")}
@@ -510,7 +661,9 @@ export default function FindingDrawer({
               )}
               {finding.status !== "open" &&
                 finding.status !== "fixed" &&
-                finding.status !== "suppressed" && (
+                finding.status !== "suppressed" &&
+                finding.status !== "accepted_risk" &&
+                finding.status !== "duplicate" && (
                   <p className="text-xs text-text-tertiary flex-1 text-center py-1">
                     Finding is{" "}
                     <span className="capitalize">{finding.status}</span>

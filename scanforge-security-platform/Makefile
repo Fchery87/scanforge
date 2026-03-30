@@ -104,32 +104,32 @@ db-logs:
 # ─── Migrations ───────────────────────────────────────────────────────
 
 migrate:
-	PYTHONPATH="$(PWD)/apps/api" $(API_ALEMBIC) -c apps/api/alembic.ini upgrade head
+	cd apps/api && PYTHONPATH="$(PWD)" .venv/bin/alembic -c alembic.ini upgrade head
 
 migrate-generate:
 	@if [ -z "$(name)" ]; then \
 		echo "Usage: make migrate-generate name=your_migration_name"; \
 		exit 1; \
 	fi
-	PYTHONPATH="$(PWD)/apps/api" $(API_ALEMBIC) -c apps/api/alembic.ini revision --autogenerate -m "$(name)"
+	cd apps/api && PYTHONPATH="$(PWD)" .venv/bin/alembic -c alembic.ini revision --autogenerate -m "$(name)"
 
 migrate-rollback:
-	PYTHONPATH="$(PWD)/apps/api" $(API_ALEMBIC) -c apps/api/alembic.ini downgrade -1
+	cd apps/api && PYTHONPATH="$(PWD)" .venv/bin/alembic -c alembic.ini downgrade -1
 
 migrate-rollback-to:
 	@if [ -z "$(revision)" ]; then \
 		echo "Usage: make migrate-rollback-to revision=0001_identity_and_access"; \
 		exit 1; \
 	fi
-	PYTHONPATH="$(PWD)/apps/api" $(API_ALEMBIC) -c apps/api/alembic.ini downgrade $(revision)
+	cd apps/api && PYTHONPATH="$(PWD)" .venv/bin/alembic -c alembic.ini downgrade $(revision)
 
 migrate-status:
-	PYTHONPATH="$(PWD)/apps/api" $(API_ALEMBIC) -c apps/api/alembic.ini current
-	PYTHONPATH="$(PWD)/apps/api" $(API_ALEMBIC) -c apps/api/alembic.ini history
+	cd apps/api && PYTHONPATH="$(PWD)" .venv/bin/alembic -c alembic.ini current
+	cd apps/api && PYTHONPATH="$(PWD)" .venv/bin/alembic -c alembic.ini history
 
 migrate-reset:
 	@echo "WARNING: This will drop ALL tables. Development only!"
-	PYTHONPATH="$(PWD)/apps/api" $(API_ALEMBIC) -c apps/api/alembic.ini downgrade base
+	cd apps/api && PYTHONPATH="$(PWD)" .venv/bin/alembic -c alembic.ini downgrade base
 
 # ─── Web ──────────────────────────────────────────────────────────────
 

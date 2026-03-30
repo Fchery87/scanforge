@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_, select
@@ -23,6 +23,34 @@ class FindingService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    async def _set_status(
+        self,
+        finding_id: UUID,
+        user_id: UUID,
+        status: str,
+        event_type: str,
+        reason: str | None = None,
+        metadata_json: dict | None = None,
+    ) -> Finding | None:
+        finding = await self.db.get(Finding, finding_id)
+        if not finding:
+            return None
+
+        finding.status = status
+
+        event = FindingEvent(
+            finding_id=finding_id,
+            event_type=event_type,
+            actor_user_id=user_id,
+            reason=reason,
+            metadata_json=metadata_json,
+        )
+        self.db.add(event)
+
+        await self.db.commit()
+        await self.db.refresh(finding)
+        return finding
+
     async def list_for_project(
         self,
         project_id: UUID,
@@ -41,6 +69,7 @@ class FindingService:
             .join(Project, Finding.project_id == Project.id)
             .join(Organization, Project.organization_id == Organization.id)
             .join(OrganizationMember, OrganizationMember.organization_id == Organization.id)
+            .options(selectinload(Finding.assignee))
             .where(
                 Finding.project_id == project_id,
                 OrganizationMember.user_id == user_id,
@@ -91,6 +120,7 @@ class FindingService:
                 selectinload(Finding.instances),
                 selectinload(Finding.references),
                 selectinload(Finding.events),
+                selectinload(Finding.assignee),
             )
             .where(
                 Finding.id == finding_id,
@@ -98,6 +128,54 @@ class FindingService:
             )
         )
         return result.scalar_one_or_none()
+
+    async def update_triage(
+        self,
+        finding_id: UUID,
+        user_id: UUID,
+        assignee_user_id: UUID | None = None,
+        due_date: date | None = None,
+    ) -> Finding | None:
+        finding = await self.db.get(Finding, finding_id)
+        if not finding:
+            return None
+
+        if assignee_user_id is not None:
+            member_exists = await self.db.scalar(
+                select(func.count())
+                .select_from(Project)
+                .join(
+                    OrganizationMember,
+                    OrganizationMember.organization_id == Project.organization_id,
+                )
+                .where(
+                    Project.id == finding.project_id,
+                    OrganizationMember.user_id == assignee_user_id,
+                )
+            )
+            if not member_exists:
+                raise ValueError("Assignee must be a member of the organization")
+
+        finding.assignee_user_id = assignee_user_id
+        finding.due_date = due_date
+
+        event = FindingEvent(
+            finding_id=finding_id,
+            event_type="triage_updated",
+            actor_user_id=user_id,
+            metadata_json={
+                "assignee_user_id": str(assignee_user_id) if assignee_user_id else None,
+                "due_date": due_date.isoformat() if due_date else None,
+            },
+        )
+        self.db.add(event)
+        await self.db.commit()
+        result = await self.db.execute(
+            select(Finding)
+            .options(selectinload(Finding.assignee))
+            .where(Finding.id == finding_id)
+        )
+        return result.scalar_one()
 
     async def upsert_from_scan(
         self,
@@ -183,24 +261,14 @@ class FindingService:
         reason: str,
         rule_id: UUID | None = None,
     ) -> Finding | None:
-        finding = await self.db.get(Finding, finding_id)
-        if not finding:
-            return None
-
-        finding.status = "suppressed"
-
-        event = FindingEvent(
-            finding_id=finding_id,
-            event_type="suppressed",
-            actor_user_id=user_id,
+        return await self._set_status(
+            finding_id,
+            user_id,
+            "suppressed",
+            "suppressed",
             reason=reason,
             metadata_json={"rule_id": str(rule_id)} if rule_id else None,
         )
-        self.db.add(event)
-
-        await self.db.commit()
-        await self.db.refresh(finding)
-        return finding
 
     async def resolve(
         self,
@@ -209,26 +277,49 @@ class FindingService:
         fixed_version: str | None = None,
         reason: str | None = None,
     ) -> Finding | None:
-        finding = await self.db.get(Finding, finding_id)
-        if not finding:
-            return None
-
-        finding.status = "fixed"
-        if fixed_version:
-            finding.fixed_version = fixed_version
-
-        event = FindingEvent(
-            finding_id=finding_id,
-            event_type="fixed",
-            actor_user_id=user_id,
+        finding = await self._set_status(
+            finding_id,
+            user_id,
+            "fixed",
+            "fixed",
             reason=reason,
             metadata_json={"fixed_version": fixed_version} if fixed_version else None,
         )
-        self.db.add(event)
-
-        await self.db.commit()
-        await self.db.refresh(finding)
+        if not finding:
+            return None
+        if fixed_version:
+            finding.fixed_version = fixed_version
+            await self.db.commit()
+            await self.db.refresh(finding)
         return finding
+
+    async def accept_risk(
+        self,
+        finding_id: UUID,
+        user_id: UUID,
+        reason: str,
+    ) -> Finding | None:
+        return await self._set_status(
+            finding_id,
+            user_id,
+            "accepted_risk",
+            "accepted_risk",
+            reason=reason,
+        )
+
+    async def mark_duplicate(
+        self,
+        finding_id: UUID,
+        user_id: UUID,
+        reason: str,
+    ) -> Finding | None:
+        return await self._set_status(
+            finding_id,
+            user_id,
+            "duplicate",
+            "duplicate",
+            reason=reason,
+        )
 
     async def reopen(
         self,
@@ -236,23 +327,13 @@ class FindingService:
         user_id: UUID,
         reason: str | None = None,
     ) -> Finding | None:
-        finding = await self.db.get(Finding, finding_id)
-        if not finding:
-            return None
-
-        finding.status = "open"
-
-        event = FindingEvent(
-            finding_id=finding_id,
-            event_type="reopened",
-            actor_user_id=user_id,
+        return await self._set_status(
+            finding_id,
+            user_id,
+            "open",
+            "reopened",
             reason=reason,
         )
-        self.db.add(event)
-
-        await self.db.commit()
-        await self.db.refresh(finding)
-        return finding
 
     async def get_events(
         self,
@@ -407,6 +488,32 @@ class FindingService:
         count = 0
         for finding_id in finding_ids:
             result = await self.resolve(finding_id, user_id, fixed_version)
+            if result:
+                count += 1
+        return count
+
+    async def bulk_accept_risk(
+        self,
+        finding_ids: list[UUID],
+        user_id: UUID,
+        reason: str,
+    ) -> int:
+        count = 0
+        for finding_id in finding_ids:
+            result = await self.accept_risk(finding_id, user_id, reason)
+            if result:
+                count += 1
+        return count
+
+    async def bulk_mark_duplicate(
+        self,
+        finding_ids: list[UUID],
+        user_id: UUID,
+        reason: str,
+    ) -> int:
+        count = 0
+        for finding_id in finding_ids:
+            result = await self.mark_duplicate(finding_id, user_id, reason)
             if result:
                 count += 1
         return count

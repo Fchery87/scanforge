@@ -368,6 +368,10 @@ function FindingsContent() {
       cmp = a.category.localeCompare(b.category);
     } else if (sortBy === "status") {
       cmp = a.status.localeCompare(b.status);
+    } else if (sortBy === "due_date") {
+      cmp =
+        new Date(a.due_date || "9999-12-31").getTime() -
+        new Date(b.due_date || "9999-12-31").getTime();
     }
     return sortDir === "asc" ? cmp : -cmp;
   });
@@ -397,6 +401,21 @@ function FindingsContent() {
       .bulk(org_id as string, project_id as string, {
         finding_ids: selected,
         action: "suppress",
+        reason,
+      })
+      .then(() => {
+        setSelected([]);
+        fetchFindings();
+      })
+      .catch(console.error);
+  };
+
+  const handleBulkTriage = (action: "accept_risk" | "mark_duplicate", reason: string) => {
+    if (selected.length === 0) return;
+    api.findings
+      .bulk(org_id as string, project_id as string, {
+        finding_ids: selected,
+        action,
         reason,
       })
       .then(() => {
@@ -459,6 +478,32 @@ function FindingsContent() {
             className="gap-1.5"
           >
             Suppress
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              handleBulkTriage(
+                "accept_risk",
+                "Bulk accepted risk from findings page"
+              )
+            }
+            className="gap-1.5"
+          >
+            Accept Risk
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              handleBulkTriage(
+                "mark_duplicate",
+                "Bulk marked duplicate from findings page"
+              )
+            }
+            className="gap-1.5"
+          >
+            Duplicate
           </Button>
           <Button
             variant="ghost"

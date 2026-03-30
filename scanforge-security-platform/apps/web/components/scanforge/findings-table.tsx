@@ -21,6 +21,8 @@ interface Finding {
   severity: string;
   category: string;
   status: string;
+  assignee_name?: string | null;
+  due_date?: string | null;
   repository_id?: string;
   first_seen_at: string;
 }
@@ -90,6 +92,8 @@ export function FindingsTable({
             </span>
           </TableHead>
           <TableHead>Status</TableHead>
+          <TableHead>Owner</TableHead>
+          <TableHead>Due</TableHead>
           <TableHead>Repository</TableHead>
           <TableHead className="cursor-pointer group" onClick={() => onSort("first_seen_at")}>
             <span className="inline-flex items-center gap-1">
@@ -136,6 +140,16 @@ export function FindingsTable({
               </TableCell>
               <TableCell>
                 <StatusBadge status={f.status} showIcon={false} />
+              </TableCell>
+              <TableCell>
+                <span className="text-xs text-text-secondary">
+                  {f.assignee_name || "Unassigned"}
+                </span>
+              </TableCell>
+              <TableCell>
+                <span className="text-xs text-text-tertiary">
+                  {f.due_date ? new Date(f.due_date).toLocaleDateString() : "No date"}
+                </span>
               </TableCell>
               <TableCell>
                 <span className="font-mono text-xs text-text-tertiary">
