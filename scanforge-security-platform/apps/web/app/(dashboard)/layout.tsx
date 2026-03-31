@@ -2,13 +2,16 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { UserButton } from "@neondatabase/auth/react";
+import { authClient } from "@/lib/auth/client";
 import { api } from "@/lib/api";
 import { useIsMobile } from "@/hooks/use-media-query";
 import { Breadcrumb } from "@/components/scanforge/breadcrumb";
 import { CommandPalette } from "@/components/scanforge/command-palette";
 import { KeyboardShortcutsModal } from "@/components/scanforge/keyboard-shortcuts-modal";
 import { ScanForgeLogo } from "@/components/scanforge/logo";
+import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
@@ -38,7 +41,6 @@ import { cn } from "@/lib/utils";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -246,7 +248,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <button className={cn(navItemClass("/dashboard"), "w-full text-left")}>
+                <button
+                  className={cn(navItemClass("/dashboard"), "w-full text-left")}
+                  onClick={() => authClient.signOut()}
+                >
                   <LogOut size={16} strokeWidth={1.25} className="flex-shrink-0" />
                   {showLabels && <span>Sign Out</span>}
                 </button>
@@ -281,6 +286,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <CommandPalette />
               </div>
               <KeyboardShortcutsModal />
+              <div className="hidden md:block">
+                <UserButton size="icon" />
+              </div>
               <Link
                 href="/notifications"
                 className="relative flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors"

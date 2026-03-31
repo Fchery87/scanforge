@@ -3,7 +3,6 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.db.enums import MemberRole
 from app.db.models import Organization, OrganizationMember, User
 from app.schemas.organizations import OrganizationCreate, OrganizationUpdate
@@ -18,20 +17,10 @@ class OrganizationService:
         data: OrganizationCreate,
         user_id: UUID,
     ) -> tuple[Organization, OrganizationMember]:
-        # Ensure user exists (auto-create in development mode if needed)
         user_result = await self.db.execute(select(User).where(User.id == user_id))
         user = user_result.scalar_one_or_none()
-
-        if not user and settings.APP_ENV != "production":
-            # Auto-create dev user
-            user = User(
-                id=user_id,
-                auth_provider_user_id=str(user_id),
-                email="dev@localhost",
-                name="Dev User",
-            )
-            self.db.add(user)
-            await self.db.flush()
+        if not user:
+            raise ValueError("Authenticated user record not found")
 
         org = Organization(
             name=data.name,

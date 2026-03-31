@@ -3,6 +3,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.identity import auth_subject_to_user_id
 from app.db.models import User
 from app.schemas.auth import UserCreate
 
@@ -31,6 +32,7 @@ class UserService:
 
     async def create(self, data: UserCreate) -> User:
         user = User(
+            id=auth_subject_to_user_id(data.auth_provider_user_id),
             auth_provider_user_id=data.auth_provider_user_id,
             email=data.email,
             name=data.name,
@@ -58,6 +60,7 @@ class UserService:
             return user
 
         user = User(
+            id=auth_subject_to_user_id(auth_id),
             auth_provider_user_id=auth_id,
             email=email,
             name=name,

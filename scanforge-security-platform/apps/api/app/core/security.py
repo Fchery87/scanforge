@@ -1,60 +1,121 @@
-import asyncio
+import logging
 from functools import lru_cache
 
-import httpx
-from jose import JWTError, jwt
-from jose.exceptions import ExpiredSignatureError, JWTClaimsError
+import jwt
+from jwt import PyJWKClient, PyJWKClientError
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class JWKSClient:
     def __init__(self, jwks_url: str):
-        self.jwks_url = jwks_url
-        self._jwks: dict | None = None
+        self._pyjwk_client = PyJWKClient(jwks_url, cache_keys=True)
+        self._jwks_url = jwks_url
 
-    async def get_jwks(self) -> dict:
-        if self._jwks is None:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(self.jwks_url, timeout=10.0)
-                response.raise_for_status()
-                self._jwks = response.json()
-        return self._jwks
+    def get_signing_key(self, token: str):
+        return self._pyjwk_client.get_signing_key_from_jwt(token)
 
 
 @lru_cache
 def get_jwks_client() -> JWKSClient:
-    return JWKSClient(settings.NEON_AUTH_JWKS_URL)
+    url = settings.NEON_AUTH_JWKS_URL
+    if not url:
+        raise AuthenticationError(
+            "NEON_AUTH_JWKS_URL is not configured — cannot verify tokens"
+        )
+    logger.info("Initializing JWKS client with URL: %s", url)
+    return JWKSClient(url)
 
 
-def decode_token(
+def _decode_without_verification(token: str) -> dict:
+    return jwt.decode(
+        token,
+        options={
+            "verify_signature": False,
+            "verify_exp": False,
+            "verify_aud": False,
+            "verify_iss": False,
+        },
+        algorithms=["EdDSA", "ES256", "RS256"],
+    )
+
+
+async def decode_token(
     token: str,
     jwks_client: JWKSClient | None = None,
 ) -> dict:
     if jwks_client is None:
         jwks_client = get_jwks_client()
 
-    jwks = asyncio.get_event_loop().run_until_complete(jwks_client.get_jwks())
+    signing_key = jwks_client.get_signing_key(token)
 
-    return jwt.decode(
-        token,
-        jwks,
-        algorithms=["RS256"],
-        audience=settings.NEON_AUTH_AUDIENCE,
-        issuer=settings.NEON_AUTH_ISSUER,
-    )
+    try:
+        return jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["EdDSA", "ES256", "RS256"],
+            audience=settings.NEON_AUTH_AUDIENCE,
+            issuer=settings.NEON_AUTH_ISSUER,
+        )
+    except jwt.InvalidAudienceError:
+        if not settings.NEON_AUTH_AUDIENCE:
+            raise
+
+        unverified_claims = _decode_without_verification(token)
+        if "aud" in unverified_claims:
+            raise
+
+        return jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["EdDSA", "ES256", "RS256"],
+            issuer=settings.NEON_AUTH_ISSUER,
+            options={"verify_aud": False},
+        )
 
 
 class AuthenticationError(Exception):
     pass
 
 
-async def verify_token(token: str) -> dict:
+def _log_claim_verification_diagnostics(token: str, claim_kind: str) -> None:
+    if settings.APP_ENV == "production":
+        return
+
     try:
-        return decode_token(token)
-    except ExpiredSignatureError as e:
+        claims = _decode_without_verification(token)
+    except jwt.InvalidTokenError:
+        claims = {}
+
+    logger.error(
+        "JWT claim verification failed: claim=%s token_claims=%s configured_issuer=%s configured_audience=%s configured_jwks_url=%s",
+        claim_kind,
+        {
+            "iss": claims.get("iss"),
+            "aud": claims.get("aud"),
+            "sub": claims.get("sub"),
+        },
+        settings.NEON_AUTH_ISSUER,
+        settings.NEON_AUTH_AUDIENCE,
+        settings.NEON_AUTH_JWKS_URL,
+    )
+
+
+async def verify_token(
+    token: str,
+    jwks_client: JWKSClient | None = None,
+) -> dict:
+    try:
+        return await decode_token(token, jwks_client)
+    except jwt.ExpiredSignatureError as e:
         raise AuthenticationError("Token has expired") from e
-    except JWTClaimsError as e:
+    except jwt.InvalidAudienceError as e:
+        _log_claim_verification_diagnostics(token, "audience")
         raise AuthenticationError(f"Invalid token claims: {e!s}") from e
-    except JWTError as e:
+    except jwt.InvalidIssuerError as e:
+        _log_claim_verification_diagnostics(token, "issuer")
+        raise AuthenticationError(f"Invalid token claims: {e!s}") from e
+    except (jwt.InvalidTokenError, PyJWKClientError) as e:
         raise AuthenticationError(f"Invalid token: {e!s}") from e

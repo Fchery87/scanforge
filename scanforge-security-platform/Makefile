@@ -137,10 +137,10 @@ web-install:
 	cd apps/web && npm install
 
 web-dev:
-	cd apps/web && npm run dev
+	set -a && . ./.env && set +a && cd apps/web && npm run dev
 
 web-build:
-	cd apps/web && npm run build
+	set -a && . ./.env && set +a && cd apps/web && npm run build
 
 web-lint:
 	cd apps/web && npm run lint

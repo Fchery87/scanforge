@@ -1,9 +1,9 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
-import { Settings, Users, Shield, Save, Trash2, Plus, Github } from "lucide-react";
+import { AlertCircle, Settings, Users, Shield, Save, Trash2, Plus, Github } from "lucide-react";
 import { PageHeader } from "@/components/scanforge/page-header";
 import { SkeletonTable } from "@/components/scanforge/loading-skeleton";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,8 @@ function OrgSettingsContent() {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ name: "", slug: "" });
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [showInvite, setShowInvite] = useState(false);
   const [inviteForm, setInviteForm] = useState({ email: "", role: "developer" });
   const [inviteError, setInviteError] = useState("");
@@ -132,10 +134,21 @@ function OrgSettingsContent() {
       }).catch(() => setLoading(false));
   }, [org_id]);
 
-  function handleSave(e: React.FormEvent) {
+  async function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+    setSaving(true);
+    setSaveError("");
+    try {
+      const updated = await api.organizations.update(org_id as string, form);
+      setOrg(updated);
+      setForm({ name: updated.name, slug: updated.slug });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to save organization");
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (loading) return <SkeletonTable rows={5} />;
@@ -162,7 +175,8 @@ function OrgSettingsContent() {
               <Label htmlFor="org-slug">Slug</Label>
               <Input id="org-slug" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} />
             </div>
-            <Button type="submit">
+            {saveError && <p className="text-sm text-danger">{saveError}</p>}
+            <Button type="submit" disabled={saving}>
               {saved ? <><Save className="h-4 w-4 mr-1" /> Saved</> : "Save Changes"}
             </Button>
           </form>
@@ -301,21 +315,12 @@ function OrgSettingsContent() {
             <Shield className="h-5 w-5 text-text-secondary" />
             <h2 className="text-lg font-semibold font-display text-text-primary">Security</h2>
           </div>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between rounded-lg border border-border bg-surface-elevated p-4">
-              <div>
-                <span className="text-sm font-medium text-text-primary">Authentication</span>
-                <span className="block text-sm text-text-tertiary">Neon Auth</span>
-              </div>
-              <Badge variant="outline" className="text-success border-success/30 bg-success/10">Active</Badge>
-            </div>
-            <div className="flex items-center justify-between rounded-lg border border-border bg-surface-elevated p-4">
-              <div>
-                <span className="text-sm font-medium text-text-primary">Webhook Secret</span>
-                <span className="block text-sm text-text-tertiary">Configured</span>
-              </div>
-              <Badge variant="outline" className="text-success border-success/30 bg-success/10">Active</Badge>
-            </div>
+          <div className="flex items-start gap-3 rounded-lg border border-border bg-surface-elevated p-4">
+            <AlertCircle className="h-4 w-4 text-text-secondary mt-0.5" />
+            <p className="text-sm text-text-secondary">
+              This page only shows security configuration when the backend exposes it. Static provider and secret
+              badges were removed so the UI does not imply runtime state it cannot verify.
+            </p>
           </div>
         </div>
 

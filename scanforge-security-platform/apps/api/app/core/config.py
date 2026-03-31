@@ -30,8 +30,6 @@ class Settings(BaseSettings):
     NEON_AUTH_ISSUER: str = ""
     NEON_AUTH_AUDIENCE: str = ""
     NEON_AUTH_JWKS_URL: str = ""
-    NEON_AUTH_CLIENT_ID: str = ""
-    NEON_AUTH_CLIENT_SECRET: str = ""
 
     UPSTASH_REDIS_REST_URL: str = ""
     UPSTASH_REDIS_REST_TOKEN: str = ""

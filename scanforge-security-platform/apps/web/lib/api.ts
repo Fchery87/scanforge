@@ -1,16 +1,45 @@
+"use client";
+
+import { authClient } from "@/lib/auth/client";
+import { getApiAccessToken } from "@/lib/auth/api-token";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+async function getAuthorizationHeader(): Promise<Record<string, string>> {
+  const token = await getApiAccessToken(authClient);
+
+  if (!token) {
+    throw new ApiError("Not authenticated", 401);
+  }
+
+  return {
+    Authorization: `Bearer ${token}`,
+  };
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const authHeader = await getAuthorizationHeader();
   const res = await fetch(`${API_BASE}/api/v1${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
+      ...authHeader,
       ...options.headers,
     },
   });
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: "Request failed" }));
-    throw new Error(error.detail ?? `HTTP ${res.status}`);
+    throw new ApiError(error.detail ?? `HTTP ${res.status}`, res.status);
   }
   return res.json();
 }
@@ -24,6 +53,8 @@ export const api = {
     create: (data: { name: string; slug: string }) =>
       request<any>("/organizations", { method: "POST", body: JSON.stringify(data) }),
     get: (id: string) => request<any>(`/organizations/${id}`),
+    update: (id: string, data: { name?: string; slug?: string }) =>
+      request<any>(`/organizations/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     stats: (orgId: string) =>
       request<any>(`/organizations/${orgId}/stats`),
     delete: (orgId: string) =>
@@ -256,6 +287,10 @@ export const api = {
       request<any>(`/organizations/${orgId}/members/${userId}`, {
         method: "DELETE",
       }),
+  },
+
+  users: {
+    me: () => request<any>("/users/me"),
   },
 };
 

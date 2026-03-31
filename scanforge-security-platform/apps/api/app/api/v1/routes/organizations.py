@@ -33,7 +33,13 @@ async def create_organization(
             detail="Organization with this slug already exists",
         )
 
-    org, _ = await service.create(data, current_user.user_id)
+    try:
+        org, _ = await service.create(data, current_user.user_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        ) from exc
     return org
 
 

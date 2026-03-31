@@ -18,6 +18,7 @@ from app.api.v1.routes import (
     scans,
     scorecard,
     suppression_rules,
+    users,
     webhooks,
 )
 
@@ -32,6 +33,7 @@ api_router.include_router(memberships.router, prefix="/organizations", tags=["me
 api_router.include_router(org_stats.router, tags=["organizations"])
 api_router.include_router(audit_logs.router, tags=["audit"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
+api_router.include_router(users.router, prefix="/users", tags=["users"])
 api_router.include_router(projects.router, prefix="/organizations/{org_id}/projects", tags=["projects"])
 api_router.include_router(
     repositories.router,
