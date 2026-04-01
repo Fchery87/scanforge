@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Activity, Plus, Trash2, XCircle as XCircleIcon } from "lucide-react";
 
 import { api } from "@/lib/api";
+import { canRerunScan, canDeleteScan, canCancelScan } from "@/lib/scans/lifecycle";
 import { formatRelativeTime, formatScanDuration } from "@/lib/project-surface";
 import { EmptyState } from "@/components/scanforge/empty-state";
 import { PageHeader } from "@/components/scanforge/page-header";
@@ -44,6 +45,7 @@ export default function ScansPage() {
   const [error, setError] = useState("");
   const [listError, setListError] = useState("");
   const [reposError, setReposError] = useState("");
+  const [filterRepoId, setFilterRepoId] = useState<string>("all");
 
   useEffect(() => {
     if (showModal && repos.length === 0) {
@@ -104,16 +106,23 @@ export default function ScansPage() {
   }
 
   async function handleDelete(scanId: string) {
-    if (!window.confirm("Delete this stale scan? Completed scans are retained and cannot be deleted.")) {
+    if (!window.confirm("Delete this scan?")) {
       return;
     }
-
     try {
       await api.scans.delete(org_id as string, project_id as string, scanId);
       setScans((current: any[]) => current.filter((scan: any) => scan.id !== scanId));
       setTotal((current) => Math.max(0, current - 1));
     } catch {}
   }
+
+  const filteredScans = filterRepoId === "all"
+    ? scans
+    : scans.filter((scan) => scan.repository_id === filterRepoId);
+
+  const uniqueRepos = Array.from(
+    new Map(scans.map((s) => [s.repository_id, s.repository_name || s.repository_id])).entries()
+  ).map(([id, name]) => ({ id, name }));
 
   return (
     <div>
@@ -137,59 +146,83 @@ export default function ScansPage() {
         <EmptyState icon={Activity} title="No scans yet" description="Connect a repository and trigger your first scan." />
       ) : (
         <>
-          <div className="card-serif overflow-hidden">
-            {scans.map((scan) => (
-              <div
-                key={scan.id}
-                onClick={() => router.push(`/dashboard/${org_id}/projects/${project_id}/scans/${scan.id}`)}
-                className="flex cursor-pointer items-center justify-between gap-4 border-b border-border/60 px-4 py-4 transition-colors hover:bg-surface-hover/45 last:border-0"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <StatusBadge status={scan.status} />
-                    <code className="font-mono text-sm text-text-primary">{scan.id.slice(0, 8)}</code>
-                    <span className="text-xs text-text-tertiary">{scan.trigger_type}</span>
-                  </div>
-                  <p className="mt-2 text-sm text-text-secondary">
-                    {scan.branch_name ?? "default branch"} · created {formatRelativeTime(scan.created_at)}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  {(scan.scanner_runs ?? []).slice(0, 3).map((run: any) => (
-                    <Badge key={run.id} variant="outline">{run.scanner_name}</Badge>
+          {uniqueRepos.length > 1 && (
+            <div className="mb-4 flex items-center gap-3">
+              <label className="text-sm text-text-secondary">Repository</label>
+              <Select value={filterRepoId} onValueChange={setFilterRepoId}>
+                <SelectTrigger className="w-[280px]">
+                  <SelectValue placeholder="All repositories" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All repositories</SelectItem>
+                  {uniqueRepos.map((repo) => (
+                    <SelectItem key={repo.id} value={repo.id}>{repo.name}</SelectItem>
                   ))}
-                  <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
-                    {formatScanDuration(scan.summary_json ?? {})}
-                  </span>
-                  {(scan.status === "queued" || scan.status === "running") ? (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-9 w-9 text-text-tertiary hover:text-danger"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCancel(scan.id);
-                      }}
-                    >
-                      <XCircleIcon className="h-4 w-4" />
-                    </Button>
-                  ) : null}
-                  {["queued", "failed", "canceled"].includes(scan.status) ? (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-9 w-9 text-text-tertiary hover:text-danger"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(scan.id);
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  ) : null}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          <div className="card-serif overflow-hidden">
+            {filteredScans.map((scan) => {
+              const isFailedOrStale = scan.status === "failed" || scan.status === "canceled";
+              return (
+                <div
+                  key={scan.id}
+                  onClick={() => router.push(`/dashboard/${org_id}/projects/${project_id}/scans/${scan.id}`)}
+                  className={`flex cursor-pointer items-center justify-between gap-4 border-b border-border/60 px-4 py-4 transition-colors last:border-0 ${
+                    isFailedOrStale
+                      ? "hover:bg-danger/[0.03] border-l-2 border-l-danger/30 bg-danger/[0.02]"
+                      : "hover:bg-surface-hover/45"
+                  }`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <StatusBadge status={scan.status} />
+                      <code className="font-mono text-sm text-text-primary">{scan.id.slice(0, 8)}</code>
+                      <span className="text-xs text-text-tertiary">{scan.trigger_type}</span>
+                    </div>
+                    <p className="mt-2 text-sm text-text-secondary">
+                      {scan.branch_name ?? "default branch"} · created {formatRelativeTime(scan.created_at)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {(scan.scanner_runs ?? []).slice(0, 3).map((run: any) => (
+                      <Badge key={run.id} variant="outline">{run.scanner_name}</Badge>
+                    ))}
+                    <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+                      {formatScanDuration(scan.summary_json ?? {})}
+                    </span>
+                    {canCancelScan(scan.status) ? (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 text-text-tertiary hover:text-danger"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCancel(scan.id);
+                        }}
+                      >
+                        <XCircleIcon className="h-4 w-4" />
+                      </Button>
+                    ) : null}
+                    {canDeleteScan(scan.status) ? (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 text-text-tertiary hover:text-danger"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(scan.id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div className="flex items-center justify-between py-4">
