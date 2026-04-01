@@ -21,12 +21,14 @@ def compute_secret_fingerprint(
     return hashlib.sha256("|".join(components).encode()).hexdigest()
 
 
-def normalize_gitleaks_output(raw_output: dict, repository_id: str) -> list[dict]:
+def normalize_gitleaks_output(raw_output: dict | list, repository_id: str) -> list[dict]:
     findings = []
 
-    results = raw_output.get("results", [])
+    results = []
     if isinstance(raw_output, list):
         results = raw_output
+    elif isinstance(raw_output, dict):
+        results = raw_output.get("results", [])
 
     for result in results:
         secret_type = result.get("RuleID", "unknown")

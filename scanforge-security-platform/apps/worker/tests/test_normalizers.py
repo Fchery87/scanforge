@@ -1,4 +1,5 @@
 from app.normalizers.checkov import normalize_checkov_output
+from app.normalizers.gitleaks import normalize_gitleaks_output
 from app.normalizers.grype import normalize_grype_output
 from app.normalizers.osv import _get_severity, normalize_osv_output
 from app.normalizers.semgrep import normalize_semgrep_output
@@ -168,3 +169,22 @@ def test_grype_normalizes_matches():
     assert findings[0]["instance"]["package_name"] == "requests"
     assert findings[0]["instance"]["path"] == "/workspace/requirements.txt"
     assert findings[0]["fixed_version"] == "2.31.0"
+
+
+def test_gitleaks_normalizes_top_level_list_output():
+    raw_output = [
+        {
+            "RuleID": "github_token",
+            "File": "src/config.py",
+            "StartLine": 12,
+            "EndLine": 12,
+            "Match": "ghp_exampletoken",
+        }
+    ]
+
+    findings = normalize_gitleaks_output(raw_output, "repo-1")
+
+    assert len(findings) == 1
+    assert findings[0]["category"] == "secret"
+    assert findings[0]["severity"] == "critical"
+    assert findings[0]["instance"]["path"] == "src/config.py"
