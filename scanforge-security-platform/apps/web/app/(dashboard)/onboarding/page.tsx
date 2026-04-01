@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 
 import { api } from "@/lib/api";
+import { deriveOnboardingNextActions } from "@/lib/page-surface/contracts";
 import { getSlugAdjustmentNotice, getSlugPreviewMessage } from "@/lib/organizations/slug-feedback";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -176,6 +177,7 @@ function OnboardingContent() {
   const completedCount = checklist?.steps.filter((step) => step.completed).length ?? 0;
   const totalCount = checklist?.steps.length ?? 6;
   const percentage = checklist?.completion_percentage ?? 0;
+  const nextActions = deriveOnboardingNextActions(checklist?.steps ?? []);
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">

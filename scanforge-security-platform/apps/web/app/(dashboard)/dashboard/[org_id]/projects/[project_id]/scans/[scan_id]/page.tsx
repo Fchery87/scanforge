@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { AlertTriangle, ArrowLeft, Download, ExternalLink, RefreshCw, Trash2 } from "lucide-react";
 
 import { api } from "@/lib/api";
+import { deriveScanLifecycle } from "@/lib/page-surface/contracts";
 import { formatRelativeTime, formatScanDuration } from "@/lib/project-surface";
 import { PageHeader } from "@/components/scanforge/page-header";
 import { StatusBadge } from "@/components/scanforge/status-badge";
@@ -77,6 +78,7 @@ export default function ScanDetailPage() {
   }
 
   const summary = scan.summary_json || {};
+  const lifecycle = deriveScanLifecycle(scan);
 
   return (
     <div>
@@ -91,13 +93,13 @@ export default function ScanDetailPage() {
         description={`Run status, scanner breakdown, and artifacts for the scan created ${formatRelativeTime(scan.created_at)}.`}
         actions={
           <div className="flex items-center gap-2">
-            {scan.status === "failed" ? (
+            {lifecycle.canRerun ? (
               <Button onClick={handleRerun}>
                 <RefreshCw className="h-4 w-4" />
                 Re-run
               </Button>
             ) : null}
-            {["queued", "failed", "canceled"].includes(scan.status) ? (
+            {lifecycle.canDelete ? (
               <Button variant="outline" onClick={handleDelete}>
                 <Trash2 className="h-4 w-4" />
                 Delete

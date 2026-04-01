@@ -5,6 +5,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { AlertCircle, Github, Plus, Save, Settings, Shield, Trash2, Users } from "lucide-react";
 
 import { api } from "@/lib/api";
+import { normalizeGithubIntegrationState, type GithubIntegrationState } from "@/lib/page-surface/contracts";
 import { PageHeader } from "@/components/scanforge/page-header";
 import { SkeletonTable } from "@/components/scanforge/loading-skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -40,7 +41,7 @@ function OrgSettingsContent() {
   const [inviteForm, setInviteForm] = useState({ email: "", role: "developer" });
   const [inviteError, setInviteError] = useState("");
   const [members, setMembers] = useState<any[]>([]);
-  const [githubIntegration, setGithubIntegration] = useState<any>(null);
+  const [githubIntegration, setGithubIntegration] = useState<GithubIntegrationState>({ status: "disconnected" });
   const [githubLoading, setGithubLoading] = useState(true);
   const [githubMessage, setGithubMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -62,7 +63,7 @@ function OrgSettingsContent() {
     if (!org_id) return;
     api.github.getIntegration(org_id as string)
       .then((data) => {
-        setGithubIntegration(data);
+        setGithubIntegration(normalizeGithubIntegrationState(data));
         setGithubLoading(false);
       })
       .catch(() => setGithubLoading(false));
@@ -137,7 +138,7 @@ function OrgSettingsContent() {
     if (!confirm("Disconnect GitHub? This will not remove connected repositories but new repos cannot be added.")) return;
     try {
       await api.github.disconnect(org_id as string);
-      setGithubIntegration(null);
+      setGithubIntegration({ status: "disconnected" });
     } catch {}
   }
 
@@ -197,12 +198,12 @@ function OrgSettingsContent() {
           ) : null}
           {githubLoading ? (
             <p className="text-sm text-text-tertiary">Loading…</p>
-          ) : githubIntegration ? (
+          ) : githubIntegration.status === "connected" ? (
             <div className="flex items-center justify-between rounded-[10px] border border-border bg-background p-4">
               <div>
                 <p className="text-sm font-medium text-text-primary">GitHub App</p>
                 <p className="mt-1 text-sm text-text-tertiary">
-                  Connected as <strong className="text-text-secondary">{githubIntegration.account_login ?? "unknown"}</strong>
+                  Connected as <strong className="text-text-secondary">{githubIntegration.accountLogin ?? "unknown"}</strong>
                 </p>
               </div>
               <div className="flex items-center gap-2">
