@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { ArrowUpDown, ArrowUp, ArrowDown, Eye, Check, Archive } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getRepoDisplayName } from "@/lib/findings/filter-state";
+import { getSLABadge } from "@/lib/findings/triage-policy";
 import { SeverityBadge } from "@/components/scanforge/severity-badge";
 import { StatusBadge } from "@/components/scanforge/status-badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -35,6 +37,7 @@ interface Finding {
 
 interface FindingsTableProps {
   findings: Finding[];
+  repos?: Array<{ id: string; full_name?: string; repo_name?: string }>;
   selected: string[];
   onToggleSelect: (id: string) => void;
   onToggleAll: () => void;
@@ -63,6 +66,7 @@ function SortIcon({ col, sortBy, sortDir }: { col: string; sortBy: string; sortD
 
 export function FindingsTable({
   findings,
+  repos = [],
   selected,
   onToggleSelect,
   onToggleAll,
@@ -197,10 +201,30 @@ export function FindingsTable({
                 <span className="text-xs text-text-tertiary">
                   {f.due_date ? new Date(f.due_date).toLocaleDateString() : "No date"}
                 </span>
+                {f.due_date && (() => {
+                  const badge = getSLABadge(f.due_date);
+                  if (badge.variant === "none") return null;
+                  return (
+                    <span
+                      className={cn(
+                        "ml-1 text-[10px] font-medium px-1 py-0.5 rounded",
+                        badge.variant === "danger" && "bg-danger/10 text-danger",
+                        badge.variant === "warning" && "bg-warning/10 text-warning",
+                        badge.variant === "success" && "bg-success/10 text-success"
+                      )}
+                    >
+                      {badge.label}
+                    </span>
+                  );
+                })()}
               </TableCell>
               <TableCell>
                 <span className="font-mono text-xs text-text-tertiary">
-                  {f.repository_id?.slice(0, 8)}
+                  {getRepoDisplayName({
+                    id: f.repository_id ?? "",
+                    full_name: repos.find((r) => r.id === f.repository_id)?.full_name,
+                    repo_name: repos.find((r) => r.id === f.repository_id)?.repo_name,
+                  })}
                 </span>
               </TableCell>
               <TableCell>

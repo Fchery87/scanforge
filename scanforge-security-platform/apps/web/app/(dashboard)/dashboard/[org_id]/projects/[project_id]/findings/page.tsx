@@ -11,8 +11,16 @@ import { PageHeader } from "@/components/scanforge/page-header";
 import { EmptyState } from "@/components/scanforge/empty-state";
 import { SkeletonTable } from "@/components/scanforge/loading-skeleton";
 import { FindingsTable } from "@/components/scanforge/findings-table";
+import { FindingsSavedViewBar } from "@/components/scanforge/findings-saved-view-bar";
 import { FilterBar } from "@/components/scanforge/filter-bar";
 import FindingDrawer from "./FindingDrawer";
+import {
+  parseFindingsFilters,
+  serializeFindingsFilters,
+  hasActiveFilters,
+  formatExportScope,
+} from "@/lib/findings/filter-state";
+import { canBulkAction, getSLABadge } from "@/lib/findings/triage-policy";
 
 const SEVERITIES = ["critical", "high", "medium", "low", "info"];
 const CATEGORIES = [
@@ -132,7 +140,7 @@ function Pagination({ page, total, limit, onPageChange }: PaginationProps) {
 
 function FindingsContent() {
   const { org_id, project_id } = useParams();
-  const searchParams = useSearchParams();
+  const searchParamsObj = useSearchParams();
   const router = useRouter();
 
   const [findings, setFindings] = useState<any[]>([]);
@@ -140,39 +148,31 @@ function FindingsContent() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string[]>([]);
   const [selectedFinding, setSelectedFinding] = useState<string | null>(null);
-  const [severity, setSeverity] = useState(searchParams.get("severity") ?? "");
-  const [category, setCategory] = useState(searchParams.get("category") ?? "");
-  const [status, setStatus] = useState("");
-  const [search, setSearch] = useState("");
+  const initialFilters = parseFindingsFilters(searchParamsObj);
+  const [severity, setSeverity] = useState(initialFilters.severity ?? "");
+  const [category, setCategory] = useState(initialFilters.category ?? "");
+  const [status, setStatus] = useState(initialFilters.status ?? "");
+  const [search, setSearch] = useState(initialFilters.search ?? "");
   const [page, setPage] = useState(0);
-  const [repositoryId, setRepositoryId] = useState(
-    searchParams.get("repositoryId") ?? ""
-  );
-  const [scanner, setScanner] = useState(searchParams.get("scanner") ?? "");
+  const [repositoryId, setRepositoryId] = useState(initialFilters.repositoryId ?? "");
+  const [scanner, setScanner] = useState(initialFilters.scanner ?? "");
   const [repos, setRepos] = useState<any[]>([]);
   const [sortBy, setSortBy] = useState<string>("first_seen_at");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [focusedIndex, setFocusedIndex] = useState(-1);
+  const [savedViews, setSavedViews] = useState<Array<{ name: string; filters: Record<string, string> }>>([]);
   const limit = 30;
 
   // ── URL sync ────────────────────────────────────────────────────────────────
   const updateUrl = useCallback(
     (overrides?: Record<string, string>) => {
-      const params = new URLSearchParams();
-      if (severity) params.set("severity", severity);
-      if (category) params.set("category", category);
-      if (repositoryId) params.set("repositoryId", repositoryId);
-      if (scanner) params.set("scanner", scanner);
-      if (overrides) {
-        Object.entries(overrides).forEach(([k, v]) => {
-          if (v) params.set(k, v);
-          else params.delete(k);
-        });
-      }
+      const filters = { severity, category, status, repositoryId, scanner, search };
+      const serialized = serializeFindingsFilters({ ...filters, ...overrides });
+      const params = new URLSearchParams(serialized);
       const qs = params.toString();
       router.push(`?${qs}`, { scroll: false });
     },
-    [severity, category, repositoryId, scanner, router]
+    [severity, category, status, repositoryId, scanner, search, router]
   );
 
   // ── Data fetching ───────────────────────────────────────────────────────────
@@ -181,13 +181,12 @@ function FindingsContent() {
     const params: Record<string, string> = {
       skip: String(page * limit),
       limit: String(limit),
+      ...serializeFindingsFilters({ severity, category, status, repositoryId, scanner, search }),
     };
-    if (severity) params.severity = severity;
-    if (category) params.category = category;
-    if (status) params.status = status;
-    if (search) params.search = search;
-    if (repositoryId) params.repository_id = repositoryId;
-    if (scanner) params.scanner = scanner;
+    if (params.repositoryId) {
+      params.repository_id = params.repositoryId;
+      delete params.repositoryId;
+    }
     try {
       const res = await api.findings.list(
         org_id as string,
@@ -232,16 +231,15 @@ function FindingsContent() {
   }, [fetchRepos]);
 
   useEffect(() => {
-    const s = searchParams.get("severity") ?? "";
-    const c = searchParams.get("category") ?? "";
-    const r = searchParams.get("repositoryId") ?? "";
-    const sc = searchParams.get("scanner") ?? "";
-    if (s !== severity) setSeverity(s);
-    if (c !== category) setCategory(c);
-    if (r !== repositoryId) setRepositoryId(r);
-    if (sc !== scanner) setScanner(sc);
+    const filters = parseFindingsFilters(searchParamsObj);
+    if (filters.severity !== severity) setSeverity(filters.severity ?? "");
+    if (filters.category !== category) setCategory(filters.category ?? "");
+    if (filters.repositoryId !== repositoryId) setRepositoryId(filters.repositoryId ?? "");
+    if (filters.scanner !== scanner) setScanner(filters.scanner ?? "");
+    if (filters.status !== status) setStatus(filters.status ?? "");
+    if (filters.search !== search) setSearch(filters.search ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, [searchParamsObj]);
 
   // ── Selection ───────────────────────────────────────────────────────────────
   const toggleSelect = (id: string) => {
@@ -333,7 +331,14 @@ function FindingsContent() {
 
   // ── Bulk actions ────────────────────────────────────────────────────────────
   const handleBulkResolve = async () => {
-    if (selected.length === 0) return;
+    const selectedStatuses = findings
+      .filter((f) => selected.includes(f.id))
+      .map((f) => f.status);
+    const check = canBulkAction("resolve", selectedStatuses);
+    if (!check.allowed) {
+      alert(check.reason);
+      return;
+    }
     try {
       await api.findings.bulk(org_id as string, project_id as string, {
         finding_ids: selected,
@@ -378,13 +383,15 @@ function FindingsContent() {
   };
 
   const handleExportFiltered = async (format: "csv" | "json") => {
-    const params = Object.fromEntries(searchParams.entries());
+    const filters = { severity, category, status, repositoryId, scanner, search };
+    const scope = formatExportScope(filters, total);
+    if (!confirm(`Export: ${scope} as ${format.toUpperCase()}?`)) return;
     try {
       await api.exports.create(org_id as string, project_id as string, {
         export_type: "findings",
         format,
         title: `Filtered findings - ${new Date().toISOString().slice(0, 10)}`,
-        filters: params,
+        filters: serializeFindingsFilters(filters),
       });
       alert(`Export started. Check the Exports page for download.`);
     } catch (err) {
@@ -392,8 +399,8 @@ function FindingsContent() {
     }
   };
 
-  const hasActiveFilters =
-    severity || category || status || search || repositoryId || scanner;
+  const filters = { severity, category, status, repositoryId, scanner, search };
+  const isActive = hasActiveFilters(filters);
 
   const clearAllFilters = () => {
     setSeverity("");
@@ -402,6 +409,20 @@ function FindingsContent() {
     setSearch("");
     setRepositoryId("");
     setScanner("");
+    setPage(0);
+  };
+
+  const handleSaveView = (payload: { name: string; filters: Record<string, string> }) => {
+    setSavedViews((prev) => [...prev, payload]);
+  };
+
+  const handleApplyView = (viewFilters: Record<string, string>) => {
+    setSeverity(viewFilters.severity ?? "");
+    setCategory(viewFilters.category ?? "");
+    setStatus(viewFilters.status ?? "");
+    setRepositoryId(viewFilters.repositoryId ?? "");
+    setScanner(viewFilters.scanner ?? "");
+    setSearch(viewFilters.search ?? "");
     setPage(0);
   };
 
@@ -532,7 +553,15 @@ function FindingsContent() {
             })),
           },
         ]}
-        onClearAll={hasActiveFilters ? clearAllFilters : undefined}
+        onClearAll={isActive ? clearAllFilters : undefined}
+      />
+
+      {/* Saved view bar */}
+      <FindingsSavedViewBar
+        filters={filters}
+        onSaveView={handleSaveView}
+        savedViews={savedViews}
+        onApplyView={handleApplyView}
       />
 
       {/* Table area */}
@@ -549,6 +578,7 @@ function FindingsContent() {
           <div className="card-serif overflow-hidden">
             <FindingsTable
               findings={sortedFindings}
+              repos={repos}
               selected={selected}
               onToggleSelect={toggleSelect}
               onToggleAll={toggleAll}
