@@ -2,10 +2,18 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { AlertCircle, Github, Plus, Save, Settings, Shield, Trash2, Users } from "lucide-react";
+import { AlertCircle, Plus, Save, Settings, Shield, Trash2, Users } from "lucide-react";
 
 import { api } from "@/lib/api";
 import { normalizeGithubIntegrationState, type GithubIntegrationState } from "@/lib/page-surface/contracts";
+import {
+  canRemoveMember,
+  canChangeRole,
+  getRoleDescription,
+  getDangerZoneConfirmation,
+} from "@/lib/governance/member-policy";
+import { MemberInvitationsPanel } from "@/components/scanforge/member-invitations-panel";
+import { IntegrationStatusCard } from "@/components/scanforge/integration-status-card";
 import { PageHeader } from "@/components/scanforge/page-header";
 import { SkeletonTable } from "@/components/scanforge/loading-skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +49,7 @@ function OrgSettingsContent() {
   const [inviteForm, setInviteForm] = useState({ email: "", role: "developer" });
   const [inviteError, setInviteError] = useState("");
   const [members, setMembers] = useState<any[]>([]);
+  const [invitations, setInvitations] = useState<any[]>([]);
   const [githubIntegration, setGithubIntegration] = useState<GithubIntegrationState>({ status: "disconnected" });
   const [githubLoading, setGithubLoading] = useState(true);
   const [githubMessage, setGithubMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -112,17 +121,38 @@ function OrgSettingsContent() {
   }
 
   async function handleRoleChange(userId: string, newRole: string) {
+    const member = members.find((m) => m.user_id === userId);
+    if (!member) return;
+    const actorRole = members.find((m: any) => m.is_self)?.role ?? "viewer";
+    const policy = canChangeRole({
+      actorRole,
+      targetRole: member.role,
+      newRole,
+      ownerCount: members.filter((m: any) => m.role === "owner").length,
+    });
+    if (!policy.allowed) {
+      alert(policy.reason);
+      return;
+    }
     try {
       await api.members.updateRole(org_id as string, userId, newRole);
-      setMembers((prev) => prev.map((member) => member.user_id === userId ? { ...member, role: newRole } : member));
+      setMembers((prev) => prev.map((m) => m.user_id === userId ? { ...m, role: newRole } : m));
     } catch {}
   }
 
   async function handleRemoveMember(userId: string) {
+    const member = members.find((m) => m.user_id === userId);
+    if (!member) return;
+    const actorRole = members.find((m: any) => m.is_self)?.role ?? "viewer";
+    const ownerCount = members.filter((m: any) => m.role === "owner").length;
+    if (!canRemoveMember({ actorRole, targetRole: member.role, ownerCount })) {
+      alert("You do not have permission to remove this member.");
+      return;
+    }
     if (!confirm("Remove this member? They will lose access to all projects.")) return;
     try {
       await api.members.remove(org_id as string, userId);
-      setMembers((prev) => prev.filter((member) => member.user_id !== userId));
+      setMembers((prev) => prev.filter((m) => m.user_id !== userId));
     } catch {}
   }
 
@@ -144,7 +174,7 @@ function OrgSettingsContent() {
 
   async function handleDeleteOrg() {
     if (!org) return;
-    const confirmValue = prompt(`Type "${org.slug}" to confirm permanent deletion:`);
+    const confirmValue = prompt(getDangerZoneConfirmation(org.slug));
     if (confirmValue !== org.slug) return;
     try {
       await api.organizations.delete(org_id as string);
@@ -187,54 +217,30 @@ function OrgSettingsContent() {
         </section>
 
         <section className="card-serif p-6" id="integrations">
-          <div className="mb-4 flex items-center gap-2">
-            <Github className="h-5 w-5 text-text-secondary" />
-            <h2 className="text-lg font-semibold font-display text-text-primary">Integrations</h2>
-          </div>
-          {githubMessage ? (
-            <p className={cn("mb-3 text-sm", githubMessage.type === "success" ? "text-success" : "text-danger")}>
-              {githubMessage.text}
-            </p>
-          ) : null}
-          {githubLoading ? (
-            <p className="text-sm text-text-tertiary">Loading…</p>
-          ) : githubIntegration.status === "connected" ? (
-            <div className="flex items-center justify-between rounded-[10px] border border-border bg-background p-4">
-              <div>
-                <p className="text-sm font-medium text-text-primary">GitHub App</p>
-                <p className="mt-1 text-sm text-text-tertiary">
-                  Connected as <strong className="text-text-secondary">{githubIntegration.accountLogin ?? "unknown"}</strong>
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="success">Active</Badge>
-                <Button variant="ghost" size="sm" className="text-danger hover:text-danger" onClick={handleDisconnectGitHub}>
-                  Disconnect
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center justify-between rounded-[10px] border border-border bg-background p-4">
-              <div>
-                <p className="text-sm font-medium text-text-primary">GitHub App</p>
-                <p className="mt-1 text-sm text-text-tertiary">Not connected</p>
-              </div>
-              <Button onClick={handleConnectGitHub}>Connect GitHub</Button>
-            </div>
-          )}
+          <IntegrationStatusCard
+            rawIntegration={githubLoading ? null : githubIntegration}
+            onConnect={handleConnectGitHub}
+            onDisconnect={handleDisconnectGitHub}
+            connecting={false}
+            message={githubMessage}
+          />
         </section>
 
         <section className="card-serif p-6">
           <div className="mb-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Users className="h-5 w-5 text-text-secondary" />
-              <h2 className="text-lg font-semibold font-display text-text-primary">Members</h2>
+              <h2 className="text-lg font-semibold font-display text-text-primary">Members & Invitations</h2>
             </div>
             <Button size="sm" onClick={() => setShowInvite(true)}>
               <Plus className="h-4 w-4" />
               Invite
             </Button>
           </div>
+          <MemberInvitationsPanel
+            invitations={invitations}
+            className="mb-4"
+          />
           <div className="space-y-2">
             {members.map((member: any) => (
               <div key={member.id} className="flex items-center justify-between rounded-[10px] border border-border bg-background px-4 py-3">
@@ -245,6 +251,7 @@ function OrgSettingsContent() {
                   <div>
                     <p className="text-sm font-medium text-text-primary">{member.user_name || member.user_email}</p>
                     {member.user_email ? <p className="text-xs text-text-tertiary">{member.user_email}</p> : null}
+                    <p className="text-xs text-text-tertiary">{getRoleDescription(member.role)}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
