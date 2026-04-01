@@ -20,12 +20,13 @@ import {
 } from "lucide-react";
 
 import { api } from "@/lib/api";
-import { deriveOnboardingNextActions } from "@/lib/page-surface/contracts";
+import { deriveOnboardingNextActions, getOnboardingCompletionSummary } from "@/lib/onboarding/next-step";
 import { getSlugAdjustmentNotice, getSlugPreviewMessage } from "@/lib/organizations/slug-feedback";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { OnboardingNextActions } from "@/components/scanforge/onboarding-next-actions";
 import { Progress } from "@/components/ui/progress";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
@@ -174,9 +175,7 @@ function OnboardingContent() {
     );
   }
 
-  const completedCount = checklist?.steps.filter((step) => step.completed).length ?? 0;
-  const totalCount = checklist?.steps.length ?? 6;
-  const percentage = checklist?.completion_percentage ?? 0;
+  const summary = getOnboardingCompletionSummary(checklist?.steps ?? []);
   const nextActions = deriveOnboardingNextActions(checklist?.steps ?? []);
 
   return (
@@ -206,10 +205,10 @@ function OnboardingContent() {
       <div className="card-serif mb-6 p-6">
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm font-medium text-text-primary">Progress</span>
-          <span className="text-sm text-text-secondary">{completedCount} / {totalCount} completed</span>
+          <span className="text-sm text-text-secondary">{summary.completed} / {summary.total} completed</span>
         </div>
-        <Progress value={percentage} className="h-2" />
-        <p className="mt-2 text-right font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">{percentage}% complete</p>
+        <Progress value={summary.percentage} className="h-2" />
+        <p className="mt-2 text-right font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">{summary.percentage}% complete</p>
       </div>
 
       {githubConnected ? (
@@ -326,15 +325,15 @@ function OnboardingContent() {
         ) : null}
       </div>
 
-      {checklist?.is_complete ? (
+      {summary.isComplete ? (
         <div className="mt-10">
-          <h3 className="mb-4 font-display text-lg text-text-primary">What’s Next?</h3>
+          <h3 className="mb-4 font-display text-lg text-text-primary">What's Next?</h3>
           <div className="grid gap-3 sm:grid-cols-2">
             <Link href={`/dashboard/${orgId}/scorecard`} className="card-serif card-interactive flex items-start gap-3 p-4">
               <BarChart3 size={20} className="mt-0.5 shrink-0 text-primary" />
               <div>
                 <strong className="block text-sm text-text-primary">Security Scorecard</strong>
-                <span className="text-xs text-text-tertiary">Review your organization’s security posture.</span>
+                <span className="text-xs text-text-tertiary">Review your organization's security posture.</span>
               </div>
             </Link>
             <Link href={`/dashboard/${orgId}/settings`} className="card-serif card-interactive flex items-start gap-3 p-4">
@@ -360,7 +359,9 @@ function OnboardingContent() {
             </Link>
           </div>
         </div>
-      ) : null}
+      ) : (
+        <OnboardingNextActions actions={nextActions} />
+      )}
     </div>
   );
 }
