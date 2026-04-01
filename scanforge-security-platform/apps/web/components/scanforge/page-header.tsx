@@ -10,7 +10,7 @@ interface PageHeaderProps {
 
 export function PageHeader({
   title,
-  eyebrow = "Workspace",
+  eyebrow,
   description,
   actions,
   className,
@@ -23,7 +23,7 @@ export function PageHeader({
       )}
     >
       <div className="animate-fade-up">
-        <p className="section-title mb-3">{eyebrow}</p>
+        {eyebrow && <p className="section-title mb-3">{eyebrow}</p>}
         <h1 className="page-title text-text-primary">
           {title}
         </h1>
