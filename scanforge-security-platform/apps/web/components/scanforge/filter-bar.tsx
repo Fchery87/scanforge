@@ -39,26 +39,24 @@ export function FilterBar({
   const activeFilterCount = filters.filter((f) => f.value).length + (searchValue ? 1 : 0);
 
   return (
-    <div className={cn("space-y-3", className)}>
+    <div className={cn("card-serif p-4", className)}>
       <div className="flex flex-wrap items-center gap-2">
-        {/* Search */}
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
+        <div className="relative flex-1 min-w-[220px] max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-tertiary" />
           <Input
             value={searchValue}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={searchPlaceholder}
-            className="pl-9"
+            className="h-11 border-border bg-background pl-9"
           />
         </div>
 
-        {/* Filter selects */}
         {filters.map((filter) => (
           <select
             key={filter.key}
             value={filter.value}
             onChange={(e) => filter.onChange(e.target.value)}
-            className="flex h-9 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary transition-colors focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+            className="flex h-11 rounded-[8px] border border-border bg-background px-3 py-2 text-sm text-text-primary transition-colors focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
           >
             <option value="">{filter.label}</option>
             {filter.options.map((opt) => (
@@ -71,7 +69,7 @@ export function FilterBar({
 
         {/* Clear all */}
         {activeFilterCount > 0 && onClearAll && (
-          <Button variant="ghost" size="sm" onClick={onClearAll} className="gap-1.5">
+          <Button variant="ghost" size="sm" onClick={onClearAll} className="gap-1.5 self-stretch px-3">
             <X className="h-3.5 w-3.5" />
             Clear
             {activeFilterCount > 1 && (

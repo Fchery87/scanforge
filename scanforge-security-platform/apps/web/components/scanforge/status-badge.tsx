@@ -1,4 +1,5 @@
 import { CheckCircle, XCircle, Clock, Loader2, Pause } from "lucide-react";
+import { getStatusMeta } from "@/lib/scanforge-ui";
 import { cn } from "@/lib/utils";
 
 const STATUS_CONFIG = {
@@ -23,11 +24,12 @@ interface StatusBadgeProps {
 }
 
 export function StatusBadge({ status, className, showIcon = true }: StatusBadgeProps) {
-  const config = STATUS_CONFIG[status as Status];
+  const meta = getStatusMeta(status);
+  const config = STATUS_CONFIG[meta.key as Status];
   if (!config) {
     return (
-      <span className={cn("inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-0.5 text-xs font-medium font-display text-text-secondary", className)}>
-        {status}
+      <span className={cn("inline-flex items-center gap-1.5 rounded-[6px] border border-border bg-surface-elevated px-2.5 py-1 font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-text-secondary", className)}>
+        {meta.label}
       </span>
     );
   }
@@ -38,7 +40,7 @@ export function StatusBadge({ status, className, showIcon = true }: StatusBadgeP
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium font-display",
+        "inline-flex items-center gap-1.5 rounded-[6px] border px-2.5 py-1 font-mono text-[11px] font-medium uppercase tracking-[0.12em]",
         config.borderColor,
         config.bgColor,
         config.color,
@@ -48,7 +50,7 @@ export function StatusBadge({ status, className, showIcon = true }: StatusBadgeP
       {showIcon && (
         <Icon className={cn("h-3 w-3", isRunning && "animate-spin")} />
       )}
-      {config.label}
+      {meta.label}
     </span>
   );
 }

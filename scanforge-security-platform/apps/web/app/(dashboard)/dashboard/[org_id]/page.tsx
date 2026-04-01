@@ -1,27 +1,36 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
-import { api } from "@/lib/api";
 import Link from "next/link";
-import { Plus, Folder, AlertCircle, Activity, ArrowRight, Settings, Users, Clock, Zap } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { useParams } from "next/navigation";
+import {
+  Activity,
+  AlertCircle,
+  ArrowRight,
+  Clock,
+  Folder,
+  Plus,
+  Settings,
+  Users,
+  Zap,
+} from "lucide-react";
+
+import { api } from "@/lib/api";
+import { EmptyState } from "@/components/scanforge/empty-state";
+import { PageHeader } from "@/components/scanforge/page-header";
+import { SkeletonStats } from "@/components/scanforge/loading-skeleton";
+import { StatCard } from "@/components/scanforge/stat-card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog";
-import { Separator } from "@/components/ui/separator";
-import { PageHeader } from "@/components/scanforge/page-header";
-import { StatCard } from "@/components/scanforge/stat-card";
-import { EmptyState } from "@/components/scanforge/empty-state";
-import { SkeletonCards, SkeletonStats, SkeletonList } from "@/components/scanforge/loading-skeleton";
-import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export default function OrganizationPage() {
   const { org_id } = useParams();
@@ -91,8 +100,8 @@ export default function OrganizationPage() {
     setCreating(true);
     setCreateError(null);
     try {
-      const proj = await api.projects.create(org_id as string, form);
-      setProjects([...projects, proj]);
+      const project = await api.projects.create(org_id as string, form);
+      setProjects((current) => [...current, project]);
       setShowCreate(false);
       setForm({ name: "", slug: "", description: "" });
     } catch (err) {
@@ -102,177 +111,270 @@ export default function OrganizationPage() {
     }
   }
 
-  if (loading) return <SkeletonStats count={3} />;
+  if (loading) return <SkeletonStats count={4} />;
+
   if (!org) {
     return (
       <EmptyState
         icon={AlertCircle}
         title="Organization not found"
-        description="This organization doesn't exist or you don't have access."
-        action={<Link href="/dashboard"><Button variant="outline">Go Back</Button></Link>}
+        description="This organization does not exist or you no longer have access to it."
+        action={
+          <Link href="/dashboard">
+            <Button variant="outline">Back to organizations</Button>
+          </Link>
+        }
       />
     );
   }
 
   return (
     <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8 animate-fade-up">
-        <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-accent text-white text-xl font-bold font-display shadow-lg shadow-primary/20">
-            {org.name?.charAt(0)}
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold font-display tracking-tight">{org.name}</h1>
-            <span className="text-xs text-text-tertiary font-mono">{org.slug}</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1.5 text-sm text-text-tertiary mr-2">
-            <Users className="h-4 w-4" /> {membersUnavailable ? "Members unavailable" : `${memberCount} member${memberCount !== 1 ? "s" : ""}`}
-          </span>
-          {projects.length > 0 && (
-            <Link href={`/dashboard/${org_id}/projects`}>
+      <PageHeader
+        eyebrow="Organization"
+        title={org.name}
+        description="Review project coverage, monitoring activity, and operational signals across this workspace."
+        actions={
+          <>
+            <Badge variant="outline" className="hidden rounded-[6px] px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.12em] md:inline-flex">
+              <Users className="h-3.5 w-3.5" />
+              {membersUnavailable ? "Members unavailable" : `${memberCount} member${memberCount !== 1 ? "s" : ""}`}
+            </Badge>
+            {projects.length > 0 ? (
+              <Link href={`/dashboard/${org_id}/projects`}>
+                <Button variant="outline" size="sm">
+                  <Zap className="h-3.5 w-3.5" />
+                  Scan All
+                </Button>
+              </Link>
+            ) : null}
+            <Link href={`/dashboard/${org_id}/settings`}>
               <Button variant="outline" size="sm">
-                <Zap className="h-3.5 w-3.5" /> Scan All
+                <Settings className="h-3.5 w-3.5" />
+                Settings
               </Button>
             </Link>
-          )}
-          <Link href={`/dashboard/${org_id}/settings`}>
-            <Button variant="outline" size="sm">
-              <Settings className="h-3.5 w-3.5" /> Settings
+            <Button onClick={() => setShowCreate(true)} size="sm">
+              <Plus className="h-4 w-4" />
+              New Project
             </Button>
-          </Link>
-          <Button onClick={() => setShowCreate(true)} size="sm">
-            <Plus className="h-4 w-4" /> New Project
-          </Button>
+          </>
+        }
+      />
+
+      <div className="mb-8 grid gap-4 lg:grid-cols-[1.35fr_0.95fr]">
+        <div className="card-serif p-6">
+          <p className="section-title mb-3">Workspace Identity</p>
+          <div className="flex items-start gap-4">
+            <div className="flex h-14 w-14 items-center justify-center rounded-[12px] border border-border bg-surface-elevated font-display text-[1.5rem] text-primary">
+              {org.name?.charAt(0)}
+            </div>
+            <div className="min-w-0">
+              <p className="font-display text-[1.6rem] leading-none tracking-[-0.03em] text-text-primary">
+                {org.name}
+              </p>
+              <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.16em] text-text-tertiary">
+                {org.slug}
+              </p>
+              <p className="mt-4 max-w-[56ch] text-sm leading-relaxed text-text-secondary">
+                Use this workspace to group projects, monitor findings, and manage access for the teams responsible for remediation.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="card-serif p-6">
+          <p className="section-title mb-3">Current Coverage</p>
+          <div className="grid grid-cols-2 gap-3">
+            <StatCard icon={Folder} value={projects.length} label="Projects" variant="primary" />
+            <StatCard
+              icon={Users}
+              value={membersUnavailable ? "N/A" : memberCount}
+              label="Members"
+              variant="default"
+            />
+          </div>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-3 mb-8 animate-fade-up stagger-1">
-        <StatCard icon={Folder} value={projects.length} label="Projects" variant="primary" />
+      <div className="mb-8 grid gap-4 md:grid-cols-3">
         <StatCard
           icon={AlertCircle}
           value={statsUnavailable ? "Unavailable" : stats?.open_findings ?? 0}
-          label={statsUnavailable ? "Open Findings Data" : "Open Findings"}
+          label={statsUnavailable ? "Findings Data" : "Open Findings"}
           variant="warning"
         />
         <StatCard
           icon={Activity}
           value={statsUnavailable ? "Unavailable" : stats?.scans_today ?? 0}
-          label={statsUnavailable ? "Scans Today Data" : "Scans Today"}
+          label={statsUnavailable ? "Scans Data" : "Scans Today"}
           variant="success"
+        />
+        <StatCard
+          icon={Clock}
+          value={activityUnavailable ? "Unavailable" : activity.length}
+          label={activityUnavailable ? "Activity Feed" : "Recent Events"}
+          variant="default"
         />
       </div>
 
-      {(statsUnavailable || activityUnavailable || membersUnavailable) && (
-        <div className="mb-6 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-text-secondary">
-          Some dashboard data is temporarily unavailable.
-          {statsUnavailable && " Organization stats failed to load."}
-          {activityUnavailable && " Recent activity failed to load."}
-          {membersUnavailable && " Member count failed to load."}
+      {statsUnavailable || activityUnavailable || membersUnavailable ? (
+        <div className="mb-6 rounded-[10px] border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-text-secondary">
+          Some organization data is temporarily unavailable.
+          {statsUnavailable ? " Workspace stats failed to load." : ""}
+          {activityUnavailable ? " Recent activity failed to load." : ""}
+          {membersUnavailable ? " Member count failed to load." : ""}
         </div>
-      )}
+      ) : null}
 
-      {/* Create Modal */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create Project</DialogTitle>
-            <DialogDescription>Add a new security scanning project</DialogDescription>
+            <DialogDescription>Add a new security scanning project.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreate} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="proj-name">Project Name</Label>
-              <Input id="proj-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Backend API" required />
+              <Input
+                id="proj-name"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="e.g. Backend API"
+                required
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="proj-slug">Slug</Label>
-              <Input id="proj-slug" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-") })} placeholder="e.g. backend-api" required />
+              <Input
+                id="proj-slug"
+                value={form.slug}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
+                  })
+                }
+                placeholder="e.g. backend-api"
+                required
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="proj-desc">Description</Label>
-              <Input id="proj-desc" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Optional description" />
+              <Input
+                id="proj-desc"
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                placeholder="Optional description"
+              />
             </div>
-            {createError && <div className="rounded-lg bg-danger/10 border border-danger/30 px-3 py-2 text-sm text-danger">{createError}</div>}
-            <div className="flex gap-2 justify-end pt-1">
-              <Button type="button" variant="ghost" onClick={() => setShowCreate(false)}>Cancel</Button>
-              <Button type="submit" disabled={creating}>{creating ? "Creating..." : "Create"}</Button>
+            {createError ? (
+              <div className="rounded-[10px] border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+                {createError}
+              </div>
+            ) : null}
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" variant="ghost" onClick={() => setShowCreate(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={creating}>
+                {creating ? "Creating..." : "Create"}
+              </Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* Projects Section */}
-      <div className="mb-2">
-        <h2 className="text-xs font-semibold text-text-tertiary uppercase tracking-wider">Projects</h2>
-      </div>
-
-      {projects.length === 0 ? (
-        <EmptyState
-          icon={Folder}
-          title="No projects yet"
-          description="Create your first project to start scanning repositories"
-          action={<Button onClick={() => setShowCreate(true)}><Plus className="h-4 w-4" /> Create Project</Button>}
-        />
-      ) : (
-        <div className="space-y-2">
-          {projects.map((proj) => (
-            <Link
-              key={proj.id}
-              href={`/dashboard/${org_id}/projects/${proj.id}`}
-              className="group flex items-center gap-4 rounded-lg border border-border bg-surface px-4 py-3.5 transition-all duration-200 hover:border-border-strong hover:bg-surface-hover"
-            >
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary/10 text-secondary flex-shrink-0">
-                <Folder size={18} strokeWidth={1.5} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="text-sm font-semibold text-text-primary">{proj.name}</h3>
-                {proj.description && <p className="text-xs text-text-tertiary truncate mt-0.5">{proj.description}</p>}
-              </div>
-              <div className="flex gap-1.5">
-                <Badge variant="default">{proj.repo_count ?? 0} repos</Badge>
-                <Badge variant={proj.open_findings_count > 0 ? "warning" : "default"}>
-                  {proj.open_findings_count ?? 0} findings
-                </Badge>
-              </div>
-              <ArrowRight className="h-4 w-4 text-text-tertiary flex-shrink-0 transition-transform duration-200 group-hover:translate-x-1 group-hover:text-primary" />
-            </Link>
-          ))}
-        </div>
-      )}
-
-      {/* Activity */}
-      {(activity.length > 0 || activityUnavailable) && (
-        <div className="mt-10 animate-fade-up stagger-3">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xs font-semibold text-text-tertiary uppercase tracking-wider">Recent Activity</h2>
-            <Link href={`/dashboard/${org_id}/audit-logs`} className="text-xs text-primary hover:underline font-medium">View all</Link>
+      <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <p className="section-title">Projects</p>
+            {projects.length > 0 ? (
+              <Badge variant="outline" className="rounded-[6px] px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.12em]">
+                {projects.length} total
+              </Badge>
+            ) : null}
           </div>
-          <div className="rounded-xl border border-border bg-surface overflow-hidden">
+
+          {projects.length === 0 ? (
+            <EmptyState
+              icon={Folder}
+              title="No projects yet"
+              description="Create your first project to start scanning repositories in this workspace."
+              action={
+                <Button onClick={() => setShowCreate(true)}>
+                  <Plus className="h-4 w-4" />
+                  Create Project
+                </Button>
+              }
+            />
+          ) : (
+            <div className="space-y-3">
+              {projects.map((project) => (
+                <Link
+                  key={project.id}
+                  href={`/dashboard/${org_id}/projects/${project.id}`}
+                  className="card-serif card-interactive group flex items-center gap-4 p-4"
+                >
+                  <div className="flex h-11 w-11 items-center justify-center rounded-[10px] border border-border bg-background text-secondary">
+                    <Folder className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-semibold text-text-primary">{project.name}</h3>
+                    {project.description ? (
+                      <p className="mt-1 truncate text-xs text-text-tertiary">{project.description}</p>
+                    ) : (
+                      <p className="mt-1 text-xs text-text-tertiary">No description provided.</p>
+                    )}
+                  </div>
+                  <div className="hidden gap-2 md:flex">
+                    <Badge variant="outline">{project.repo_count ?? 0} repos</Badge>
+                    <Badge variant={(project.open_findings_count ?? 0) > 0 ? "warning" : "default"}>
+                      {project.open_findings_count ?? 0} findings
+                    </Badge>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-text-tertiary transition-transform duration-200 group-hover:translate-x-1 group-hover:text-primary" />
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <p className="section-title">Recent Activity</p>
+            <Link href={`/dashboard/${org_id}/audit-logs`} className="text-sm text-primary">
+              View all
+            </Link>
+          </div>
+
+          <div className="card-serif overflow-hidden">
             {activityUnavailable ? (
-              <div className="px-4 py-8 text-sm text-text-tertiary">
-                Recent activity unavailable.
-              </div>
+              <div className="px-4 py-8 text-sm text-text-tertiary">Recent activity unavailable.</div>
+            ) : activity.length === 0 ? (
+              <div className="px-4 py-8 text-sm text-text-tertiary">No activity recorded yet.</div>
             ) : (
               activity.map((log) => (
-                <div key={log.id} className="flex items-center gap-3 px-4 py-3 border-b border-border/50 last:border-0">
-                  <div className="h-2 w-2 rounded-full bg-primary flex-shrink-0" />
-                  <div className="flex-1 text-sm min-w-0">
-                    <span className="font-medium text-text-primary">{log.action}</span>
-                    {log.target && <span className="text-text-secondary"> on {log.target}</span>}
-                    {log.actor_name && <span className="text-text-tertiary"> by {log.actor_name}</span>}
+                <div key={log.id} className="flex items-start gap-3 border-b border-border/60 px-4 py-4 last:border-0">
+                  <span className="mt-2 h-2 w-2 rounded-full bg-primary" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-text-primary">
+                      <span className="font-medium">{log.action}</span>
+                      {log.target ? <span className="text-text-secondary"> on {log.target}</span> : null}
+                    </p>
+                    {log.actor_name ? (
+                      <p className="mt-1 text-xs text-text-tertiary">by {log.actor_name}</p>
+                    ) : null}
                   </div>
-                  <span className="flex items-center gap-1 text-[11px] text-text-tertiary font-mono flex-shrink-0">
-                    <Clock className="h-3 w-3" /> {new Date(log.created_at).toLocaleDateString()}
+                  <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+                    {new Date(log.created_at).toLocaleDateString()}
                   </span>
                 </div>
               ))
             )}
           </div>
-        </div>
-      )}
+        </section>
+      </div>
     </div>
   );
 }

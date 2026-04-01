@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -10,12 +10,29 @@ from app.schemas.common import PaginatedResponse, PaginationParams
 from app.schemas.organizations import (
     OrganizationCreate,
     OrganizationResponse,
+    OrganizationSlugPreview,
     OrganizationUpdate,
     OrganizationWithMembers,
 )
 from app.services.organizations import OrganizationService
 
 router = APIRouter()
+
+
+@router.get("/slug-preview", response_model=OrganizationSlugPreview)
+async def preview_organization_slug(
+    slug: str = Query(..., min_length=1, max_length=120, pattern=r"^[a-z0-9-]+$"),
+    current_user: UserContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    del current_user
+    service = OrganizationService(db)
+    available_slug = await service.get_available_slug(slug)
+    return OrganizationSlugPreview(
+        requested_slug=slug,
+        available_slug=available_slug,
+        adjusted=available_slug != slug,
+    )
 
 
 @router.post("/", response_model=OrganizationResponse, status_code=status.HTTP_201_CREATED)
@@ -25,13 +42,6 @@ async def create_organization(
     db: AsyncSession = Depends(get_db),
 ):
     service = OrganizationService(db)
-
-    existing = await service.get_by_slug(data.slug)
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Organization with this slug already exists",
-        )
 
     try:
         org, _ = await service.create(data, current_user.user_id)

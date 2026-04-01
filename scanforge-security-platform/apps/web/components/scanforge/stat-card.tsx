@@ -47,13 +47,12 @@ export function StatCard({ icon: Icon, value, label, trend, variant = "default",
   return (
     <div
       className={cn(
-        "group relative flex items-center gap-4 rounded-xl border border-border bg-surface/70 backdrop-blur-sm p-5 transition-all duration-300 hover:border-border-strong hover:glow-wire",
+        "group relative overflow-hidden rounded-[12px] border border-border bg-surface p-5 transition-all duration-[var(--duration-base)] ease-[var(--ease-out-expo)] hover:border-border-strong hover:bg-surface-elevated",
         className
       )}
     >
-      {/* Accent line top */}
       <div className={cn(
-        "absolute top-0 left-[15%] right-[15%] h-[1px] opacity-0 group-hover:opacity-100 transition-opacity duration-300",
+        "absolute inset-x-5 top-0 h-px opacity-100",
         variant === "primary" && "bg-gradient-to-r from-transparent via-primary/40 to-transparent",
         variant === "success" && "bg-gradient-to-r from-transparent via-success/40 to-transparent",
         variant === "warning" && "bg-gradient-to-r from-transparent via-warning/40 to-transparent",
@@ -61,17 +60,17 @@ export function StatCard({ icon: Icon, value, label, trend, variant = "default",
         variant === "default" && "bg-gradient-to-r from-transparent via-border-strong to-transparent",
       )} />
 
-      <div className={cn("flex h-11 w-11 items-center justify-center rounded-lg", styles.iconBg)}>
+      <div className={cn("flex h-11 w-11 items-center justify-center rounded-[10px] border border-border/60", styles.iconBg)}>
         <Icon className={cn("h-5 w-5", styles.iconColor)} strokeWidth={1.75} />
       </div>
       <div className="min-w-0">
         <div className="flex items-baseline gap-2">
-          <span className={cn("text-2xl font-bold font-display tracking-tight", styles.accentColor)}>
+          <span className={cn("font-display text-[2rem] font-semibold leading-none tracking-[-0.03em]", styles.accentColor)}>
             {value}
           </span>
           {trend && (
             <span className={cn(
-              "flex items-center gap-0.5 text-xs font-medium",
+              "flex items-center gap-0.5 font-mono text-[11px] uppercase tracking-[0.1em]",
               trend.direction === "up" ? "text-success" : "text-danger"
             )}>
               {trend.direction === "up" ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
@@ -79,7 +78,7 @@ export function StatCard({ icon: Icon, value, label, trend, variant = "default",
             </span>
           )}
         </div>
-        <span className="text-xs text-text-tertiary font-medium">{label}</span>
+        <span className="mt-1 block font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">{label}</span>
       </div>
     </div>
   );

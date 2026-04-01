@@ -50,6 +50,10 @@ export const api = {
   organizations: {
     list: (skip = 0, limit = 20) =>
       request<{ items: any[]; total: number }>(`/organizations?skip=${skip}&limit=${limit}`),
+    previewSlug: (slug: string) =>
+      request<{ requested_slug: string; available_slug: string; adjusted: boolean }>(
+        `/organizations/slug-preview?${new URLSearchParams({ slug }).toString()}`
+      ),
     create: (data: { name: string; slug: string }) =>
       request<any>("/organizations", { method: "POST", body: JSON.stringify(data) }),
     get: (id: string) => request<any>(`/organizations/${id}`),
@@ -129,6 +133,10 @@ export const api = {
       request<any>(`/organizations/${orgId}/projects/${projectId}/scans/${scanId}/cancel`, {
         method: "POST",
         body: JSON.stringify({ reason }),
+      }),
+    delete: (orgId: string, projectId: string, scanId: string) =>
+      request<any>(`/organizations/${orgId}/projects/${projectId}/scans/${scanId}`, {
+        method: "DELETE",
       }),
   },
 

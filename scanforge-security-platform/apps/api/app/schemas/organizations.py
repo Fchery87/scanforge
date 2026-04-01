@@ -29,6 +29,12 @@ class OrganizationResponse(BaseModel):
     updated_at: datetime
 
 
+class OrganizationSlugPreview(BaseModel):
+    requested_slug: str
+    available_slug: str
+    adjusted: bool
+
+
 class OrganizationMemberResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

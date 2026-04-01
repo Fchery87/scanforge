@@ -1,7 +1,7 @@
 .PHONY: help install dev lint test migrate migrate-generate migrate-rollback migrate-status migrate-reset \
         web-install web-dev web-build web-lint \
         api-install api-dev \
-        worker-install worker-dev worker-prod \
+        worker-install worker-dev worker-prod worker-purge-queue \
         db-up db-down db-logs \
         scanner-install scanner-check
 
@@ -19,6 +19,7 @@ help:
 	@echo "    make web-dev          Next.js dev server on :3000"
 	@echo "    make api-dev          FastAPI dev server on :8000"
 	@echo "    make worker-dev       Worker process (foreground)"
+	@echo "    make worker-purge-queue  Purge active/dead-letter scan queues (DEV ONLY)"
 	@echo ""
 	@echo "  Migrations"
 	@echo "    make migrate                  Run pending migrations"
@@ -170,6 +171,9 @@ worker-dev:
 
 worker-prod:
 	PYTHONPATH="$(PWD)/apps/worker" $(WORKER_PYTHON) -m app.worker.main --concurrency=4
+
+worker-purge-queue:
+	PYTHONPATH="$(PWD)/apps/worker" $(WORKER_PYTHON) -m app.worker.maintenance --purge-scan-queue
 
 # ─── All-in-one dev ─────────────────────────────────────────────────
 

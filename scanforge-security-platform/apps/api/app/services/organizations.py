@@ -12,6 +12,19 @@ class OrganizationService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    async def get_available_slug(self, slug: str) -> str:
+        existing = await self.get_by_slug(slug)
+        if not existing:
+            return slug
+
+        suffix = 2
+        while True:
+            candidate = f"{slug}-{suffix}"
+            existing = await self.get_by_slug(candidate)
+            if not existing:
+                return candidate
+            suffix += 1
+
     async def create(
         self,
         data: OrganizationCreate,
@@ -24,7 +37,7 @@ class OrganizationService:
 
         org = Organization(
             name=data.name,
-            slug=data.slug,
+            slug=await self.get_available_slug(data.slug),
             created_by_user_id=user_id,
         )
         self.db.add(org)

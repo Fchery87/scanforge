@@ -1,19 +1,53 @@
 import asyncio
+import argparse
 import os
 import sys
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))))
 
 
+def _load_env(current_file: str | Path | None = None):
+    current = Path(current_file or __file__).resolve()
+    for parent in current.parents:
+        env_path = parent / ".env"
+        if env_path.exists():
+            from dotenv import load_dotenv
 
-async def run_cleanup():
+            load_dotenv(env_path, override=False)
+            return
+
+
+_load_env()
+
+from app.clients.queue import QueueClient
+
+
+async def run_cleanup(purge_scan_queue: bool = False):
     print("[maintenance] Starting weekly maintenance tasks")
     print("[maintenance] Task 1: Expire old exports")
     print("[maintenance] Task 2: Recalculate project scores")
     print("[maintenance] Task 3: Prune stale notification events")
     print("[maintenance] Task 4: Verify scan artifact integrity")
+
+    if purge_scan_queue:
+        queue = QueueClient(
+            redis_url=os.environ.get("UPSTASH_REDIS_REST_URL", ""),
+            redis_token=os.environ.get("UPSTASH_REDIS_REST_TOKEN", ""),
+        )
+        deleted_keys = await queue.clear_scan_queues()
+        print(f"[maintenance] Purged scan queues (deleted_keys={deleted_keys})")
+
     print("[maintenance] Weekly maintenance complete")
 
 
 if __name__ == "__main__":
-    asyncio.run(run_cleanup())
+    parser = argparse.ArgumentParser(description="Worker maintenance tasks")
+    parser.add_argument(
+        "--purge-scan-queue",
+        action="store_true",
+        help="Delete the active and dead-letter scan queues from Redis",
+    )
+    args = parser.parse_args()
+
+    asyncio.run(run_cleanup(purge_scan_queue=args.purge_scan_queue))

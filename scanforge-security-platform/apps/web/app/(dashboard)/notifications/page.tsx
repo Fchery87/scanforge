@@ -58,8 +58,9 @@ export default function NotificationsPage() {
   return (
     <div>
       <PageHeader
+        eyebrow="Inbox"
         title="Notifications"
-        description={`${total} total notification${total !== 1 ? "s" : ""}`}
+        description={`${total} total notification${total !== 1 ? "s" : ""} across scan activity, findings, exports, and member changes.`}
         actions={
           <Button variant="outline" size="sm" onClick={markAllRead}>
             <CheckCheck className="h-3.5 w-3.5" /> Mark All Read
@@ -67,9 +68,9 @@ export default function NotificationsPage() {
         }
       />
 
-      <div className="flex items-center gap-3 mb-6">
+      <div className="card-serif mb-6 flex flex-wrap items-center gap-3 p-4">
         <Select value={typeFilter} onValueChange={(v) => { setTypeFilter(v === "all" ? "" : v); setPage(0); }}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="h-11 w-44 bg-background">
             <SelectValue placeholder="All types" />
           </SelectTrigger>
           <SelectContent>
@@ -82,7 +83,7 @@ export default function NotificationsPage() {
           </SelectContent>
         </Select>
 
-        <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
+        <label className="flex items-center gap-2 rounded-[8px] border border-border bg-background px-3 py-2 text-sm text-text-secondary cursor-pointer">
           <input
             type="checkbox"
             checked={unreadOnly}
@@ -102,7 +103,7 @@ export default function NotificationsPage() {
           description="You have no notifications"
         />
       ) : (
-        <div className="rounded-xl border border-border bg-surface overflow-hidden">
+        <div className="card-serif overflow-hidden">
           {notifications.map((n) => (
             <NotificationItem
               key={n.id}

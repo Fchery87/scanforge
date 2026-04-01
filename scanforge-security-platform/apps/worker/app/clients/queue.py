@@ -69,6 +69,15 @@ class QueueClient:
 
         return job.job_id
 
+    async def requeue(self, job: QueueJob, delay_seconds: int = 0) -> None:
+        job_json = job.model_dump_json()
+
+        if delay_seconds > 0:
+            score = datetime.utcnow().timestamp() + delay_seconds
+            await self._command("ZADD", self.SCAN_QUEUE, score, job_json)
+        else:
+            await self._command("LPUSH", self.SCAN_QUEUE, job_json)
+
     async def dequeue(self, timeout_seconds: int = 5) -> QueueJob | None:
         try:
             result = await self._command("BRPOP", self.SCAN_QUEUE, timeout_seconds)
@@ -114,4 +123,8 @@ class QueueClient:
 
     async def get_queue_length(self) -> int:
         result = await self._command("LLEN", self.SCAN_QUEUE)
+        return int(result.get("result", 0))
+
+    async def clear_scan_queues(self) -> int:
+        result = await self._command("DEL", self.SCAN_QUEUE, self.DLQ)
         return int(result.get("result", 0))

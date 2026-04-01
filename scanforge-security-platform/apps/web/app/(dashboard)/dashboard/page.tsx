@@ -1,38 +1,28 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { api } from "@/lib/api";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Building2, Plus, Search, Settings } from "lucide-react";
+
+import { api } from "@/lib/api";
+import { getSlugAdjustmentNotice, getSlugPreviewMessage } from "@/lib/organizations/slug-feedback";
+import { deriveRiskGrade } from "@/lib/scanforge-ui";
+import { cn } from "@/lib/utils";
+import { EmptyState } from "@/components/scanforge/empty-state";
+import { PageHeader } from "@/components/scanforge/page-header";
+import { SkeletonCards } from "@/components/scanforge/loading-skeleton";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { PageHeader } from "@/components/scanforge/page-header";
-import { EmptyState } from "@/components/scanforge/empty-state";
-import { SkeletonCards } from "@/components/scanforge/loading-skeleton";
-import { cn } from "@/lib/utils";
-
-function deriveGrade(stats: any) {
-  if (!stats) return null;
-  const penalty = (stats.critical_findings ?? 0) * 25 + (stats.open_findings ?? 0) * 3;
-  const score = Math.max(0, 100 - penalty);
-  if (score >= 95) return "A+";
-  if (score >= 90) return "A";
-  if (score >= 80) return "B";
-  if (score >= 70) return "C";
-  if (score >= 60) return "D";
-  return "F";
-}
-
-// Removed unused gradeBadgeColor
 
 export default function OrganizationsPage() {
   const router = useRouter();
@@ -43,38 +33,89 @@ export default function OrganizationsPage() {
   const [form, setForm] = useState({ name: "", slug: "" });
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
+  const [createNotice, setCreateNotice] = useState<string | null>(null);
+  const [slugPreview, setSlugPreview] = useState<{ available_slug: string; adjusted: boolean } | null>(null);
+  const [slugPreviewLoading, setSlugPreviewLoading] = useState(false);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    api.organizations.list(0, 20).then(async (res) => {
-      const orgList = res.items ?? [];
-      setOrgs(orgList);
-      const statsMap: Record<string, any> = {};
-      await Promise.allSettled(
-        orgList.map((org) =>
-          api.organizations.stats(org.id)
-            .then((s) => { statsMap[org.id] = s; })
-            .catch(() => { statsMap[org.id] = null; })
-        )
-      );
-      setOrgStats(statsMap);
-      setLoading(false);
-    }).catch(() => setLoading(false));
+    api.organizations
+      .list(0, 20)
+      .then(async (res) => {
+        const orgList = res.items ?? [];
+        setOrgs(orgList);
+        const statsMap: Record<string, any> = {};
+        await Promise.allSettled(
+          orgList.map((org) =>
+            api.organizations.stats(org.id)
+              .then((stats) => {
+                statsMap[org.id] = stats;
+              })
+              .catch(() => {
+                statsMap[org.id] = null;
+              })
+          )
+        );
+        setOrgStats(statsMap);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
   }, []);
 
   const filteredOrgs = orgs.filter((org) =>
-    !search || org.name.toLowerCase().includes(search.toLowerCase()) || org.slug.toLowerCase().includes(search.toLowerCase())
+    !search ||
+    org.name.toLowerCase().includes(search.toLowerCase()) ||
+    org.slug.toLowerCase().includes(search.toLowerCase())
   );
+
+  useEffect(() => {
+    if (!showCreate || !form.slug) {
+      setSlugPreview(null);
+      setSlugPreviewLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setSlugPreviewLoading(true);
+
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const preview = await api.organizations.previewSlug(form.slug);
+        if (!cancelled) {
+          setSlugPreview({
+            available_slug: preview.available_slug,
+            adjusted: preview.adjusted,
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setSlugPreview(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setSlugPreviewLoading(false);
+        }
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [form.slug, showCreate]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setCreating(true);
     setError("");
+    setCreateNotice(null);
     try {
+      const requestedSlug = form.slug;
       const org = await api.organizations.create(form);
-      setOrgs([...orgs, org]);
+      setOrgs((current) => [...current, org]);
       setShowCreate(false);
       setForm({ name: "", slug: "" });
+      setCreateNotice(getSlugAdjustmentNotice(requestedSlug, org.slug));
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -85,34 +126,42 @@ export default function OrganizationsPage() {
   return (
     <div>
       <PageHeader
+        eyebrow="Workspace"
         title="Organizations"
-        description="Manage your teams and workspaces"
+        description="Manage the workspaces that hold projects, repositories, findings, and governance settings."
         actions={
           <Button onClick={() => setShowCreate(true)}>
-            <Plus className="h-4 w-4" /> New Organization
+            <Plus className="h-4 w-4" />
+            New Organization
           </Button>
         }
       />
 
-      {/* Search bar */}
-      {orgs.length > 0 && (
-        <div className="mb-6 relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-tertiary pointer-events-none" />
-          <Input
-            placeholder="Search organizations..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
+      {createNotice ? (
+        <div className="mb-6 rounded-[10px] border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-text-primary">
+          {createNotice}
         </div>
-      )}
+      ) : null}
 
-      {/* Create Modal */}
+      {orgs.length > 0 ? (
+        <div className="card-serif mb-6 p-4">
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary" />
+            <Input
+              placeholder="Search organizations..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-11 bg-background pl-9"
+            />
+          </div>
+        </div>
+      ) : null}
+
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create Organization</DialogTitle>
-            <DialogDescription>Add a new team workspace</DialogDescription>
+            <DialogDescription>Add a new team workspace.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreate} className="space-y-4">
             <div className="space-y-2">
@@ -130,18 +179,42 @@ export default function OrganizationsPage() {
               <Input
                 id="org-slug"
                 value={form.slug}
-                onChange={(e) => setForm({ ...form, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-") })}
+                onChange={(e) => {
+                  setError("");
+                  setCreateNotice(null);
+                  setSlugPreview(null);
+                  setForm({
+                    ...form,
+                    slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
+                  });
+                }}
                 placeholder="e.g. acme-security"
                 required
               />
+              {form.slug ? (
+                <div
+                  className={cn(
+                    "rounded-[10px] border px-3 py-2 text-xs",
+                    slugPreview?.adjusted
+                      ? "border-warning/30 bg-warning/10 text-text-primary"
+                      : "border-border bg-surface text-text-secondary"
+                  )}
+                >
+                  {slugPreviewLoading
+                    ? "Checking slug availability..."
+                    : getSlugPreviewMessage(form.slug, slugPreview?.available_slug ?? form.slug)}
+                </div>
+              ) : null}
             </div>
-            {error && (
-              <div className="rounded-lg bg-danger/10 border border-danger/20 px-3 py-2 text-sm text-danger">
+            {error ? (
+              <div className="rounded-[10px] border border-danger/20 bg-danger/10 px-3 py-2 text-sm text-danger">
                 {error}
               </div>
-            )}
-            <div className="flex gap-2 justify-end pt-1">
-              <Button type="button" variant="ghost" onClick={() => setShowCreate(false)}>Cancel</Button>
+            ) : null}
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" variant="ghost" onClick={() => setShowCreate(false)}>
+                Cancel
+              </Button>
               <Button type="submit" disabled={creating}>
                 {creating ? "Creating..." : "Create"}
               </Button>
@@ -150,71 +223,70 @@ export default function OrganizationsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Content */}
       {loading ? (
-        <SkeletonCards count={3} />
+        <SkeletonCards count={4} />
       ) : filteredOrgs.length === 0 && search ? (
         <EmptyState
           icon={Building2}
           title="No organizations found"
-          description="Try a different search term"
+          description="Try a different search term or create a new workspace."
         />
       ) : filteredOrgs.length === 0 ? (
         <EmptyState
           icon={Building2}
           title="No organizations yet"
-          description="Create your first organization to get started"
+          description="Create your first organization to start structuring projects and connecting repositories."
           action={
             <Button onClick={() => setShowCreate(true)}>
-              <Plus className="h-4 w-4" /> Create Organization
+              <Plus className="h-4 w-4" />
+              Create Organization
             </Button>
           }
         />
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-2">
           {filteredOrgs.map((org, index) => {
-            const grade = deriveGrade(orgStats[org.id]);
+            const stats = orgStats[org.id];
+            const grade = deriveRiskGrade(stats);
+
             return (
               <Link
                 key={org.id}
                 href={`/dashboard/${org.id}`}
-                className={cn(
-                  "group relative flex items-start gap-4 border border-border bg-background p-4 transition-colors duration-200",
-                  "hover:border-text-secondary",
-                  "animate-fade-up"
-                )}
-                style={{ animationDelay: `${index * 50}ms` }}
+                className="card-serif card-interactive animate-fade-up group relative flex min-h-[210px] flex-col justify-between p-6"
+                style={{ animationDelay: `${index * 80}ms` }}
               >
-                {/* Sharp right-side accent that appears on hover */}
-                <div className="absolute top-0 right-[-1px] bottom-0 w-[2px] bg-accent scale-y-0 group-hover:scale-y-100 transition-transform duration-200 origin-bottom" />
+                <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
 
-                {/* Org name + slug */}
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-base font-medium tracking-tight text-text-primary truncate">{org.name}</h3>
-                  <p className="text-xs text-text-tertiary font-mono tracking-wider uppercase mt-1 truncate">
-                    {org.slug}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-3 flex-shrink-0">
-                  {/* Grade badge */}
-                  {grade ? (
-                    <div className={cn(
-                      "flex h-10 w-10 items-center justify-center border",
-                      grade.startsWith('A') ? "border-success text-success bg-success/5" 
-                      : grade === 'F' ? "border-critical text-critical bg-critical/5" 
-                      : grade === 'B' ? "border-info text-info bg-info/5"
-                      : "border-border text-text-secondary bg-surface"
-                    )}>
-                      <span className="font-mono text-lg font-medium">{grade}</span>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="section-title mb-3">Organization</p>
+                    <div className="mb-2 flex items-center gap-2">
+                      <h2 className="truncate font-display text-[1.45rem] font-semibold tracking-[-0.03em] text-text-primary">
+                        {org.name}
+                      </h2>
+                      {grade ? (
+                        <span
+                          className={cn(
+                            "inline-flex h-7 min-w-[2rem] items-center justify-center rounded-[6px] border px-2 font-mono text-[11px] font-semibold uppercase tracking-[0.12em]",
+                            grade.startsWith("A")
+                              ? "border-success/30 bg-success/10 text-success"
+                              : grade === "B"
+                                ? "border-primary/30 bg-primary/10 text-primary"
+                                : grade === "C"
+                                  ? "border-warning/30 bg-warning/10 text-warning"
+                                  : "border-danger/30 bg-danger/10 text-danger"
+                          )}
+                        >
+                          {grade}
+                        </span>
+                      ) : null}
                     </div>
-                  ) : (
-                    <div className="flex h-10 w-10 items-center justify-center border border-border bg-surface text-text-tertiary">
-                      <span className="font-mono text-lg font-medium">-</span>
-                    </div>
-                  )}
+                    <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
+                      {org.slug}
+                    </p>
+                  </div>
 
-                  {/* Settings button */}
                   <button
                     type="button"
                     aria-label={`Settings for ${org.name}`}
@@ -223,10 +295,35 @@ export default function OrganizationsPage() {
                       e.stopPropagation();
                       router.push(`/dashboard/${org.id}/settings`);
                     }}
-                    className="h-10 w-10 flex items-center justify-center text-text-tertiary hover:bg-surface-hover hover:text-text-primary transition-colors border border-transparent hover:border-border"
+                    className="flex h-10 w-10 items-center justify-center rounded-[10px] border border-border bg-background text-text-secondary transition-colors hover:border-border-strong hover:text-text-primary"
                   >
                     <Settings className="h-4 w-4" />
                   </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-[10px] border border-border bg-background px-4 py-3">
+                      <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">Projects</p>
+                      <p className="mt-2 font-display text-[1.6rem] leading-none text-text-primary">
+                        {stats?.project_count ?? 0}
+                      </p>
+                    </div>
+                    <div className="rounded-[10px] border border-border bg-background px-4 py-3">
+                      <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">Open Findings</p>
+                      <p className="mt-2 font-display text-[1.6rem] leading-none text-text-primary">
+                        {stats?.open_findings ?? 0}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between border-t border-border pt-4">
+                    <Badge variant="outline" className="rounded-[6px] px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.12em]">
+                      <Building2 className="h-3.5 w-3.5" />
+                      Workspace
+                    </Badge>
+                    <span className="text-sm font-medium text-primary">Open workspace</span>
+                  </div>
                 </div>
               </Link>
             );

@@ -7,7 +7,19 @@ from app.services.scan_orchestrator import ScanContext, ScanOrchestrator
 
 
 class DummyQueue:
+    def __init__(self):
+        self.requeued_jobs = []
+
     async def update_job_status(self, *_args, **_kwargs):
+        return None
+
+    async def increment_retry(self, *_args, **_kwargs):
+        return 0
+
+    async def requeue(self, job, delay_seconds: int = 0):
+        self.requeued_jobs.append((job, delay_seconds))
+
+    async def enqueue_to_dlq(self, *_args, **_kwargs):
         return None
 
 
@@ -97,3 +109,38 @@ def test_scan_type_mappings_include_checkov_and_grype():
     assert "grype" in orchestrator._get_scanners_for_type("scan.repo.full")
     assert "checkov" in orchestrator._get_scanners_for_type("scan.repo.diff")
     assert "grype" in orchestrator._get_scanners_for_type("scan.dependencies")
+
+
+@pytest.mark.asyncio
+async def test_failed_job_requeues_with_same_job_id():
+    queue = DummyQueue()
+    orchestrator = ScanOrchestrator(queue=queue, r2=DummyR2())
+
+    async def fail_status(*_args, **_kwargs):
+        return None
+
+    async def explode_repo(*_args, **_kwargs):
+        raise RuntimeError("clone failed")
+
+    orchestrator._update_status = fail_status
+    orchestrator._update_scan_status = fail_status
+    orchestrator._prepare_repository = explode_repo
+
+    from app.clients.queue import QueueJob
+
+    job = QueueJob(
+        job_type="scan.repo.full",
+        job_id="job-123",
+        payload={
+            "scan_id": "scan-1",
+            "repository_id": "repo-1",
+            "project_id": "project-1",
+        },
+        created_at="2026-03-31T00:00:00",
+    )
+
+    success = await orchestrator.process_job(job)
+
+    assert success is False
+    assert len(queue.requeued_jobs) == 1
+    assert queue.requeued_jobs[0][0].job_id == "job-123"

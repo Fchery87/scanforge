@@ -423,8 +423,11 @@ class FindingService:
                 await self.db.scalar(
                     select(func.count())
                     .select_from(Finding)
-                    .join(Project)
-                    .join(OrganizationMember)
+                    .join(Project, Finding.project_id == Project.id)
+                    .join(
+                        OrganizationMember,
+                        OrganizationMember.organization_id == Project.organization_id,
+                    )
                     .where(
                         Finding.project_id == project_id,
                         OrganizationMember.user_id == user_id,
@@ -444,8 +447,11 @@ class FindingService:
                 await self.db.scalar(
                     select(func.count())
                     .select_from(Finding)
-                    .join(Project)
-                    .join(OrganizationMember)
+                    .join(Project, Finding.project_id == Project.id)
+                    .join(
+                        OrganizationMember,
+                        OrganizationMember.organization_id == Project.organization_id,
+                    )
                     .where(
                         Finding.project_id == project_id,
                         OrganizationMember.user_id == user_id,

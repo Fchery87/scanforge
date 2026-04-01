@@ -2,24 +2,39 @@ import { cn } from "@/lib/utils";
 
 interface PageHeaderProps {
   title: string;
+  eyebrow?: string;
   description?: string;
   actions?: React.ReactNode;
   className?: string;
 }
 
-export function PageHeader({ title, description, actions, className }: PageHeaderProps) {
+export function PageHeader({
+  title,
+  eyebrow = "Workspace",
+  description,
+  actions,
+  className,
+}: PageHeaderProps) {
   return (
-    <div className={cn("flex items-start justify-between mb-8", className)}>
+    <div
+      className={cn(
+        "mb-8 flex flex-col gap-5 border-b border-border pb-6 md:flex-row md:items-end md:justify-between",
+        className
+      )}
+    >
       <div className="animate-fade-up">
-        <h1 className="text-3xl font-bold font-display tracking-tight text-text-primary">
+        <p className="section-title mb-3">{eyebrow}</p>
+        <h1 className="page-title text-text-primary">
           {title}
         </h1>
         {description && (
-          <p className="mt-1.5 text-sm text-text-secondary leading-relaxed">{description}</p>
+          <p className="mt-3 max-w-[62ch] text-sm leading-relaxed text-text-secondary md:text-[0.95rem]">
+            {description}
+          </p>
         )}
       </div>
       {actions && (
-        <div className="flex items-center gap-2 animate-fade-up stagger-1">
+        <div className="flex items-center gap-2 animate-fade-up">
           {actions}
         </div>
       )}

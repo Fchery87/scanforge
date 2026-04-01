@@ -152,7 +152,7 @@ class ScanOrchestrator:
                 return False
 
             await asyncio.sleep(min(retry_count * 30, 300))
-            await self.queue.enqueue(job.job_type, job.payload)
+            await self.queue.requeue(job)
             return False
 
         finally:

@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { FileText } from "lucide-react";
+
 import { api } from "@/lib/api";
-import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/scanforge/page-header";
 import { EmptyState } from "@/components/scanforge/empty-state";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
 export default function AuditLogPage() {
   const { org_id } = useParams<{ org_id: string }>();
@@ -19,10 +20,12 @@ export default function AuditLogPage() {
 
   useEffect(() => {
     setLoading(true);
-    api.auditLogs.listOrg(org_id as string, page * limit, limit).then((data) => {
-      setLogs(data);
-      setLoading(false);
-    }).catch(() => setLoading(false));
+    api.auditLogs.listOrg(org_id, page * limit, limit)
+      .then((data) => {
+        setLogs(data);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
   }, [org_id, page]);
 
   const items = logs?.items || [];
@@ -31,8 +34,9 @@ export default function AuditLogPage() {
   return (
     <div>
       <PageHeader
+        eyebrow="Governance"
         title="Audit Log"
-        description="Track all organization activity and changes"
+        description="Review organization activity, ownership changes, and operational history."
       />
 
       {loading && !logs ? (
@@ -43,11 +47,11 @@ export default function AuditLogPage() {
         <EmptyState
           icon={FileText}
           title="No audit logs yet"
-          description="Activity will appear here as actions are taken"
+          description="Activity will appear here as actions are taken across the organization."
         />
       ) : (
         <>
-          <div className="rounded-lg border border-border overflow-hidden bg-surface">
+          <div className="card-serif overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -61,32 +65,20 @@ export default function AuditLogPage() {
               <TableBody>
                 {items.map((log: any) => (
                   <TableRow key={log.id}>
-                    <TableCell className="font-mono text-text-secondary text-sm">
+                    <TableCell className="font-mono text-sm text-text-secondary">
                       {new Date(log.created_at).toLocaleString()}
                     </TableCell>
                     <TableCell>
-                      <span
-                        className={cn(
-                          "inline-block px-2 py-0.5 rounded-md text-xs font-medium",
-                          "bg-primary/10 text-primary"
-                        )}
-                        data-action={log.action}
-                      >
-                        {log.action}
-                      </span>
+                      <Badge variant="outline">{log.action}</Badge>
                     </TableCell>
-                    <TableCell className="text-text-secondary text-sm">
+                    <TableCell className="text-sm text-text-secondary">
                       {log.actor_user_id?.slice(0, 8) || "system"}
                     </TableCell>
                     <TableCell>
-                      {log.target_type && (
-                        <span className="text-text-tertiary text-xs mr-2">{log.target_type}</span>
-                      )}
-                      {log.target_id && (
-                        <code className="font-mono text-sm text-text-secondary">
-                          {log.target_id.slice(0, 8)}
-                        </code>
-                      )}
+                      <div className="text-sm text-text-secondary">
+                        {log.target_type ? <span className="mr-2 text-xs text-text-tertiary">{log.target_type}</span> : null}
+                        {log.target_id ? <code className="font-mono">{log.target_id.slice(0, 8)}</code> : "—"}
+                      </div>
                     </TableCell>
                     <TableCell className="font-mono text-sm text-text-secondary">
                       {log.ip_address || "—"}
@@ -96,24 +88,14 @@ export default function AuditLogPage() {
               </TableBody>
             </Table>
           </div>
-          <div className="flex items-center justify-between mt-4 px-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={page === 0}
-              onClick={() => setPage(page - 1)}
-            >
+          <div className="mt-4 flex items-center justify-between px-1">
+            <Button variant="ghost" size="sm" disabled={page === 0} onClick={() => setPage(page - 1)}>
               Previous
             </Button>
-            <span className="text-text-secondary text-sm">
+            <span className="text-sm text-text-secondary">
               {page * limit + 1}–{Math.min((page + 1) * limit, total)} of {total}
             </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={(page + 1) * limit >= total}
-              onClick={() => setPage(page + 1)}
-            >
+            <Button variant="ghost" size="sm" disabled={(page + 1) * limit >= total} onClick={() => setPage(page + 1)}>
               Next
             </Button>
           </div>

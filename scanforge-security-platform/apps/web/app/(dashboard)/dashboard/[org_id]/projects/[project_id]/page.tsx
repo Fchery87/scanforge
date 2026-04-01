@@ -1,69 +1,31 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
+import { Activity, ArrowRight, FolderGit2, ShieldAlert, TrendingUp } from "lucide-react";
+
 import { api } from "@/lib/api";
-import { TrendingUp, ScanLine, ShieldAlert, UserCog, Activity } from "lucide-react";
-import { PageHeader } from "@/components/scanforge/page-header";
-import { SkeletonStats } from "@/components/scanforge/loading-skeleton";
-import { RiskScoreGauge } from "@/components/scanforge/risk-score-gauge";
+import { formatRelativeTime } from "@/lib/project-surface";
+import { EmptyState } from "@/components/scanforge/empty-state";
 import { FindingsBarChart } from "@/components/scanforge/findings-bar-chart";
+import { PageHeader } from "@/components/scanforge/page-header";
+import { RiskScoreGauge } from "@/components/scanforge/risk-score-gauge";
 import { SeverityBreakdown } from "@/components/scanforge/severity-breakdown";
-import { cn } from "@/lib/utils";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function timeAgo(dateStr: string): string {
-  const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} minutes ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} hours ago`;
-  const days = Math.floor(hours / 24);
-  return `${days} days ago`;
-}
-
-function activityDot(action: string): string {
-  if (action?.includes("scan")) return "bg-success";
-  if (action?.includes("finding") || action?.includes("vuln")) return "bg-danger";
-  return "bg-primary";
-}
-
-function activityIcon(action: string) {
-  if (action?.includes("scan")) return ScanLine;
-  if (action?.includes("finding") || action?.includes("vuln")) return ShieldAlert;
-  return UserCog;
-}
-
-function formatActivityLabel(item: any): string {
-  const action: string = item.action ?? "";
-  if (action.includes("scan_created")) return `New scan started for ${item.resource_id ?? "repository"}`;
-  if (action.includes("scan_completed")) return `Scan completed — ${item.details?.findings_count ?? 0} findings`;
-  if (action.includes("finding")) return item.details?.title ?? "Finding updated";
-  if (action.includes("user")) return item.details?.description ?? "User action performed";
-  return item.details?.description ?? action.replace(/_/g, " ");
-}
-
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
+import { SkeletonStats } from "@/components/scanforge/loading-skeleton";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 export default function ProjectOverviewPage() {
   const { org_id, project_id } = useParams();
-
-  const [project, setProject]           = useState<any>(null);
-  const [stats, setStats]               = useState<any>(null);
-  const [scans, setScans]               = useState<any[]>([]);
-  const [scorecard, setScorecard]       = useState<any>(null);
-  const [trend, setTrend]               = useState<any>(null);
-  const [repos, setRepos]               = useState<any[]>([]);
-  const [repoStats, setRepoStats]       = useState<Record<string, any>>({});
-  const [activity, setActivity]         = useState<any[]>([]);
-  const [topFindings, setTopFindings]   = useState<any[]>([]);
-  const [loading, setLoading]           = useState(true);
+  const [project, setProject] = useState<any>(null);
+  const [stats, setStats] = useState<any>(null);
+  const [scorecard, setScorecard] = useState<any>(null);
+  const [trend, setTrend] = useState<any>(null);
+  const [repos, setRepos] = useState<any[]>([]);
+  const [activity, setActivity] = useState<any[]>([]);
+  const [topFindings, setTopFindings] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!org_id || !project_id) return;
@@ -71,187 +33,197 @@ export default function ProjectOverviewPage() {
     Promise.all([
       api.projects.get(org_id as string, project_id as string),
       api.findings.stats(org_id as string, project_id as string),
-      api.scans.list(org_id as string, project_id as string, 0, 5),
       api.scorecard.get(org_id as string, project_id as string).catch(() => null),
       api.findings.trend(org_id as string, project_id as string, 30).catch(() => null),
       api.repositories.list(org_id as string, project_id as string).catch(() => null),
-      api.auditLogs.listProject(org_id as string, project_id as string, 0, 5).catch(() => null),
+      api.auditLogs.listProject(org_id as string, project_id as string, 0, 6).catch(() => null),
       api.findings.list(org_id as string, project_id as string, { severity: "critical", limit: "3" }).catch(() => null),
       api.findings.list(org_id as string, project_id as string, { severity: "high", limit: "3" }).catch(() => null),
-    ]).then(async ([
-      projData,
-      statsData,
-      scansData,
-      scorecardData,
-      trendData,
-      reposData,
-      activityData,
-      topFindingsData,
-      topHighFindingsData,
-    ]) => {
-      setProject(projData);
-      setStats(statsData);
-      setScans(scansData.items ?? []);
-      if (scorecardData) setScorecard(scorecardData);
-      if (trendData) setTrend(trendData);
-      if (activityData) setActivity(activityData.items ?? []);
-      const criticalFindings = topFindingsData?.items ?? [];
-      const highFindings = topHighFindingsData?.items ?? [];
-      setTopFindings(criticalFindings.length > 0 ? criticalFindings : highFindings);
-
-      if (reposData) {
-        const repoList = reposData.items ?? [];
-        setRepos(repoList);
-        const statsMap: Record<string, any> = {};
-        await Promise.allSettled(
-          repoList.map((r: any) =>
-            api.findings
-              .stats(org_id as string, project_id as string, { repositoryId: r.id })
-              .then((s: any) => { statsMap[r.id] = s; })
-              .catch(() => { statsMap[r.id] = null; })
-          )
-        );
-        setRepoStats(statsMap);
-      }
-
-      setLoading(false);
-    }).catch(() => setLoading(false));
+    ])
+      .then(([
+        projectData,
+        statsData,
+        scorecardData,
+        trendData,
+        reposData,
+        activityData,
+        criticalFindings,
+        highFindings,
+      ]) => {
+        setProject(projectData);
+        setStats(statsData);
+        setScorecard(scorecardData);
+        setTrend(trendData);
+        setRepos(reposData?.items ?? []);
+        setActivity(activityData?.items ?? []);
+        setTopFindings((criticalFindings?.items?.length ? criticalFindings.items : highFindings?.items) ?? []);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
   }, [org_id, project_id]);
 
   if (loading) return <SkeletonStats count={4} />;
+  if (!project) {
+    return (
+      <EmptyState
+        icon={ShieldAlert}
+        title="Project unavailable"
+        description="This project could not be loaded."
+      />
+    );
+  }
 
-  const highPriorityCount =
-    (stats?.by_severity?.critical ?? 0) + (stats?.by_severity?.high ?? 0);
-
-  // Build Top Alerts from real findings only. Prefer critical, then high.
-  const topAlerts: { label: string; sub: string }[] =
-    topFindings.slice(0, 3).map((f) => ({
-      label: f.title ?? "Security finding",
-      sub: f.repository_name ?? f.repository_id ?? f.primary_scanner ?? "Unknown source",
-    }));
+  const highPriorityCount = (stats?.by_severity?.critical ?? 0) + (stats?.by_severity?.high ?? 0);
 
   return (
     <div>
-      <PageHeader title="Security Overview Dashboard" />
+      <PageHeader
+        eyebrow="Project"
+        title={project.name ?? "Security Overview"}
+        description="Monitor risk posture, repository coverage, critical findings, and the most recent security activity for this project."
+        actions={
+          <>
+            <Link href={`/dashboard/${org_id}/projects/${project_id}/findings`}>
+              <Button variant="outline" size="sm">Open Findings</Button>
+            </Link>
+            <Link href={`/dashboard/${org_id}/projects/${project_id}/scans`}>
+              <Button size="sm">Runbooks & Scans</Button>
+            </Link>
+          </>
+        }
+      />
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Top 3 cards                                                         */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 animate-fade-up stagger-1">
-
-        {/* Card 1 – Total Vulnerabilities */}
-        <div className="rounded-xl border border-border bg-surface p-5">
-          <p className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-3">
-            Total Vulnerabilities
-          </p>
-
-          <p className="text-4xl font-bold font-display text-text-primary mb-4">
-            {stats?.open ?? 0}
-          </p>
-
-          <SeverityBreakdown
-            critical={stats?.by_severity?.critical ?? 0}
-            high={stats?.by_severity?.high ?? 0}
-            medium={stats?.by_severity?.medium ?? 0}
-            low={stats?.by_severity?.low ?? 0}
-            className="mb-4"
-          />
-
-          <div className="flex items-center gap-1.5 text-xs text-primary font-medium">
-            <TrendingUp className="h-3.5 w-3.5" />
-            <span>Trend — 12 months</span>
+      <div className="mb-8 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className="card-serif p-6">
+          <p className="section-title mb-3">Current Exposure</p>
+          <div className="grid gap-4 md:grid-cols-3">
+            <div>
+              <p className="font-display text-[3rem] leading-none tracking-[-0.04em] text-text-primary">
+                {stats?.open ?? 0}
+              </p>
+              <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
+                Open Findings
+              </p>
+            </div>
+            <div className="md:col-span-2">
+              <SeverityBreakdown
+                critical={stats?.by_severity?.critical ?? 0}
+                high={stats?.by_severity?.high ?? 0}
+                medium={stats?.by_severity?.medium ?? 0}
+                low={stats?.by_severity?.low ?? 0}
+              />
+            </div>
+          </div>
+          <div className="mt-5 flex items-center gap-2 text-sm text-text-secondary">
+            <TrendingUp className="h-4 w-4 text-primary" />
+            Trend reflects the last 30 days of normalized scanner output.
           </div>
         </div>
 
-        {/* Card 2 – Risk Score */}
-        <div className="rounded-xl border border-border bg-surface p-5 flex flex-col">
-          <p className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-3">
-            Risk Score
-          </p>
+        <div className="card-serif flex flex-col gap-4 p-6">
+          <p className="section-title">Risk Score</p>
           <div className="flex flex-1 items-center justify-center">
             <RiskScoreGauge score={scorecard?.overall_score ?? 0} />
           </div>
+          <div className="flex items-center justify-between border-t border-border pt-4">
+            <span className="text-sm text-text-secondary">Repositories in scope</span>
+            <Badge variant="outline">{repos.length} connected</Badge>
+          </div>
         </div>
+      </div>
 
-        {/* Card 3 – High Priority Findings */}
-        <div className="rounded-xl border border-border bg-surface p-5">
-          <p className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-3">
-            High Priority Findings
-          </p>
+      <div className="mb-8 grid gap-4 lg:grid-cols-[1fr_360px]">
+        <FindingsBarChart data={trend?.data ?? []} />
 
-          <p className={cn("text-4xl font-bold font-display mb-4", highPriorityCount > 0 ? "text-severity-high" : "text-text-primary")}>
-            {highPriorityCount}
-          </p>
+        <div className="card-serif p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <p className="section-title">High Priority</p>
+            <Badge variant={highPriorityCount > 0 ? "warning" : "default"}>
+              {highPriorityCount} requiring review
+            </Badge>
+          </div>
 
-          <p className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-2">
-            Top Alerts
-          </p>
-
-          {topAlerts.length === 0 ? (
-            <p className="text-xs text-text-tertiary">No critical or high findings detected.</p>
+          {topFindings.length === 0 ? (
+            <p className="text-sm text-text-tertiary">No critical or high-priority findings are open right now.</p>
           ) : (
-            <ul className="space-y-2">
-              {topAlerts.map((alert, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-danger shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium text-text-primary truncate">{alert.label}</p>
-                    <p className="text-[11px] text-text-tertiary truncate">{alert.sub}</p>
-                  </div>
-                </li>
+            <div className="space-y-3">
+              {topFindings.map((finding) => (
+                <Link
+                  key={finding.id}
+                  href={`/dashboard/${org_id}/projects/${project_id}/findings`}
+                  className="block rounded-[10px] border border-border bg-background px-4 py-3 transition-colors hover:border-border-strong hover:bg-surface-elevated"
+                >
+                  <p className="text-sm font-medium text-text-primary">{finding.title ?? "Security finding"}</p>
+                  <p className="mt-1 text-xs text-text-tertiary">
+                    {finding.repository_name ?? finding.repository_id ?? finding.primary_scanner ?? "Unknown source"}
+                  </p>
+                </Link>
               ))}
-            </ul>
+            </div>
           )}
         </div>
       </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Bottom row – chart + activity                                       */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-4 animate-fade-up stagger-2">
+      <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <p className="section-title">Repositories</p>
+            <Link href={`/dashboard/${org_id}/projects/${project_id}/repositories`} className="text-sm text-primary">
+              View all
+            </Link>
+          </div>
+          <div className="space-y-3">
+            {repos.length === 0 ? (
+              <EmptyState
+                icon={FolderGit2}
+                title="No repositories connected"
+                description="Connect a repository to begin scanning and trend collection."
+              />
+            ) : (
+              repos.slice(0, 4).map((repo) => (
+                <Link
+                  key={repo.id}
+                  href={`/dashboard/${org_id}/projects/${project_id}/repositories/${repo.id}`}
+                  className="card-serif card-interactive flex items-center gap-4 p-4"
+                >
+                  <div className="flex h-11 w-11 items-center justify-center rounded-[10px] border border-border bg-background text-primary">
+                    <FolderGit2 className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-text-primary">{repo.full_name ?? repo.repo_name}</p>
+                    <p className="mt-1 text-xs text-text-tertiary">{repo.default_branch ?? "default branch"}</p>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-text-tertiary" />
+                </Link>
+              ))
+            )}
+          </div>
+        </section>
 
-        {/* Left – Findings Bar Chart */}
-        <FindingsBarChart data={trend?.data ?? []} />
-
-        {/* Right – Recent Activity */}
-        <div className="rounded-xl border border-border bg-surface p-5">
-          <p className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-4">
-            Recent Activity
-          </p>
-
-          {activity.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-10 text-text-tertiary">
-              <Activity className="h-7 w-7 mb-2" strokeWidth={1.5} />
-              <p className="text-sm">No recent activity</p>
-            </div>
-          ) : (
-            <ul className="space-y-3">
-              {activity.map((item, i) => {
-                const Icon = activityIcon(item.action ?? "");
-                return (
-                  <li key={item.id ?? i} className="flex items-start gap-3">
-                    <span
-                      className={cn(
-                        "mt-1 h-2 w-2 rounded-full shrink-0",
-                        activityDot(item.action ?? "")
-                      )}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-text-primary leading-snug">
-                        {formatActivityLabel(item)}
-                      </p>
-                      {item.created_at && (
-                        <p className="text-xs text-text-tertiary mt-0.5">
-                          {timeAgo(item.created_at)}
-                        </p>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <p className="section-title">Recent Activity</p>
+            <Link href={`/dashboard/${org_id}/audit-logs`} className="text-sm text-primary">
+              Audit log
+            </Link>
+          </div>
+          <div className="card-serif overflow-hidden">
+            {activity.length === 0 ? (
+              <div className="px-4 py-8 text-sm text-text-tertiary">No recent activity recorded yet.</div>
+            ) : (
+              activity.map((item) => (
+                <div key={item.id} className="flex items-start gap-3 border-b border-border/60 px-4 py-4 last:border-0">
+                  <span className="mt-2 h-2 w-2 rounded-full bg-primary" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-text-primary">{item.details?.title ?? item.details?.description ?? item.action}</p>
+                    <p className="mt-1 text-xs text-text-tertiary">{formatRelativeTime(item.created_at)}</p>
+                  </div>
+                  <Activity className="h-4 w-4 text-text-tertiary" />
+                </div>
+              ))
+            )}
+          </div>
+        </section>
       </div>
     </div>
   );

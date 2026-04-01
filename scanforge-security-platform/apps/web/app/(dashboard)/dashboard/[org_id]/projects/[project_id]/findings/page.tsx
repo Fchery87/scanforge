@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/scanforge/page-header";
 import { EmptyState } from "@/components/scanforge/empty-state";
 import { SkeletonTable } from "@/components/scanforge/loading-skeleton";
 import { FindingsTable } from "@/components/scanforge/findings-table";
+import { FilterBar } from "@/components/scanforge/filter-bar";
 import FindingDrawer from "./FindingDrawer";
 
 const SEVERITIES = ["critical", "high", "medium", "low", "info"];
@@ -22,55 +23,6 @@ const CATEGORIES = [
   "code_quality",
 ];
 const STATUSES = ["open", "fixed", "suppressed", "accepted_risk", "duplicate"];
-
-// ─── Filter Pill ─────────────────────────────────────────────────────────────
-
-interface FilterPillProps {
-  label: string;
-  value: string;
-  options: { value: string; label: string }[];
-  onChange: (v: string) => void;
-}
-
-function FilterPill({ label, value, options, onChange }: FilterPillProps) {
-  const isActive = value !== "";
-  const activeOption = options.find((o) => o.value === value);
-  const displayLabel = activeOption ? activeOption.label : label;
-
-  return (
-    <div className="relative">
-      <div
-        className={cn(
-          "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
-          isActive
-            ? "border-primary/30 bg-primary/5 text-primary"
-            : "border-border bg-surface text-text-secondary hover:border-border-strong hover:text-text-primary"
-        )}
-      >
-        <ChevronRight
-          className={cn(
-            "h-3 w-3 rotate-90 transition-colors",
-            isActive ? "text-primary/70" : "text-text-tertiary"
-          )}
-        />
-        <span>{displayLabel}</span>
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-          aria-label={label}
-        >
-          <option value="">{label}</option>
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </div>
-    </div>
-  );
-}
 
 // ─── Pagination ───────────────────────────────────────────────────────────────
 
@@ -458,13 +410,20 @@ function FindingsContent() {
     <div>
       {/* Page header */}
       <PageHeader
-        title="Security Findings Inventory"
-        description="Manage your team's security issues and vulnerabilities across repositories."
+        eyebrow="Triage"
+        title="Security Findings"
+        description="Review, filter, and bulk-manage the normalized findings detected across repositories in this project."
+        actions={
+          <Button onClick={() => handleExportFiltered("csv")}>
+            <Download className="h-4 w-4" />
+            Download Report
+          </Button>
+        }
       />
 
       {/* Bulk action bar */}
       {selected.length > 0 && (
-        <div className="flex items-center gap-3 mb-4 px-4 py-2.5 rounded-xl border border-border bg-surface animate-fade-up">
+        <div className="card-serif mb-4 flex items-center gap-3 px-4 py-3 animate-fade-up">
           <Badge variant="primary" className="text-xs">
             {selected.length} selected
           </Badge>
@@ -517,106 +476,64 @@ function FindingsContent() {
       )}
 
       {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-2 mb-6">
-        {/* Search input */}
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-tertiary pointer-events-none" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
+      <FilterBar
+        className="mb-6"
+        searchValue={search}
+        onSearchChange={(value) => {
+          setSearch(value);
+          setPage(0);
+        }}
+        searchPlaceholder="Search findings, repositories..."
+        filters={[
+          {
+            key: "severity",
+            label: "Severity",
+            value: severity,
+            onChange: (value) => {
+              setSeverity(value);
               setPage(0);
-            }}
-            placeholder="Search findings, repositories..."
-            className="w-full rounded-full border border-border bg-surface pl-9 pr-4 py-1.5 text-xs text-text-primary placeholder:text-text-tertiary outline-none transition-colors focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
-          />
-        </div>
-
-        {/* Severity filter */}
-        <FilterPill
-          label="Severity (All)"
-          value={severity}
-          options={SEVERITIES.map((s) => ({
-            value: s,
-            label: s.charAt(0).toUpperCase() + s.slice(1),
-          }))}
-          onChange={(v) => {
-            setSeverity(v);
-            setPage(0);
-          }}
-        />
-
-        {/* Status filter */}
-        <FilterPill
-          label="Status (Open)"
-          value={status}
-          options={STATUSES.map((s) => ({
-            value: s,
-            label: s
-              .replace(/_/g, " ")
-              .replace(/\b\w/g, (l) => l.toUpperCase()),
-          }))}
-          onChange={(v) => {
-            setStatus(v);
-            setPage(0);
-          }}
-        />
-
-        {/* Repository filter */}
-        <FilterPill
-          label="Repository (All)"
-          value={repositoryId}
-          options={repos.map((r: any) => ({
-            value: r.id,
-            label: r.full_name,
-          }))}
-          onChange={(v) => {
-            setRepositoryId(v);
-            setPage(0);
-          }}
-        />
-
-        {/* Category filter (Assignee slot in the design) */}
-        <FilterPill
-          label="Category (All)"
-          value={category}
-          options={CATEGORIES.map((c) => ({
-            value: c,
-            label: c
-              .replace(/_/g, " ")
-              .replace(/\b\w/g, (l) => l.toUpperCase()),
-          }))}
-          onChange={(v) => {
-            setCategory(v);
-            setPage(0);
-          }}
-        />
-
-        {/* Clear filters */}
-        {hasActiveFilters && (
-          <button
-            onClick={clearAllFilters}
-            className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium text-text-tertiary hover:border-border-strong hover:text-text-secondary transition-colors"
-            aria-label="Clear all filters"
-          >
-            <X className="h-3 w-3" />
-            Clear
-          </button>
-        )}
-
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Download Report */}
-        <button
-          onClick={() => handleExportFiltered("csv")}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary/90 active:bg-primary/80 transition-colors"
-        >
-          <Download className="h-3.5 w-3.5" />
-          Download Report
-        </button>
-      </div>
+            },
+            options: SEVERITIES.map((s) => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) })),
+          },
+          {
+            key: "status",
+            label: "Status",
+            value: status,
+            onChange: (value) => {
+              setStatus(value);
+              setPage(0);
+            },
+            options: STATUSES.map((s) => ({
+              value: s,
+              label: s.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()),
+            })),
+          },
+          {
+            key: "repository",
+            label: "Repository",
+            value: repositoryId,
+            onChange: (value) => {
+              setRepositoryId(value);
+              setPage(0);
+            },
+            options: repos.map((r: any) => ({ value: r.id, label: r.full_name })),
+          },
+          {
+            key: "category",
+            label: "Category",
+            value: category,
+            onChange: (value) => {
+              setCategory(value);
+              setPage(0);
+            },
+            options: CATEGORIES.map((c) => ({
+              value: c,
+              label: c.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()),
+            })),
+          },
+        ]}
+        onClearAll={hasActiveFilters ? clearAllFilters : undefined}
+      />
 
       {/* Table area */}
       {loading ? (
@@ -629,17 +546,19 @@ function FindingsContent() {
         />
       ) : (
         <>
-          <FindingsTable
-            findings={sortedFindings}
-            selected={selected}
-            onToggleSelect={toggleSelect}
-            onToggleAll={toggleAll}
-            onSelectFinding={setSelectedFinding}
-            sortBy={sortBy}
-            sortDir={sortDir}
-            onSort={toggleSort}
-            focusedIndex={focusedIndex}
-          />
+          <div className="card-serif overflow-hidden">
+            <FindingsTable
+              findings={sortedFindings}
+              selected={selected}
+              onToggleSelect={toggleSelect}
+              onToggleAll={toggleAll}
+              onSelectFinding={setSelectedFinding}
+              sortBy={sortBy}
+              sortDir={sortDir}
+              onSort={toggleSort}
+              focusedIndex={focusedIndex}
+            />
+          </div>
 
           <Pagination
             page={page}

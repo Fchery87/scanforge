@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { useState } from "react";
+import { ArrowUpDown, ArrowUp, ArrowDown, Eye, Check, Archive } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SeverityBadge } from "@/components/scanforge/severity-badge";
 import { StatusBadge } from "@/components/scanforge/status-badge";
@@ -14,6 +14,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface Finding {
   id: string;
@@ -70,9 +76,10 @@ export function FindingsTable({
   const allSelected = findings.length > 0 && selected.length === findings.length;
 
   return (
-    <Table className={className}>
-      <TableHeader>
-        <TableRow className="hover:bg-transparent border-b border-border">
+    <TooltipProvider delayDuration={200}>
+    <Table className={cn("relative", className)}>
+      <TableHeader className="sticky top-0 z-10 bg-surface shadow-sm">
+        <TableRow className="hover:bg-transparent border-b border-border bg-surface">
           <TableHead className="w-10">
             <Checkbox
               checked={allSelected}
@@ -106,18 +113,58 @@ export function FindingsTable({
       <TableBody>
         {findings.map((f, idx) => {
           const age = findingAge(f.first_seen_at);
+          const isSelected = selected.includes(f.id);
+          const isFocused = focusedIndex === idx;
+          
           return (
             <TableRow
               key={f.id}
               className={cn(
-                "cursor-pointer transition-colors",
-                selected.includes(f.id) && "bg-primary/[0.03]",
-                focusedIndex === idx && "bg-surface-hover ring-1 ring-primary/20"
+                "group cursor-pointer transition-all duration-200 relative",
+                "hover:bg-primary/[0.04] hover:shadow-sm",
+                isSelected && "bg-primary/[0.06]",
+                isFocused && [
+                  "bg-surface-hover",
+                  "ring-1 ring-inset ring-primary/30",
+                  "shadow-sm"
+                ]
               )}
             >
-              <TableCell>
+              {/* Hover action bar */}
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center gap-1 bg-surface/90 backdrop-blur-sm rounded-lg p-1 shadow-sm border border-border z-10">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectFinding(f.id);
+                      }}
+                      className="p-1.5 hover:bg-surface-hover rounded-md transition-colors"
+                    >
+                      <Eye className="h-3.5 w-3.5 text-text-tertiary hover:text-primary" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">View details</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleSelect(f.id);
+                      }}
+                      className="p-1.5 hover:bg-surface-hover rounded-md transition-colors"
+                    >
+                      <Check className="h-3.5 w-3.5 text-text-tertiary hover:text-success" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">Select</TooltipContent>
+                </Tooltip>
+              </div>
+
+              <TableCell className="w-10">
                 <Checkbox
-                  checked={selected.includes(f.id)}
+                  checked={isSelected}
                   onCheckedChange={() => onToggleSelect(f.id)}
                   aria-label={`Select finding`}
                 />
@@ -125,10 +172,10 @@ export function FindingsTable({
               <TableCell>
                 <SeverityBadge severity={f.severity} />
               </TableCell>
-              <TableCell>
+              <TableCell className="min-w-[250px]">
                 <button
                   onClick={() => onSelectFinding(f.id)}
-                  className="text-left text-sm text-text-primary hover:text-primary transition-colors font-medium truncate max-w-[300px] block"
+                  className="text-left text-sm text-text-primary hover:text-primary transition-colors font-medium truncate max-w-[280px] block"
                 >
                   {f.title}
                 </button>
@@ -171,5 +218,6 @@ export function FindingsTable({
         })}
       </TableBody>
     </Table>
+    </TooltipProvider>
   );
 }

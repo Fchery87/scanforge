@@ -159,3 +159,28 @@ async def cancel_scan(
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     return canceled
+
+
+@router.delete("/{scan_id}", response_model=ScanResponse)
+async def delete_scan(
+    project_id: UUID,
+    scan_id: UUID,
+    current_user: UserContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    project_service = ProjectService(db)
+    has_access = await project_service.user_has_access(project_id, current_user.user_id)
+    if not has_access:
+        raise HTTPException(status_code=403, detail="No access to this project")
+
+    scan_service = ScanService(db)
+
+    try:
+        deleted = await scan_service.delete(scan_id, current_user.user_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    if not deleted or deleted.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    return deleted

@@ -176,6 +176,26 @@ class ScanService:
         await self.db.refresh(scan)
         return scan
 
+    async def delete(
+        self,
+        scan_id: UUID,
+        user_id: UUID,
+    ) -> Scan | None:
+        scan = await self.get_by_id(scan_id, user_id)
+        if not scan:
+            return None
+
+        if scan.status not in (
+            ScanStatusEnum.QUEUED,
+            ScanStatusEnum.FAILED,
+            ScanStatusEnum.CANCELED,
+        ):
+            raise ValueError("Only queued, failed, or canceled scans can be deleted; completed scans are retained")
+
+        await self.db.delete(scan)
+        await self.db.commit()
+        return scan
+
     async def create_scanner_run(
         self,
         scan_id: UUID,

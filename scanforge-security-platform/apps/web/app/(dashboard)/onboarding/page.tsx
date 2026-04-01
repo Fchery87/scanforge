@@ -1,32 +1,31 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
-  CheckCircle2,
-  Circle,
   ArrowRight,
-  Shield,
+  BarChart3,
+  Building2,
+  CheckCircle2,
+  FileSearch,
+  FolderKanban,
+  Github,
   GitBranch,
   Scan,
-  FileSearch,
-  Calendar,
-  Building2,
-  FolderKanban,
-  X,
   Settings,
-  BarChart3,
+  Shield,
   Users,
-  Github,
+  X,
 } from "lucide-react";
+
 import { api } from "@/lib/api";
+import { getSlugAdjustmentNotice, getSlugPreviewMessage } from "@/lib/organizations/slug-feedback";
 import { cn } from "@/lib/utils";
-import { PageHeader } from "@/components/scanforge/page-header";
-import { OnboardingStepCard } from "@/components/scanforge/onboarding-step";
-import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -46,10 +45,19 @@ interface OnboardingChecklist {
   is_complete: boolean;
 }
 
+const STEP_ICONS: Record<string, React.ReactNode> = {
+  create_org: <Building2 size={18} />,
+  connect_github: <Github size={18} />,
+  create_project: <FolderKanban size={18} />,
+  connect_repo: <GitBranch size={18} />,
+  run_first_scan: <Scan size={18} />,
+  review_findings: <FileSearch size={18} />,
+};
+
 function ConnectGitHubButton({ orgId }: { orgId: string }) {
   const [loading, setLoading] = useState(false);
 
-  const handleConnect = async () => {
+  async function handleConnect() {
     setLoading(true);
     try {
       const { url } = await api.github.getInstallUrl(orgId);
@@ -57,7 +65,7 @@ function ConnectGitHubButton({ orgId }: { orgId: string }) {
     } catch {
       setLoading(false);
     }
-  };
+  }
 
   return (
     <Button onClick={handleConnect} disabled={loading} size="sm">
@@ -65,16 +73,6 @@ function ConnectGitHubButton({ orgId }: { orgId: string }) {
     </Button>
   );
 }
-
-const STEP_ICONS: Record<string, React.ReactNode> = {
-  create_org: <Building2 size={20} />,
-  connect_github: <Github size={20} />,
-  create_project: <FolderKanban size={20} />,
-  connect_repo: <GitBranch size={20} />,
-  run_first_scan: <Scan size={20} />,
-  review_findings: <FileSearch size={20} />,
-  setup_schedule: <Calendar size={20} />,
-};
 
 function OnboardingContent() {
   const searchParams = useSearchParams();
@@ -85,26 +83,27 @@ function OnboardingContent() {
   const [dismissed, setDismissed] = useState(false);
   const [inlineOrgForm, setInlineOrgForm] = useState({ name: "", slug: "" });
   const [creatingOrg, setCreatingOrg] = useState(false);
+  const [orgCreateError, setOrgCreateError] = useState("");
+  const [slugPreview, setSlugPreview] = useState<{ available_slug: string; adjusted: boolean } | null>(null);
+  const [slugPreviewLoading, setSlugPreviewLoading] = useState(false);
   const githubConnected = searchParams.get("github_connected") === "true";
+  const slugAdjustedFrom = searchParams.get("slug_adjusted_from");
+  const createdOrgSlug = searchParams.get("org_slug");
+  const slugAdjustmentNotice =
+    slugAdjustedFrom && createdOrgSlug
+      ? getSlugAdjustmentNotice(slugAdjustedFrom, createdOrgSlug)
+      : null;
 
   useEffect(() => {
-    if (localStorage.getItem("scanforge_onboarding_dismissed") === "true") {
-      setDismissed(true);
-    }
+    if (localStorage.getItem("scanforge_onboarding_dismissed") === "true") setDismissed(true);
   }, []);
 
   useEffect(() => {
     async function loadChecklist() {
       try {
-        const res = await fetch(`${API_BASE}/api/v1/onboarding?org_id=${orgId || ""}`, {
-          credentials: "include",
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setChecklist(data);
-        } else {
-          setChecklist(null);
-        }
+        const res = await fetch(`${API_BASE}/api/v1/onboarding?org_id=${orgId || ""}`, { credentials: "include" });
+        if (res.ok) setChecklist(await res.json());
+        else setChecklist(null);
       } catch {
         setChecklist(null);
       } finally {
@@ -114,53 +113,87 @@ function OnboardingContent() {
     loadChecklist();
   }, [orgId]);
 
-  const handleDismiss = () => {
+  useEffect(() => {
+    if (!inlineOrgForm.slug) {
+      setSlugPreview(null);
+      setSlugPreviewLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setSlugPreviewLoading(true);
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const preview = await api.organizations.previewSlug(inlineOrgForm.slug);
+        if (!cancelled) setSlugPreview({ available_slug: preview.available_slug, adjusted: preview.adjusted });
+      } catch {
+        if (!cancelled) setSlugPreview(null);
+      } finally {
+        if (!cancelled) setSlugPreviewLoading(false);
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [inlineOrgForm.slug]);
+
+  function handleDismiss() {
     localStorage.setItem("scanforge_onboarding_dismissed", "true");
     setDismissed(true);
-  };
+  }
 
-  const handleInlineOrgCreate = async (e: React.FormEvent) => {
+  async function handleInlineOrgCreate(e: React.FormEvent) {
     e.preventDefault();
     setCreatingOrg(true);
+    setOrgCreateError("");
     try {
+      const requestedSlug = inlineOrgForm.slug;
       const org = await api.organizations.create(inlineOrgForm);
-      router.push(`/dashboard/${org.id}/onboarding?org_id=${org.id}`);
-    } catch {
+      const params = new URLSearchParams({ org_id: org.id, org_slug: org.slug });
+      if (requestedSlug !== org.slug) params.set("slug_adjusted_from", requestedSlug);
+      router.push(`/dashboard/${org.id}/onboarding?${params.toString()}`);
+    } catch (error: any) {
+      setOrgCreateError(error?.message ?? "Failed to create organization");
       setCreatingOrg(false);
     }
-  };
+  }
 
   if (dismissed) return null;
 
   if (loading) {
     return (
-      <div className="max-w-2xl mx-auto py-8 px-4">
+      <div className="mx-auto max-w-3xl px-4 py-12">
         <div className="flex items-center justify-center py-16">
           <div className="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-          <span className="ml-3 text-text-secondary">Loading checklist...</span>
+          <span className="ml-3 text-text-secondary">Loading checklist…</span>
         </div>
       </div>
     );
   }
 
-  const completedCount = checklist?.steps.filter((s) => s.completed).length ?? 0;
+  const completedCount = checklist?.steps.filter((step) => step.completed).length ?? 0;
   const totalCount = checklist?.steps.length ?? 6;
   const percentage = checklist?.completion_percentage ?? 0;
 
   return (
-    <div className="max-w-2xl mx-auto py-8 px-4">
-      <div className="flex items-start gap-4 mb-8 relative">
-        <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-          <Shield size={32} className="text-primary" />
-        </div>
-        <div className="flex-1">
-          <h1 className="font-display text-2xl text-text-primary">Welcome to ScanForge</h1>
-          <p className="text-text-secondary mt-1">
-            Get started by completing the steps below to secure your repositories.
-          </p>
+    <div className="mx-auto max-w-4xl px-4 py-10">
+      <div className="mb-8 flex items-start justify-between gap-6">
+        <div className="flex items-start gap-4">
+          <div className="flex h-14 w-14 items-center justify-center rounded-[12px] border border-border bg-surface-elevated text-primary">
+            <Shield size={26} />
+          </div>
+          <div>
+            <p className="section-title mb-2">Onboarding</p>
+            <h1 className="font-display text-[2.2rem] leading-none tracking-[-0.04em] text-text-primary">Welcome to ScanForge</h1>
+            <p className="mt-3 max-w-[52ch] text-sm leading-relaxed text-text-secondary">
+              Complete the setup steps below to connect your workspace, onboard repositories, and get to your first findings review.
+            </p>
+          </div>
         </div>
         <button
-          className="p-2 rounded-lg text-text-tertiary hover:text-text-secondary hover:bg-surface-hover transition-colors"
+          className="flex h-10 w-10 items-center justify-center rounded-[10px] border border-border bg-surface text-text-tertiary transition-colors hover:text-text-primary"
           onClick={handleDismiss}
           title="Dismiss"
         >
@@ -168,166 +201,164 @@ function OnboardingContent() {
         </button>
       </div>
 
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-text-primary">Your Progress</span>
-          <span className="text-sm text-text-secondary">
-            {completedCount} / {totalCount} completed
-          </span>
+      <div className="card-serif mb-6 p-6">
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-sm font-medium text-text-primary">Progress</span>
+          <span className="text-sm text-text-secondary">{completedCount} / {totalCount} completed</span>
         </div>
         <Progress value={percentage} className="h-2" />
-        <p className="text-xs text-text-tertiary mt-1 text-right">{percentage}% complete</p>
+        <p className="mt-2 text-right font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">{percentage}% complete</p>
       </div>
 
-      {checklist?.is_complete && (
-        <div className="flex items-center gap-3 p-4 rounded-lg bg-success/10 border border-success/20 mb-6 animate-fade-up">
-          <CheckCircle2 size={24} className="text-success flex-shrink-0" />
-          <div className="text-sm">
-            <strong className="text-text-primary">All done! </strong>
-            <span className="text-text-secondary">You&apos;ve completed your onboarding. Keep scanning to stay secure.</span>
-          </div>
+      {githubConnected ? (
+        <div className="mb-6 rounded-[10px] border border-success/20 bg-success/10 px-4 py-3 text-sm text-text-primary">
+          GitHub connected successfully.
         </div>
-      )}
+      ) : null}
 
-      {githubConnected && (
-        <div className="flex items-center gap-3 p-4 rounded-lg bg-success/10 border border-success/20 mb-6 animate-fade-up">
-          <CheckCircle2 size={20} className="text-success flex-shrink-0" />
-          <span className="text-sm text-text-primary">GitHub connected successfully!</span>
+      {slugAdjustmentNotice ? (
+        <div className="mb-6 rounded-[10px] border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-text-primary">
+          {slugAdjustmentNotice}
         </div>
-      )}
+      ) : null}
 
-      <div className="space-y-3 mb-8">
+      <div className="space-y-3">
         {(checklist?.steps ?? []).map((step) => (
           <div
             key={step.id}
             className={cn(
-              "relative flex items-start gap-4 p-4 rounded-lg border transition-colors",
-              step.completed
-                ? "border-success/20 bg-success/5"
-                : "border-border bg-surface hover:bg-surface-hover"
+              "card-serif p-5 transition-colors",
+              step.completed ? "border-success/25 bg-success/[0.04]" : "hover:bg-surface-elevated"
             )}
           >
-            <div className={cn(
-              "flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center",
-              step.completed
-                ? "bg-success/10 text-success"
-                : "bg-surface-elevated text-text-secondary"
-            )}>
-              {step.completed ? (
-                <CheckCircle2 size={20} />
-              ) : (
-                STEP_ICONS[step.id] || <Circle size={20} />
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <h3 className={cn(
-                "font-medium text-sm",
-                step.completed ? "text-text-secondary line-through" : "text-text-primary"
+            <div className="flex items-start gap-4">
+              <div className={cn(
+                "flex h-10 w-10 items-center justify-center rounded-[10px] border",
+                step.completed ? "border-success/30 bg-success/10 text-success" : "border-border bg-background text-text-secondary"
               )}>
-                {step.label}
-              </h3>
-              <p className="text-text-tertiary text-sm mt-0.5">{step.description}</p>
-              {step.id === "create_org" && !step.completed && (
-                <form onSubmit={handleInlineOrgCreate} className="flex items-center gap-2 mt-3">
-                  <Input
-                    placeholder="Organization name"
-                    required
-                    value={inlineOrgForm.name}
-                    onChange={(e) => setInlineOrgForm({ ...inlineOrgForm, name: e.target.value, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-") })}
-                    className="h-9 text-sm"
-                  />
-                  <Button type="submit" disabled={creatingOrg} size="sm">
-                    {creatingOrg ? "Creating..." : "Create"}
-                  </Button>
-                </form>
-              )}
-              {step.id === "connect_github" && !step.completed && orgId && (
-                <div className="mt-3">
-                  <ConnectGitHubButton orgId={orgId} />
+                {step.completed ? <CheckCircle2 size={18} /> : STEP_ICONS[step.id] ?? <Shield size={18} />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className={cn("text-sm font-medium", step.completed ? "text-text-secondary line-through" : "text-text-primary")}>
+                      {step.label}
+                    </h3>
+                    <p className="mt-1 text-sm text-text-tertiary">{step.description}</p>
+                  </div>
+                  {step.completed ? (
+                    <Badge variant="success">Complete</Badge>
+                  ) : null}
                 </div>
-              )}
+
+                {step.id === "create_org" && !step.completed ? (
+                  <form onSubmit={handleInlineOrgCreate} className="mt-4 space-y-3">
+                    <Input
+                      placeholder="Organization name"
+                      required
+                      value={inlineOrgForm.name}
+                      onChange={(e) => {
+                        setOrgCreateError("");
+                        setSlugPreview(null);
+                        setInlineOrgForm({
+                          ...inlineOrgForm,
+                          name: e.target.value,
+                          slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
+                        });
+                      }}
+                      className="h-10"
+                    />
+                    {orgCreateError ? (
+                      <div className="rounded-[10px] border border-danger/20 bg-danger/10 px-3 py-2 text-sm text-danger">
+                        {orgCreateError}
+                      </div>
+                    ) : null}
+                    {inlineOrgForm.slug ? (
+                      <div className={cn(
+                        "rounded-[10px] border px-3 py-2 text-xs",
+                        slugPreview?.adjusted ? "border-warning/30 bg-warning/10 text-text-primary" : "border-border bg-background text-text-secondary"
+                      )}>
+                        {slugPreviewLoading
+                          ? "Checking slug availability..."
+                          : getSlugPreviewMessage(inlineOrgForm.slug, slugPreview?.available_slug ?? inlineOrgForm.slug)}
+                      </div>
+                    ) : null}
+                    <div className="flex items-center gap-3">
+                      <Button type="submit" disabled={creatingOrg} size="sm">
+                        {creatingOrg ? "Creating..." : "Create"}
+                      </Button>
+                      {inlineOrgForm.slug ? (
+                        <span className="text-xs text-text-tertiary">
+                          Requested slug: <span className="font-mono text-text-secondary">{inlineOrgForm.slug}</span>
+                        </span>
+                      ) : null}
+                    </div>
+                  </form>
+                ) : null}
+
+                {step.id === "connect_github" && !step.completed && orgId ? (
+                  <div className="mt-4">
+                    <ConnectGitHubButton orgId={orgId} />
+                  </div>
+                ) : null}
+              </div>
+
+              {step.action_url && !step.completed && step.id !== "create_org" ? (
+                <Link href={step.action_url} className="mt-1 inline-flex items-center gap-1 text-sm text-primary hover:underline">
+                  Go <ArrowRight size={14} />
+                </Link>
+              ) : null}
             </div>
-            {step.action_url && !step.completed && step.id !== "create_org" && (
-              <Link
-                href={step.action_url}
-                className="flex-shrink-0 flex items-center gap-1 text-sm text-primary hover:underline mt-1"
-              >
-                Go <ArrowRight size={14} />
-              </Link>
-            )}
-            {step.completed && (
-              <span className="flex-shrink-0 inline-block px-2 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success">
-                Complete
-              </span>
-            )}
           </div>
         ))}
       </div>
 
-      <div className="flex items-center justify-between">
-        <Link
-          href="/dashboard"
-          className="text-sm text-text-secondary hover:text-text-primary transition-colors"
-        >
+      <div className="mt-8 flex items-center justify-between">
+        <Link href="/dashboard" className="text-sm text-text-secondary hover:text-text-primary">
           Back to Dashboard
         </Link>
-        {orgId && (
-          <Link
-            href={`/dashboard/${orgId}`}
-            className="flex items-center gap-1.5 text-sm text-primary hover:underline"
-          >
+        {orgId ? (
+          <Link href={`/dashboard/${orgId}`} className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline">
             Go to Organization <ArrowRight size={16} />
           </Link>
-        )}
+        ) : null}
       </div>
 
-      {checklist?.is_complete && (
+      {checklist?.is_complete ? (
         <div className="mt-10">
-          <h3 className="font-display text-lg text-text-primary mb-4">What&apos;s Next?</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Link
-              href={`/dashboard/${orgId}/scorecard`}
-              className="flex items-start gap-3 p-4 rounded-lg border border-border bg-surface hover:bg-surface-hover transition-colors"
-            >
-              <BarChart3 size={20} className="text-primary flex-shrink-0 mt-0.5" />
+          <h3 className="mb-4 font-display text-lg text-text-primary">What’s Next?</h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Link href={`/dashboard/${orgId}/scorecard`} className="card-serif card-interactive flex items-start gap-3 p-4">
+              <BarChart3 size={20} className="mt-0.5 shrink-0 text-primary" />
               <div>
-                <strong className="text-sm text-text-primary block">Security Scorecard</strong>
-                <span className="text-xs text-text-tertiary">Review your organization&apos;s security posture</span>
+                <strong className="block text-sm text-text-primary">Security Scorecard</strong>
+                <span className="text-xs text-text-tertiary">Review your organization’s security posture.</span>
               </div>
             </Link>
-            <Link
-              href={`/dashboard/${orgId}/settings`}
-              className="flex items-start gap-3 p-4 rounded-lg border border-border bg-surface hover:bg-surface-hover transition-colors"
-            >
-              <Users size={20} className="text-primary flex-shrink-0 mt-0.5" />
+            <Link href={`/dashboard/${orgId}/settings`} className="card-serif card-interactive flex items-start gap-3 p-4">
+              <Users size={20} className="mt-0.5 shrink-0 text-primary" />
               <div>
-                <strong className="text-sm text-text-primary block">Invite Team Members</strong>
-                <span className="text-xs text-text-tertiary">Add collaborators to your organization</span>
+                <strong className="block text-sm text-text-primary">Invite Team Members</strong>
+                <span className="text-xs text-text-tertiary">Add collaborators to your organization.</span>
               </div>
             </Link>
-            <Link
-              href={`/dashboard/${orgId}/audit-logs`}
-              className="flex items-start gap-3 p-4 rounded-lg border border-border bg-surface hover:bg-surface-hover transition-colors"
-            >
-              <FileSearch size={20} className="text-primary flex-shrink-0 mt-0.5" />
+            <Link href={`/dashboard/${orgId}/audit-logs`} className="card-serif card-interactive flex items-start gap-3 p-4">
+              <FileSearch size={20} className="mt-0.5 shrink-0 text-primary" />
               <div>
-                <strong className="text-sm text-text-primary block">Audit Logs</strong>
-                <span className="text-xs text-text-tertiary">Track all activity in your organization</span>
+                <strong className="block text-sm text-text-primary">Audit Logs</strong>
+                <span className="text-xs text-text-tertiary">Track all activity in your organization.</span>
               </div>
             </Link>
-            <Link
-              href={`/dashboard/${orgId}/settings`}
-              className="flex items-start gap-3 p-4 rounded-lg border border-border bg-surface hover:bg-surface-hover transition-colors"
-            >
-              <Settings size={20} className="text-primary flex-shrink-0 mt-0.5" />
+            <Link href={`/dashboard/${orgId}/settings`} className="card-serif card-interactive flex items-start gap-3 p-4">
+              <Settings size={20} className="mt-0.5 shrink-0 text-primary" />
               <div>
-                <strong className="text-sm text-text-primary block">Configure Notifications</strong>
-                <span className="text-xs text-text-tertiary">Set up Slack and email alerts</span>
+                <strong className="block text-sm text-text-primary">Configure Notifications</strong>
+                <span className="text-xs text-text-tertiary">Set up alerts and team access patterns.</span>
               </div>
             </Link>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

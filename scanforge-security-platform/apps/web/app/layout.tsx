@@ -1,17 +1,27 @@
-import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import type { Metadata, Viewport } from 'next';
+import { Cormorant_Garamond, IBM_Plex_Sans, IBM_Plex_Mono } from 'next/font/google';
 import { AppProvider } from '@/components/providers/app-provider';
+import { scanForgeBodyClassName, scanForgeMetaThemeColor } from '@/lib/design-system';
 import './globals.css';
 
-const geistSans = Geist({
+const cormorantGaramond = Cormorant_Garamond({
+  weight: ['500', '600'],
   subsets: ['latin'],
-  variable: '--font-geist-sans',
+  variable: '--font-cormorant-garamond',
   display: 'swap',
 });
 
-const geistMono = Geist_Mono({
+const ibmPlexSans = IBM_Plex_Sans({
+  weight: ['400', '500', '600'],
   subsets: ['latin'],
-  variable: '--font-geist-mono',
+  variable: '--font-ibm-plex-sans',
+  display: 'swap',
+});
+
+const ibmPlexMono = IBM_Plex_Mono({
+  weight: ['400', '500'],
+  subsets: ['latin'],
+  variable: '--font-ibm-plex-mono',
   display: 'swap',
 });
 
@@ -21,16 +31,21 @@ export const metadata: Metadata = {
     'Automated security scanning and vulnerability management for your code repositories.',
 };
 
+export const viewport: Viewport = {
+  themeColor: scanForgeMetaThemeColor,
+  colorScheme: 'dark',
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html
-      lang='en'
-      suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable}`}
-    >
-      <body>
+      <html
+        lang='en'
+        suppressHydrationWarning
+        className={`${cormorantGaramond.variable} ${ibmPlexSans.variable} ${ibmPlexMono.variable}`}
+      >
+      <body className={scanForgeBodyClassName}>
         <AppProvider>{children}</AppProvider>
       </body>
     </html>

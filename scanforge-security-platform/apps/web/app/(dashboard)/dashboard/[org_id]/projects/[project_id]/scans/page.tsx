@@ -2,30 +2,32 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { Activity, Plus, Trash2, XCircle as XCircleIcon } from "lucide-react";
+
 import { api } from "@/lib/api";
-import { Activity, Play, Clock, CheckCircle, XCircle, Loader, Ban, Plus, XCircle as XCircleIcon } from "lucide-react";
-import { PageHeader } from "@/components/scanforge/page-header";
+import { formatRelativeTime, formatScanDuration } from "@/lib/project-surface";
 import { EmptyState } from "@/components/scanforge/empty-state";
+import { PageHeader } from "@/components/scanforge/page-header";
 import { StatusBadge } from "@/components/scanforge/status-badge";
 import { SkeletonTable } from "@/components/scanforge/loading-skeleton";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
-  SelectTrigger,
-  SelectValue,
   SelectContent,
   SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
 
 export default function ScansPage() {
   const { org_id, project_id } = useParams();
@@ -37,11 +39,7 @@ export default function ScansPage() {
   const limit = 20;
   const [showModal, setShowModal] = useState(false);
   const [repos, setRepos] = useState<any[]>([]);
-  const [scanForm, setScanForm] = useState({
-    repository_id: "",
-    branch_name: "",
-    scan_type: "full",
-  });
+  const [scanForm, setScanForm] = useState({ repository_id: "", branch_name: "", scan_type: "full" });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [listError, setListError] = useState("");
@@ -53,15 +51,30 @@ export default function ScansPage() {
         .then((res: any) => {
           setRepos(res.items || res);
           setReposError("");
-          if (res.items?.[0]) setScanForm((f) => ({ ...f, repository_id: res.items[0].id }));
+          if (res.items?.[0]) {
+            setScanForm((current) => ({ ...current, repository_id: res.items[0].id }));
+          }
         })
-        .catch((err: any) => {
-          setReposError(err.message || "Failed to load repositories");
-        });
+        .catch((err: any) => setReposError(err.message || "Failed to load repositories"));
     }
-  }, [showModal]);
+  }, [showModal, org_id, project_id, repos.length]);
 
-  const handleTriggerScan = async (e: React.FormEvent) => {
+  useEffect(() => {
+    if (!org_id || !project_id) return;
+    api.scans.list(org_id as string, project_id as string, page * limit, limit)
+      .then((res) => {
+        setScans(res.items ?? []);
+        setTotal(res.total ?? 0);
+        setListError("");
+        setLoading(false);
+      })
+      .catch((err: any) => {
+        setListError(err.message || "Failed to load scans");
+        setLoading(false);
+      });
+  }, [org_id, project_id, page]);
+
+  async function handleTriggerScan(e: React.FormEvent) {
     e.preventDefault();
     if (!scanForm.repository_id) return;
     setSubmitting(true);
@@ -73,7 +86,7 @@ export default function ScansPage() {
         branch_name: scanForm.branch_name || undefined,
         scan_type: scanForm.scan_type,
       });
-      setScans((prev: any[]) => [scan, ...prev]);
+      setScans((current: any[]) => [scan, ...current]);
       setShowModal(false);
       setScanForm({ repository_id: "", branch_name: "", scan_type: "full" });
     } catch (err: any) {
@@ -81,43 +94,37 @@ export default function ScansPage() {
     } finally {
       setSubmitting(false);
     }
-  };
+  }
 
-  const handleCancel = async (scanId: string) => {
+  async function handleCancel(scanId: string) {
     try {
       const updated = await api.scans.cancel(org_id as string, project_id as string, scanId, "Canceled from UI");
-      setScans((prev: any[]) => prev.map((s: any) => s.id === scanId ? updated : s));
-    } catch (err) { console.error(err); }
-  };
+      setScans((current: any[]) => current.map((scan: any) => scan.id === scanId ? updated : scan));
+    } catch {}
+  }
 
-  useEffect(() => {
-    if (!org_id || !project_id) return;
-    api.scans.list(org_id as string, project_id as string, page * limit, limit)
-      .then((res) => {
-        setScans(res.items ?? []);
-        setTotal(res.total ?? 0);
-        setListError("");
-        setLoading(false);
-      }).catch((err: any) => {
-        setListError(err.message || "Failed to load scans");
-        setLoading(false);
-      });
-  }, [org_id, project_id, page]);
+  async function handleDelete(scanId: string) {
+    if (!window.confirm("Delete this stale scan? Completed scans are retained and cannot be deleted.")) {
+      return;
+    }
 
-  function duration(scan: any) {
-    if (scan.summary_json?.duration_ms) return `${(scan.summary_json.duration_ms / 1000).toFixed(1)}s`;
-    if (scan.summary_json?.duration_seconds) return `${Number(scan.summary_json.duration_seconds).toFixed(1)}s`;
-    return "\u2014";
+    try {
+      await api.scans.delete(org_id as string, project_id as string, scanId);
+      setScans((current: any[]) => current.filter((scan: any) => scan.id !== scanId));
+      setTotal((current) => Math.max(0, current - 1));
+    } catch {}
   }
 
   return (
     <div>
       <PageHeader
+        eyebrow="Operations"
         title="Scans"
-        description={`${total} total scan runs`}
+        description={`${total} total scan runs with execution state, timing, and scanner coverage for this project.`}
         actions={
           <Button onClick={() => setShowModal(true)}>
-            <Plus className="h-4 w-4 mr-1" /> Trigger Scan
+            <Plus className="h-4 w-4" />
+            Trigger Scan
           </Button>
         }
       />
@@ -125,61 +132,70 @@ export default function ScansPage() {
       {loading ? (
         <SkeletonTable rows={5} />
       ) : listError ? (
-        <EmptyState
-          icon={Activity}
-          title="Scans unavailable"
-          description={listError}
-        />
+        <EmptyState icon={Activity} title="Scans unavailable" description={listError} />
       ) : scans.length === 0 ? (
-        <EmptyState
-          icon={Activity}
-          title="No scans yet"
-          description="Connect a repository and trigger your first scan"
-        />
+        <EmptyState icon={Activity} title="No scans yet" description="Connect a repository and trigger your first scan." />
       ) : (
         <>
-          <div className="rounded-xl border border-border bg-surface overflow-hidden">
+          <div className="card-serif overflow-hidden">
             {scans.map((scan) => (
               <div
                 key={scan.id}
                 onClick={() => router.push(`/dashboard/${org_id}/projects/${project_id}/scans/${scan.id}`)}
-                className="flex items-center justify-between gap-4 px-4 py-3 border-b border-border/50 hover:bg-surface-hover cursor-pointer transition-colors"
+                className="flex cursor-pointer items-center justify-between gap-4 border-b border-border/60 px-4 py-4 transition-colors hover:bg-surface-hover/45 last:border-0"
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <StatusBadge status={scan.status} />
-                  <div className="min-w-0">
-                    <span className="font-mono text-sm text-text-primary">{scan.id.slice(0, 8)}</span>
-                    <span className="ml-2 text-xs text-text-tertiary">
-                      {scan.trigger_type} · {scan.branch_name ?? "default"} · {new Date(scan.created_at).toLocaleString()}
-                    </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <StatusBadge status={scan.status} />
+                    <code className="font-mono text-sm text-text-primary">{scan.id.slice(0, 8)}</code>
+                    <span className="text-xs text-text-tertiary">{scan.trigger_type}</span>
                   </div>
+                  <p className="mt-2 text-sm text-text-secondary">
+                    {scan.branch_name ?? "default branch"} · created {formatRelativeTime(scan.created_at)}
+                  </p>
                 </div>
-                <div className="flex items-center gap-3 flex-shrink-0">
-                  {(scan.status === "queued" || scan.status === "running") && (
+                <div className="flex items-center gap-3">
+                  {(scan.scanner_runs ?? []).slice(0, 3).map((run: any) => (
+                    <Badge key={run.id} variant="outline">{run.scanner_name}</Badge>
+                  ))}
+                  <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+                    {formatScanDuration(scan.summary_json ?? {})}
+                  </span>
+                  {(scan.status === "queued" || scan.status === "running") ? (
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7 text-text-tertiary hover:text-danger"
-                      onClick={(e) => { e.stopPropagation(); handleCancel(scan.id); }}
-                      title="Cancel scan"
+                      className="h-9 w-9 text-text-tertiary hover:text-danger"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCancel(scan.id);
+                      }}
                     >
                       <XCircleIcon className="h-4 w-4" />
                     </Button>
-                  )}
-                  <span className="text-xs text-text-tertiary font-mono">{duration(scan)}</span>
-                  {scan.scanner_runs?.map((run: any) => (
-                    <span key={run.id} className="inline-flex items-center rounded-md border border-border bg-surface-elevated px-2 py-0.5 text-xs font-medium text-text-secondary">
-                      {run.scanner_name}
-                    </span>
-                  ))}
+                  ) : null}
+                  {["queued", "failed", "canceled"].includes(scan.status) ? (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 text-text-tertiary hover:text-danger"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(scan.id);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  ) : null}
                 </div>
               </div>
             ))}
           </div>
+
           <div className="flex items-center justify-between py-4">
             <Button variant="ghost" disabled={page === 0} onClick={() => setPage(page - 1)}>Previous</Button>
             <span className="text-sm text-text-tertiary">
-              {page * limit + 1}\u2013{Math.min((page + 1) * limit, total)} of {total}
+              {page * limit + 1}–{Math.min((page + 1) * limit, total)} of {total}
             </span>
             <Button variant="ghost" disabled={(page + 1) * limit >= total} onClick={() => setPage(page + 1)}>Next</Button>
           </div>
@@ -192,22 +208,16 @@ export default function ScansPage() {
             <DialogTitle>Trigger Scan</DialogTitle>
             <DialogDescription>Start a new security scan for a connected repository.</DialogDescription>
           </DialogHeader>
-          {error && <p className="text-sm text-danger">{error}</p>}
-          {reposError && <p className="text-sm text-danger">{reposError}</p>}
+          {error ? <p className="text-sm text-danger">{error}</p> : null}
+          {reposError ? <p className="text-sm text-danger">{reposError}</p> : null}
           <form onSubmit={handleTriggerScan} className="space-y-4">
             <div className="space-y-2">
               <Label>Repository</Label>
-              <Select
-                value={scanForm.repository_id}
-                onValueChange={(val) => setScanForm({ ...scanForm, repository_id: val })}
-                disabled={!!reposError}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select repository…" />
-                </SelectTrigger>
+              <Select value={scanForm.repository_id} onValueChange={(val) => setScanForm({ ...scanForm, repository_id: val })} disabled={!!reposError}>
+                <SelectTrigger><SelectValue placeholder="Select repository…" /></SelectTrigger>
                 <SelectContent>
-                  {repos.map((r: any) => (
-                    <SelectItem key={r.id} value={r.id}>{r.full_name}</SelectItem>
+                  {repos.map((repo: any) => (
+                    <SelectItem key={repo.id} value={repo.id}>{repo.full_name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -222,13 +232,8 @@ export default function ScansPage() {
             </div>
             <div className="space-y-2">
               <Label>Scan Type</Label>
-              <Select
-                value={scanForm.scan_type}
-                onValueChange={(val) => setScanForm({ ...scanForm, scan_type: val })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+              <Select value={scanForm.scan_type} onValueChange={(val) => setScanForm({ ...scanForm, scan_type: val })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="full">Full Scan</SelectItem>
                   <SelectItem value="dependencies">Dependencies Only</SelectItem>
@@ -238,9 +243,7 @@ export default function ScansPage() {
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="ghost" onClick={() => setShowModal(false)}>Cancel</Button>
-              <Button type="submit" disabled={submitting}>
-                {submitting ? "Triggering\u2026" : "Start Scan"}
-              </Button>
+              <Button type="submit" disabled={submitting}>{submitting ? "Triggering…" : "Start Scan"}</Button>
             </div>
           </form>
         </DialogContent>

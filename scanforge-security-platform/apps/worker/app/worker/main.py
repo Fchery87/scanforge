@@ -1,6 +1,7 @@
 import asyncio
 import os
 import signal
+import traceback
 from pathlib import Path
 
 
@@ -66,18 +67,17 @@ class Worker:
             if success:
                 print(f"[worker] Job {job.job_id} completed successfully")
             else:
-                print(f"[worker] Job {job.job_id} failed, checking retry policy")
+                # The orchestrator owns retry and DLQ decisions so failed jobs are
+                # not duplicated in the queue by the outer worker loop.
                 retry_count = await queue.get_retry_count(job.job_id)
-                if retry_count >= orchestrator.MAX_RETRIES:
-                    print(f"[worker] Job {job.job_id} exceeded max retries, moving to DLQ")
-                    await queue.enqueue_to_dlq(job)
-                else:
-                    print(f"[worker] Re-enqueueing job {job.job_id} for retry ({retry_count}/{orchestrator.MAX_RETRIES})")
-                    await asyncio.sleep(retry_count * 30)
-                    await queue.enqueue(job.job_type, job.payload)
+                print(
+                    f"[worker] Job {job.job_id} failed in orchestrator "
+                    f"(retry_count={retry_count}/{orchestrator.MAX_RETRIES})"
+                )
 
         except Exception as e:
             print(f"[worker] Error processing job: {e}")
+            print(traceback.format_exc())
 
     async def run(self):
         queue, r2, api_base = self._get_clients()

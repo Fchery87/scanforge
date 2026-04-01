@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AlertCircle, Mail, User } from "lucide-react";
+
 import { api } from "@/lib/api";
 import { authClient } from "@/lib/auth/client";
 import { resolveProfileAuthState } from "@/lib/auth/profile-session";
@@ -16,24 +17,8 @@ export default function ProfilePage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    console.log("[Profile] Session state:", { 
-      hasSession, 
-      isSessionPending, 
-      sessionData: session ? "present" : "null",
-      sessionUser: session?.user?.email 
-    });
-
-    const authState = resolveProfileAuthState({
-      isSessionPending,
-      hasSession,
-    });
-
-    console.log("[Profile] Auth state:", authState);
-
-    if (authState === "pending") {
-      return;
-    }
-
+    const authState = resolveProfileAuthState({ isSessionPending, hasSession });
+    if (authState === "pending") return;
     if (authState === "unauthenticated") {
       setUser(null);
       setError("Not authenticated");
@@ -44,48 +29,44 @@ export default function ProfilePage() {
     setLoading(true);
     api.users.me()
       .then((data) => {
-        console.log("[Profile] User data loaded:", data);
         setUser(data);
         setError(null);
       })
-      .catch((err) => {
-        console.error("[Profile] Error loading user:", err);
-        setError(err instanceof Error ? err.message : "Failed to load profile");
-      })
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load profile"))
       .finally(() => setLoading(false));
-  }, [hasSession, isSessionPending, session]);
+  }, [hasSession, isSessionPending]);
 
   return (
     <div>
       <PageHeader
+        eyebrow="Account"
         title="Profile"
-        description="View your authenticated account details"
+        description="Review your authenticated account details and profile-level preferences."
       />
 
       {loading ? (
         <SkeletonList rows={3} />
       ) : error ? (
-        <div className="rounded-xl border border-danger/30 bg-danger/5 p-6 text-sm text-danger">
-          {error}
-        </div>
+        <div className="rounded-[12px] border border-danger/30 bg-danger/5 p-6 text-sm text-danger">{error}</div>
       ) : (
         <div className="space-y-6">
-          <div className="flex items-center gap-5 rounded-xl border border-border bg-surface p-6 animate-fade-up">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-secondary/20 text-primary">
+          <div className="card-serif flex items-center gap-5 p-6">
+            <div className="flex h-16 w-16 items-center justify-center rounded-[14px] border border-border bg-surface-elevated text-primary">
               <User size={28} strokeWidth={1.5} />
             </div>
             <div>
-              <h2 className="text-lg font-semibold font-display">{user?.name || "Unnamed user"}</h2>
-              <p className="flex items-center gap-1.5 text-sm text-text-tertiary mt-0.5">
-                <Mail className="h-3.5 w-3.5" /> {user?.email || "No email returned by identity provider"}
+              <h2 className="text-lg font-semibold font-display text-text-primary">{user?.name || "Unnamed user"}</h2>
+              <p className="mt-1 flex items-center gap-1.5 text-sm text-text-tertiary">
+                <Mail className="h-3.5 w-3.5" />
+                {user?.email || "No email returned by identity provider"}
               </p>
             </div>
           </div>
 
-          <div className="rounded-xl border border-border bg-surface p-6 animate-fade-up stagger-1">
-            <div className="flex items-center gap-2 mb-3">
+          <div className="card-serif p-6">
+            <div className="mb-3 flex items-center gap-2">
               <AlertCircle className="h-4 w-4 text-text-secondary" />
-              <h3 className="text-sm font-semibold font-display">Preferences</h3>
+              <h3 className="text-sm font-semibold font-display text-text-primary">Preferences</h3>
             </div>
             <p className="text-sm text-text-secondary">
               Notification preferences are hidden until they are backed by persisted API data.

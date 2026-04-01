@@ -25,11 +25,11 @@ interface FindingsBarChartProps {
 }
 
 const SEVERITY_COLORS = {
-  critical: "#ef4444",
-  high: "#f97316",
-  medium: "#eab308",
-  low: "#22c55e",
-  info: "#135bec",
+  critical: "var(--color-chart-critical)",
+  high: "var(--color-chart-high)",
+  medium: "var(--color-chart-medium)",
+  low: "var(--color-chart-low)",
+  info: "var(--color-chart-info)",
 } as const;
 
 function hasSeverityBreakdown(
