@@ -17,6 +17,7 @@ import { NotificationItem } from "@/components/scanforge/notification-item";
 import { EmptyState } from "@/components/scanforge/empty-state";
 import { SkeletonList } from "@/components/scanforge/loading-skeleton";
 import { cn } from "@/lib/utils";
+import { summarizeNotificationGroups, getNotificationTypeLabel } from "@/lib/notifications/groups";
 
 export default function NotificationsPage() {
   const router = useRouter();
@@ -55,6 +56,9 @@ export default function NotificationsPage() {
     setNotifications(notifications.map((n) => ({ ...n, is_read: true })));
   }
 
+  const groups = summarizeNotificationGroups(notifications);
+  const totalUnread = groups.reduce((sum, g) => sum + g.unreadCount, 0);
+
   return (
     <div>
       <PageHeader
@@ -68,6 +72,24 @@ export default function NotificationsPage() {
         }
       />
 
+      {!loading && groups.length > 0 && (
+        <div className="card-serif mb-6 flex flex-wrap gap-3 p-4">
+          {groups.map((g) => (
+            <div key={g.type} className="flex items-center gap-2 rounded-[8px] border border-border bg-background px-3 py-2 text-sm">
+              <span className="font-medium">{getNotificationTypeLabel(g.type)}</span>
+              <span className="text-text-secondary">·</span>
+              <span className="text-text-secondary">{g.count} total</span>
+              {g.unreadCount > 0 && (
+                <>
+                  <span className="text-text-secondary">·</span>
+                  <span className="font-medium text-primary">{g.unreadCount} unread</span>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="card-serif mb-6 flex flex-wrap items-center gap-3 p-4">
         <Select value={typeFilter} onValueChange={(v) => { setTypeFilter(v === "all" ? "" : v); setPage(0); }}>
           <SelectTrigger className="h-11 w-44 bg-background">
@@ -75,11 +97,11 @@ export default function NotificationsPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All types</SelectItem>
-            <SelectItem value="scan">Scan</SelectItem>
-            <SelectItem value="finding">Finding</SelectItem>
-            <SelectItem value="secret">Secret</SelectItem>
-            <SelectItem value="member">Member</SelectItem>
-            <SelectItem value="export">Export</SelectItem>
+            <SelectItem value="scan">{getNotificationTypeLabel("scan")}</SelectItem>
+            <SelectItem value="finding">{getNotificationTypeLabel("finding")}</SelectItem>
+            <SelectItem value="secret">{getNotificationTypeLabel("secret")}</SelectItem>
+            <SelectItem value="member">{getNotificationTypeLabel("member")}</SelectItem>
+            <SelectItem value="export">{getNotificationTypeLabel("export")}</SelectItem>
           </SelectContent>
         </Select>
 

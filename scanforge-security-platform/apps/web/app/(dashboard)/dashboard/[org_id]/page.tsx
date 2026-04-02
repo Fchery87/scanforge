@@ -20,6 +20,8 @@ import { EmptyState } from "@/components/scanforge/empty-state";
 import { PageHeader } from "@/components/scanforge/page-header";
 import { SkeletonStats } from "@/components/scanforge/loading-skeleton";
 import { StatCard } from "@/components/scanforge/stat-card";
+import { PageStatePanel } from "@/components/scanforge/page-state-panel";
+import { derivePageState } from "@/lib/page-surface/page-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -111,19 +113,22 @@ export default function OrganizationPage() {
     }
   }
 
-  if (loading) return <SkeletonStats count={4} />;
+  const pageState = derivePageState({
+    loading,
+    error: !org ? "Organization not found" : null,
+    itemCount: projects.length,
+  });
 
-  if (!org) {
+  if (pageState.kind === "loading") {
+    return <PageStatePanel state="loading" />;
+  }
+
+  if (pageState.kind === "error") {
     return (
-      <EmptyState
-        icon={AlertCircle}
-        title="Organization not found"
-        description="This organization does not exist or you no longer have access to it."
-        action={
-          <Link href="/dashboard">
-            <Button variant="outline">Back to organizations</Button>
-          </Link>
-        }
+      <PageStatePanel
+        state="error"
+        message="This organization does not exist or you no longer have access to it."
+        retry={() => { setLoading(true); }}
       />
     );
   }
