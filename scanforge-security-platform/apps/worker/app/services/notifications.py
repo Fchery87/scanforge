@@ -35,6 +35,8 @@ class NotificationDispatcher:
             target_type="scan",
             target_id=scan_id,
             metadata={
+                "org_id": org_id,
+                "project_id": project_id,
                 "finding_count": finding_count,
                 "critical_count": critical_count,
                 "has_failures": has_failures,
@@ -57,7 +59,7 @@ class NotificationDispatcher:
             link=self._scan_link(org_id, project_id, scan_id),
             target_type="scan",
             target_id=scan_id,
-            metadata={"category": "secret"},
+            metadata={"category": "secret", "org_id": org_id, "project_id": project_id},
         )
 
     async def send_scan_failed(
@@ -78,7 +80,7 @@ class NotificationDispatcher:
                 link=self._scan_link(org_id, project_id, scan_id),
                 target_type="scan",
                 target_id=scan_id,
-                metadata={"retry_count": retry_count},
+                metadata={"retry_count": retry_count, "org_id": org_id, "project_id": project_id},
             )
 
     async def _create_notification(

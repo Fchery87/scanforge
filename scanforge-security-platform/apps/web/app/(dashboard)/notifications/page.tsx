@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/scanforge/empty-state";
 import { SkeletonList } from "@/components/scanforge/loading-skeleton";
 import { cn } from "@/lib/utils";
 import { summarizeNotificationGroups, getNotificationTypeLabel } from "@/lib/notifications/groups";
+import { resolveNotificationRoute } from "@/lib/notifications/routes";
 
 export default function NotificationsPage() {
   const router = useRouter();
@@ -48,7 +49,8 @@ export default function NotificationsPage() {
         prev.map((notif) => notif.id === n.id ? { ...notif, is_read: true } : notif)
       );
     }
-    if (n.link) router.push(n.link);
+    const destination = resolveNotificationRoute(n);
+    if (destination) router.push(destination);
   }
 
   async function markAllRead() {

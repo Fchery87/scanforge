@@ -14,6 +14,8 @@ class NotificationResponse(BaseModel):
     body: str | None
     is_read: bool
     link: str | None
+    target_type: str | None
+    target_id: str | None
     metadata_json: dict | None
     created_at: datetime
 
