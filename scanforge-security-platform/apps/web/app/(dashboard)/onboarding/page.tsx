@@ -155,7 +155,7 @@ function OnboardingContent() {
       const org = await api.organizations.create(inlineOrgForm);
       const params = new URLSearchParams({ org_id: org.id, org_slug: org.slug });
       if (requestedSlug !== org.slug) params.set("slug_adjusted_from", requestedSlug);
-      router.push(`/dashboard/${org.id}/onboarding?${params.toString()}`);
+      router.push(`/onboarding?${params.toString()}`);
     } catch (error: any) {
       setOrgCreateError(error?.message ?? "Failed to create organization");
       setCreatingOrg(false);

@@ -12,12 +12,16 @@ def _load_env():
         env_path = parent / ".env"
         if env_path.exists():
             from dotenv import load_dotenv
+
             load_dotenv(env_path, override=False)
             return
+
+
 _load_env()
 
 from app.clients.queue import QueueClient  # noqa: E402
 from app.clients.r2 import R2Client  # noqa: E402
+from app.services.notifications import NotificationDispatcher  # noqa: E402
 from app.services.scan_orchestrator import ScanOrchestrator  # noqa: E402
 
 
@@ -85,6 +89,12 @@ class Worker:
             queue=queue,
             r2=r2,
             api_base_url=api_base,
+        )
+        orchestrator.set_notifier(
+            NotificationDispatcher(
+                api_base_url=api_base,
+                internal_api_key=os.environ.get("INTERNAL_API_KEY", ""),
+            )
         )
 
         print(f"[worker] Starting worker with concurrency={self.concurrency}")

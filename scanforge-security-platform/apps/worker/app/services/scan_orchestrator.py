@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 @dataclass
 class ScanContext:
     scan_id: str
+    organization_id: str
     repository_id: str
     project_id: str
     branch: str | None
@@ -75,6 +76,7 @@ class ScanOrchestrator:
     async def process_job(self, job: QueueJob) -> bool:
         context = ScanContext(
             scan_id=job.payload["scan_id"],
+            organization_id=job.payload["org_id"],
             repository_id=job.payload["repository_id"],
             project_id=job.payload["project_id"],
             branch=job.payload.get("branch"),
@@ -225,7 +227,9 @@ class ScanOrchestrator:
             data = resp.json()
             return data["clone_url"]
 
-    async def _create_scanner_run(self, context: ScanContext, scanner_name: str, version: str | None = None) -> str | None:
+    async def _create_scanner_run(
+        self, context: ScanContext, scanner_name: str, version: str | None = None
+    ) -> str | None:
         """Create a ScannerRun record via internal API and return its ID."""
         async with httpx.AsyncClient() as client:
             try:
@@ -509,6 +513,7 @@ class ScanOrchestrator:
             await self._notifier.send_scan_completed(
                 user_id=context.user_id,
                 scan_id=context.scan_id,
+                org_id=context.organization_id,
                 project_id=context.project_id,
                 finding_count=len(context.findings),
                 critical_count=context.critical_count,
@@ -520,6 +525,7 @@ class ScanOrchestrator:
                     await self._notifier.send_secret_found(
                         user_id=context.user_id,
                         scan_id=context.scan_id,
+                        org_id=context.organization_id,
                         project_id=context.project_id,
                         finding_title=finding.get("title", "Unknown secret"),
                     )
@@ -535,6 +541,7 @@ class ScanOrchestrator:
             await self._notifier.send_scan_failed(
                 user_id=context.user_id,
                 scan_id=context.scan_id,
+                org_id=context.organization_id,
                 project_id=context.project_id,
                 error=context.error_message or "Unknown error",
                 retry_count=retry_count,

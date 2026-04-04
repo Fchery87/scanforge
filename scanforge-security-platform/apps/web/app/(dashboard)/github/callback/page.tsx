@@ -36,7 +36,7 @@ function CallbackContent() {
 
     api.github.connect(state.orgId, { installation_id: installationId! })
       .then(() => {
-        router.replace(`/dashboard/${state.orgId}/onboarding?org_id=${state.orgId}&github_connected=true`);
+        router.replace(`/onboarding?org_id=${state.orgId}&github_connected=true`);
       })
       .catch(() => {
         setRecoveryState({ kind: "connect-failed" });

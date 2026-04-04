@@ -1,15 +1,16 @@
-
 import httpx
 
 
 class NotificationDispatcher:
-    def __init__(self, api_base_url: str):
+    def __init__(self, api_base_url: str, internal_api_key: str = ""):
         self.api_base_url = api_base_url
+        self.internal_api_key = internal_api_key
 
     async def send_scan_completed(
         self,
         user_id: str,
         scan_id: str,
+        org_id: str,
         project_id: str,
         finding_count: int,
         critical_count: int,
@@ -30,6 +31,7 @@ class NotificationDispatcher:
             notification_type="scan_completed",
             title=title,
             body=body,
+            link=self._scan_link(org_id, project_id, scan_id),
             target_type="scan",
             target_id=scan_id,
             metadata={
@@ -43,6 +45,7 @@ class NotificationDispatcher:
         self,
         user_id: str,
         scan_id: str,
+        org_id: str,
         project_id: str,
         finding_title: str,
     ) -> None:
@@ -51,6 +54,7 @@ class NotificationDispatcher:
             notification_type="secret_found",
             title="Secret detected in repository",
             body=f"A secret exposure was detected: {finding_title}. This is a critical security risk.",
+            link=self._scan_link(org_id, project_id, scan_id),
             target_type="scan",
             target_id=scan_id,
             metadata={"category": "secret"},
@@ -60,6 +64,7 @@ class NotificationDispatcher:
         self,
         user_id: str,
         scan_id: str,
+        org_id: str,
         project_id: str,
         error: str,
         retry_count: int,
@@ -70,6 +75,7 @@ class NotificationDispatcher:
                 notification_type="scan_failed",
                 title="Scan failed after multiple retries",
                 body=f"Scan has failed and will not be retried automatically. Error: {error[:200]}",
+                link=self._scan_link(org_id, project_id, scan_id),
                 target_type="scan",
                 target_id=scan_id,
                 metadata={"retry_count": retry_count},
@@ -81,6 +87,7 @@ class NotificationDispatcher:
         notification_type: str,
         title: str,
         body: str | None = None,
+        link: str | None = None,
         target_type: str | None = None,
         target_id: str | None = None,
         metadata: dict | None = None,
@@ -92,6 +99,7 @@ class NotificationDispatcher:
                     "notification_type": notification_type,
                     "title": title,
                     "body": body,
+                    "link": link,
                     "metadata_json": metadata,
                 }
                 if target_type:
@@ -100,9 +108,13 @@ class NotificationDispatcher:
                     payload["target_id"] = target_id
 
                 await client.post(
-                    f"{self.api_base_url}/api/v1/notifications/internal",
+                    f"{self.api_base_url}/api/v1/internal/notifications",
                     json=payload,
+                    headers={"X-Service-Key": self.internal_api_key},
                     timeout=15.0,
                 )
         except Exception as e:
             print(f"[notifications] Failed to send notification: {e}")
+
+    def _scan_link(self, org_id: str, project_id: str, scan_id: str) -> str:
+        return f"/dashboard/{org_id}/projects/{project_id}/scans/{scan_id}"

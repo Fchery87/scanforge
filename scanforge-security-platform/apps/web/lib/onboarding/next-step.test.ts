@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { deriveOnboardingNextActions } from "./next-step.ts";
+import { deriveCallbackState, deriveOnboardingNextActions } from "./next-step.ts";
 
 test("recommends github connection immediately after org creation", () => {
   const actions = deriveOnboardingNextActions([
@@ -10,4 +10,27 @@ test("recommends github connection immediately after org creation", () => {
   ]);
 
   assert.equal(actions[0]?.id, "connect_github");
+});
+
+test("preserves onboarding as a top-level route in step action URLs", () => {
+  const actions = deriveOnboardingNextActions([
+    {
+      id: "create_org",
+      completed: true,
+    },
+    {
+      id: "connect_github",
+      completed: false,
+      action_url: "/onboarding?org_id=org-1&github_connected=true",
+    },
+  ]);
+
+  assert.equal(actions[0]?.url, "/onboarding?org_id=org-1&github_connected=true");
+});
+
+test("marks callback as recoverable when installation and org context exist", () => {
+  assert.deepEqual(
+    deriveCallbackState({ installation_id: "123", storedOrgId: "org-1" }),
+    { kind: "success", orgId: "org-1" }
+  );
 });

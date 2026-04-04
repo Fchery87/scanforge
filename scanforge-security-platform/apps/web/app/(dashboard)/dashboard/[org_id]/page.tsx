@@ -146,7 +146,7 @@ export default function OrganizationPage() {
               {membersUnavailable ? "Members unavailable" : `${memberCount} member${memberCount !== 1 ? "s" : ""}`}
             </Badge>
             {projects.length > 0 ? (
-              <Link href={`/dashboard/${org_id}/projects`}>
+              <Link href={`/dashboard/${org_id}/projects/${projects[0].id}/scans`}>
                 <Button variant="outline" size="sm">
                   <Zap className="h-3.5 w-3.5" />
                   Scan All

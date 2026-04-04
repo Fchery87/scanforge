@@ -25,6 +25,7 @@ router = APIRouter()
 
 @router.post("/", response_model=ScanResponse, status_code=status.HTTP_201_CREATED)
 async def create_scan(
+    org_id: UUID,
     project_id: UUID,
     data: ScanCreate,
     current_user: UserContext = Depends(get_current_user),
@@ -66,6 +67,7 @@ async def create_scan(
             job_type,
             {
                 "scan_id": str(scan.id),
+                "org_id": str(org_id),
                 "repository_id": str(scan.repository_id),
                 "project_id": str(scan.project_id),
                 "branch": scan.branch_name,
