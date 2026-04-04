@@ -112,6 +112,7 @@ export function FindingsTable({
             </span>
           </TableHead>
           <TableHead>Age</TableHead>
+          <TableHead className="w-[92px] text-right">Actions</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -124,7 +125,7 @@ export function FindingsTable({
             <TableRow
               key={f.id}
               className={cn(
-                "group cursor-pointer transition-all duration-200 relative",
+                "group cursor-pointer transition-all duration-200",
                 "hover:bg-primary/[0.04] hover:shadow-sm",
                 isSelected && "bg-primary/[0.06]",
                 isFocused && [
@@ -134,38 +135,6 @@ export function FindingsTable({
                 ]
               )}
             >
-              {/* Hover action bar */}
-              <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center gap-1 bg-surface/90 backdrop-blur-sm rounded-lg p-1 shadow-sm border border-border z-10">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSelectFinding(f.id);
-                      }}
-                      className="p-1.5 hover:bg-surface-hover rounded-md transition-colors"
-                    >
-                      <Eye className="h-3.5 w-3.5 text-text-tertiary hover:text-primary" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">View details</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onToggleSelect(f.id);
-                      }}
-                      className="p-1.5 hover:bg-surface-hover rounded-md transition-colors"
-                    >
-                      <Check className="h-3.5 w-3.5 text-text-tertiary hover:text-success" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">Select</TooltipContent>
-                </Tooltip>
-              </div>
-
               <TableCell className="w-10">
                 <Checkbox
                   checked={isSelected}
@@ -236,6 +205,38 @@ export function FindingsTable({
                 <span className={cn("text-xs font-medium font-mono", age.color)}>
                   {age.label}
                 </span>
+              </TableCell>
+              <TableCell className="w-[92px]">
+                <div className="flex items-center justify-end gap-1 opacity-0 transition-all duration-200 group-hover:opacity-100">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectFinding(f.id);
+                        }}
+                        className="rounded-md p-1.5 transition-colors hover:bg-surface-hover"
+                      >
+                        <Eye className="h-3.5 w-3.5 text-text-tertiary hover:text-primary" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">View details</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleSelect(f.id);
+                        }}
+                        className="rounded-md p-1.5 transition-colors hover:bg-surface-hover"
+                      >
+                        <Check className="h-3.5 w-3.5 text-text-tertiary hover:text-success" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">Select</TooltipContent>
+                  </Tooltip>
+                </div>
               </TableCell>
             </TableRow>
           );

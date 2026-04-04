@@ -182,7 +182,7 @@ export default function ScansPage() {
                       <StatusBadge status={phase === "stale" ? "failed" : scan.status} />
                       <code className="font-mono text-sm text-text-primary">{scan.id.slice(0, 8)}</code>
                       <span className="text-xs text-text-tertiary">{scan.trigger_type}</span>
-                      {phase === "stale" ? <Badge variant="destructive">stale</Badge> : null}
+                      {phase === "stale" ? <Badge variant="danger">stale</Badge> : null}
                     </div>
                     <p className="mt-2 text-sm text-text-secondary">
                       {scan.branch_name ?? "default branch"} · created {formatRelativeTime(scan.created_at)}
