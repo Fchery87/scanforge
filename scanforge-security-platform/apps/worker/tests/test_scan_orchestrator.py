@@ -45,6 +45,7 @@ async def test_upload_artifacts_returns_scanner_run_updates(tmp_path: Path):
     orchestrator._update_scanner_run = capture_update
     context = ScanContext(
         scan_id="scan-1",
+        organization_id="org-1",
         repository_id="repo-1",
         project_id="project-1",
         branch="main",
@@ -64,7 +65,9 @@ async def test_upload_artifacts_returns_scanner_run_updates(tmp_path: Path):
     uploads = await orchestrator._upload_artifacts(context)
 
     assert uploads["trivy_raw"] == "https://cdn.example/scans/scan-1/trivy/raw_output.json"
-    assert uploads["scanner_runs"]["trivy"]["artifact_uri"] == "https://cdn.example/scans/scan-1/trivy/trivy-results.json"
+    assert (
+        uploads["scanner_runs"]["trivy"]["artifact_uri"] == "https://cdn.example/scans/scan-1/trivy/trivy-results.json"
+    )
     assert updates == [
         (
             "run-1",
@@ -133,6 +136,7 @@ async def test_failed_job_requeues_with_same_job_id():
         job_id="job-123",
         payload={
             "scan_id": "scan-1",
+            "org_id": "org-1",
             "repository_id": "repo-1",
             "project_id": "project-1",
         },

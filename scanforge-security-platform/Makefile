@@ -186,10 +186,10 @@ dev: db-up
 	@echo ""
 
 lint:
-	cd apps/web && npm run lint || true
-	$(API_RUFF) check apps/api/app || true
-	$(WORKER_RUFF) check apps/worker/app || true
+	cd apps/web && npm run lint
+	$(API_RUFF) check apps/api/app
+	$(WORKER_RUFF) check apps/worker/app
 
 test:
-	PYTHONPATH="$(PWD)/apps/api" $(API_PYTHON) -m pytest apps/api || true
-	PYTHONPATH="$(PWD)/apps/worker" $(WORKER_PYTHON) -m pytest apps/worker || true
+	PYTHONPATH="$(PWD)/apps/api" $(API_PYTHON) -m pytest apps/api
+	PYTHONPATH="$(PWD)/apps/worker" $(WORKER_PYTHON) -m pytest apps/worker

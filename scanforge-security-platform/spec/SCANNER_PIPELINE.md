@@ -1,34 +1,49 @@
 # Scanner Pipeline
 
-## Step 1
-Receive a scan request and create a `scans` row with status `queued`.
+## Current Execution Model
 
-## Step 2
-Worker claims the job and fetches the target repository snapshot.
+1. A scan request creates a `scans` row with status `queued`.
+2. The API enqueues a queue job with scan, organization, project, repository, branch, commit, and user context.
+3. The worker dequeues the job and marks the scan `running`.
+4. The worker requests an authenticated clone URL from the internal API.
+5. The repository is cloned into a temporary directory.
+6. The worker selects scanners by scan type.
+7. Scanners run independently and create `scanner_runs` records.
+8. Raw outputs and generated artifacts are uploaded to object storage.
+9. Normalizers convert scanner-specific output into the canonical finding shape.
+10. For diff scans, findings can be filtered to changed files.
+11. The worker persists findings through internal API routes.
+12. The scan summary is updated and notifications may be emitted.
 
-## Step 3
-Detect repository characteristics:
-- language
-- package managers
-- lockfiles
-- docker files
-- infrastructure files
+## Scan Type To Scanner Mapping
 
-## Step 4
-Run applicable scanner adapters:
-- Trivy
-- Gitleaks
-- OSV-Scanner
-- later: Syft, Grype, Checkov, Semgrep
+- `scan.repo.full`: Trivy, Gitleaks, OSV, Semgrep, Syft, Checkov, Grype
+- `scan.repo.diff`: Gitleaks, Semgrep, Checkov
+- `scan.dependencies`: Trivy, OSV, Syft, Grype
+- `scan.secrets`: Gitleaks
 
-## Step 5
-Upload raw outputs to R2.
+## Worker Responsibilities
 
-## Step 6
-Normalize tool outputs into the canonical finding schema.
+- queue consumption
+- retry tracking and dead-letter handling
+- repository cloning
+- scanner run creation and status updates
+- artifact upload
+- normalization
+- finding persistence
+- success and failure notifications
 
-## Step 7
-Update findings, finding instances, scanner runs, and scan summaries.
+## API Responsibilities In The Pipeline
 
-## Step 8
-Trigger notifications and recalculate project score summaries.
+- create scan records
+- authorize scan requests
+- enqueue jobs
+- issue authenticated clone information for workers
+- accept scanner run and finding persistence callbacks
+- serve artifact download redirects
+
+## Current Gaps Observed In Review
+
+- queue payload and worker test contracts are drifting
+- validation coverage exists, but some worker tests and OAuth regression tests are currently failing
+- scanner execution depends on external binaries and valid queue and storage credentials, so local runtime parity requires more than Docker services alone

@@ -1,14 +1,16 @@
-# Spec Folder
+# Specifications
 
-This folder contains the build and product specifications for the MVP.
+This folder contains compact reference specs for the current product direction and technical model.
+
+These files are intentionally shorter and less historical than the main documentation in `docs/`.
 
 ## Files
 
-- `PRD.md` — product requirements
-- `STACK.md` — locked technology and infrastructure stack
-- `ROADMAP.md` — phased delivery plan
-- `DB_SCHEMA.md` — schema design and table definitions
-- `API_OVERVIEW.md` — API surface and endpoint plan
-- `SCANNER_PIPELINE.md` — scanner orchestration design
-- `RBAC.md` — roles and permission model
-- `TASKS.md` — implementation checklist
+- `PRD.md`: product goals and non-goals
+- `STACK.md`: application, infrastructure, and scanner stack
+- `ROADMAP.md`: phased direction and likely next areas of work
+- `DB_SCHEMA.md`: high-level database model summary
+- `API_OVERVIEW.md`: current public API grouping and route patterns
+- `SCANNER_PIPELINE.md`: current worker-side scan execution model
+- `RBAC.md`: roles and permission summary
+- `TASKS.md`: implementation task tracking if still in use

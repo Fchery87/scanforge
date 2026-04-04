@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import github_state
 from app.core.config import settings
 from app.core.error_messages import GENERIC_EXTERNAL_SERVICE_ERROR
 from app.core.github_state import GitHubStateError, verify_github_state
@@ -20,6 +21,15 @@ from app.services.github import GitHubService
 from app.services.organizations import OrganizationService
 
 router = APIRouter()
+
+
+def _extract_org_id_from_state_or_400(state: str) -> UUID:
+    try:
+        encoded_payload, _encoded_signature = state.split(".", 1)
+        payload = github_state.json.loads(github_state._urlsafe_b64decode(encoded_payload))
+        return UUID(str(payload["org_id"]))
+    except (ValueError, KeyError, TypeError, github_state.json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OAuth state") from exc
 
 
 @router.get(
@@ -76,19 +86,16 @@ async def github_oauth_callback(
 ):
     """Handle GitHub OAuth callback. Exchanges code for user token, finds installation, saves integration."""
     org_service = OrganizationService(db)
-    orgs, _ = await org_service.list_for_user(current_user.user_id, skip=0, limit=100)
+    org_id = _extract_org_id_from_state_or_400(data.state)
 
-    org_id = None
-    for org in orgs:
-        try:
-            verify_github_state(data.state, org_id=org.id, user_id=current_user.user_id, purpose="oauth")
-            org_id = org.id
-            break
-        except GitHubStateError:
-            continue
+    try:
+        verify_github_state(data.state, org_id=org_id, user_id=current_user.user_id, purpose="oauth")
+    except GitHubStateError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OAuth state") from exc
 
-    if org_id is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OAuth state")
+    org = await org_service.get_by_id(org_id, current_user.user_id)
+    if not org:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
 
     has_permission = await org_service.user_has_permission(org_id, current_user.user_id, ["admin", "owner"])
     if not has_permission:
@@ -120,19 +127,16 @@ async def github_install_callback(
     db: AsyncSession = Depends(get_db),
 ):
     org_service = OrganizationService(db)
-    orgs, _ = await org_service.list_for_user(current_user.user_id, skip=0, limit=100)
+    org_id = _extract_org_id_from_state_or_400(data.state)
 
-    org_id = None
-    for org in orgs:
-        try:
-            verify_github_state(data.state, org_id=org.id, user_id=current_user.user_id, purpose="install")
-            org_id = org.id
-            break
-        except GitHubStateError:
-            continue
+    try:
+        verify_github_state(data.state, org_id=org_id, user_id=current_user.user_id, purpose="install")
+    except GitHubStateError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid GitHub state") from exc
 
-    if org_id is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid GitHub state")
+    org = await org_service.get_by_id(org_id, current_user.user_id)
+    if not org:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
 
     has_permission = await org_service.user_has_permission(org_id, current_user.user_id, ["admin", "owner"])
     if not has_permission:
