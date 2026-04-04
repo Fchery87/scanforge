@@ -19,10 +19,13 @@ def compute_checkov_fingerprint(
     return hashlib.sha256("|".join(components).encode()).hexdigest()
 
 
-def normalize_checkov_output(raw_output: dict, repository_id: str) -> list[dict]:
+def normalize_checkov_output(raw_output: dict | list, repository_id: str) -> list[dict]:
     findings = []
-    results = raw_output.get("results", {})
+    results = raw_output.get("results", {}) if isinstance(raw_output, dict) else {}
     failed_checks = results.get("failed_checks", []) if isinstance(results, dict) else []
+
+    if isinstance(raw_output, list):
+        failed_checks = [item for item in raw_output if isinstance(item, dict)]
 
     for failed in failed_checks:
         check_id = failed.get("check_id", "")
@@ -55,11 +58,7 @@ def normalize_checkov_output(raw_output: dict, repository_id: str) -> list[dict]
                     "check_id": check_id,
                     "check_type": failed.get("check_type"),
                 },
-                "references": (
-                    [{"type": "guideline", "value": check_id, "url": guideline}]
-                    if guideline
-                    else []
-                ),
+                "references": ([{"type": "guideline", "value": check_id, "url": guideline}] if guideline else []),
             }
         )
 

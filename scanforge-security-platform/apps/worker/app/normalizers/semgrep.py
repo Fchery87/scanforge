@@ -34,12 +34,17 @@ def compute_semgrep_fingerprint(
     return hashlib.sha256("|".join(components).encode()).hexdigest()
 
 
-def normalize_semgrep_output(raw_output: dict, repository_id: str) -> list[dict]:
+def normalize_semgrep_output(raw_output: dict | list, repository_id: str) -> list[dict]:
     findings = []
 
-    results = raw_output.get("results", [])
+    results = raw_output.get("results", []) if isinstance(raw_output, dict) else []
+
+    if isinstance(raw_output, list):
+        results = raw_output
 
     for result in results:
+        if not isinstance(result, dict):
+            continue
         check_id = result.get("check_id", "")
         path = result.get("path", "")
         start = result.get("start", {})
@@ -86,20 +91,24 @@ def normalize_semgrep_output(raw_output: dict, repository_id: str) -> list[dict]
         if isinstance(cwe_list, list):
             for cwe in cwe_list:
                 cwe_id = cwe.split(":")[0].strip() if ":" in cwe else cwe.strip()
-                references.append({
-                    "type": "cwe",
-                    "value": cwe,
-                    "url": f"https://cwe.mitre.org/data/definitions/{cwe_id.replace('CWE-', '')}.html",
-                })
+                references.append(
+                    {
+                        "type": "cwe",
+                        "value": cwe,
+                        "url": f"https://cwe.mitre.org/data/definitions/{cwe_id.replace('CWE-', '')}.html",
+                    }
+                )
 
         meta_refs = metadata.get("references", [])
         if isinstance(meta_refs, list):
             for ref in meta_refs:
-                references.append({
-                    "type": "reference",
-                    "value": ref,
-                    "url": ref,
-                })
+                references.append(
+                    {
+                        "type": "reference",
+                        "value": ref,
+                        "url": ref,
+                    }
+                )
 
         finding = {
             "category": category,

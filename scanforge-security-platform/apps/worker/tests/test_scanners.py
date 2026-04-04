@@ -10,6 +10,7 @@ from app.scanners.grype import GrypeAdapter
 from app.scanners.semgrep import SemgrepAdapter
 from app.scanners.syft import SyftAdapter
 from app.scanners.trivy import TrivyAdapter
+from app.normalizers.grype import normalize_grype_output
 
 
 def test_checkov_adapter_uses_stdout_json_and_writes_artifact(monkeypatch, tmp_path: Path):
@@ -161,3 +162,18 @@ def test_grype_adapter_handles_list_json_output(monkeypatch, tmp_path: Path):
 
     assert result.success is True
     assert isinstance(result.raw_output, list)
+
+
+def test_grype_normalizer_handles_list_output():
+    findings = normalize_grype_output(
+        [
+            {
+                "artifact": {"name": "openssl", "version": "3.0.0", "locations": [], "type": "python"},
+                "vulnerability": {"id": "CVE-2026-0001", "severity": "HIGH", "description": "desc"},
+            }
+        ],
+        "repo-1",
+    )
+
+    assert len(findings) == 1
+    assert findings[0]["primary_scanner"] == "grype"

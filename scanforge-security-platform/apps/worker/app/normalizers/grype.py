@@ -20,10 +20,18 @@ def compute_vulnerability_fingerprint(
     return hashlib.sha256("|".join(components).encode()).hexdigest()
 
 
-def normalize_grype_output(raw_output: dict, repository_id: str) -> list[dict]:
+def normalize_grype_output(raw_output: dict | list, repository_id: str) -> list[dict]:
     findings = []
 
-    for match in raw_output.get("matches", []) or []:
+    matches = []
+    if isinstance(raw_output, dict):
+        matches = raw_output.get("matches", []) or []
+    elif isinstance(raw_output, list):
+        matches = raw_output
+
+    for match in matches:
+        if not isinstance(match, dict):
+            continue
         artifact = match.get("artifact", {})
         vulnerability = match.get("vulnerability", {})
 
@@ -34,7 +42,7 @@ def normalize_grype_output(raw_output: dict, repository_id: str) -> list[dict]:
             continue
 
         severity = SEVERITY_MAP.get(str(vulnerability.get("severity", "UNKNOWN")).upper(), "info")
-        fix_versions = (((vulnerability.get("fix") or {}).get("versions")) or [])
+        fix_versions = ((vulnerability.get("fix") or {}).get("versions")) or []
         locations = artifact.get("locations", []) or []
         path = locations[0].get("path") if locations else None
 
