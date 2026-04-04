@@ -1,3 +1,4 @@
+import base64
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -200,11 +201,13 @@ async def get_repository_clone_url(
     gh = GitHubService(db)
     token = await gh._get_installation_token(integration.installation_id)
 
-    # Build authenticated clone URL: https://x-access-token:<token>@github.com/owner/repo.git
     clone_url = repo.clone_url or f"https://github.com/{repo.full_name}.git"
-    authed_url = clone_url.replace("https://", f"https://x-access-token:{token}@")
+    basic_auth = base64.b64encode(f"x-access-token:{token}".encode()).decode()
 
-    return {"clone_url": authed_url}
+    return {
+        "clone_url": clone_url,
+        "auth_header": f"Authorization: Basic {basic_auth}",
+    }
 
 
 @router.get("/onboarding")

@@ -65,6 +65,7 @@ class ScannerRunResponse(BaseModel):
     exit_code: int | None
     error_message: str | None
     artifact_uri: str | None
+    artifact_download_url: str | None = None
     metadata_json: dict | None
     created_at: datetime
     updated_at: datetime

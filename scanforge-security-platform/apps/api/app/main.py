@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.core.error_messages import GENERIC_INTERNAL_ERROR
 from app.middleware.audit import AuditMiddleware
 from app.middleware.redis_rate_limit import RedisRateLimitMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
@@ -26,6 +27,8 @@ app.add_middleware(
     RedisRateLimitMiddleware,
     requests_per_minute=120,
     burst=20,
+    redis_url=settings.UPSTASH_REDIS_REST_URL,
+    redis_token=settings.UPSTASH_REDIS_REST_TOKEN,
 )
 app.add_middleware(
     CORSMiddleware,
@@ -52,12 +55,8 @@ async def root():
 
 @app.exception_handler(Exception)
 async def global_exception_handler(_request: Request, _exc: Exception):
-    # Log the full error in development mode
-    if settings.APP_ENV != "production":
-        logger.error(f"Unhandled exception: {_exc}", exc_info=True)
-        error_detail = str(_exc) or "An internal error occurred"
-    else:
-        error_detail = "An internal error occurred. Please try again later."
+    logger.error("Unhandled exception", exc_info=True)
+    error_detail = GENERIC_INTERNAL_ERROR
 
     # Include CORS headers in error response
     origin = _request.headers.get("origin")

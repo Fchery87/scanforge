@@ -22,6 +22,7 @@ class ExportResponse(BaseModel):
     status: str
     title: str | None
     storage_uri: str | None
+    download_url: str | None = None
     file_name: str | None
     size_bytes: int | None
     created_by_user_id: UUID | None

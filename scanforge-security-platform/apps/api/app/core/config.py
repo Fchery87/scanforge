@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     GITHUB_CLIENT_SECRET: str = ""
     GITHUB_PRIVATE_KEY: str = ""
     GITHUB_WEBHOOK_SECRET: str = ""
+    GITHUB_STATE_SIGNING_SECRET: str = ""
 
     INTERNAL_API_KEY: str = ""
 

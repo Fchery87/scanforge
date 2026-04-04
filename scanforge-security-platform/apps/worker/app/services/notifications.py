@@ -1,6 +1,28 @@
 import httpx
 
 
+def _safe_error_message(message: str | None) -> str:
+    if not message:
+        return "An internal error occurred. Please try again later."
+    lowered = message.lower()
+    sensitive_markers = (
+        "token",
+        "secret",
+        "authorization",
+        "password",
+        "traceback",
+        "github",
+        "jwt",
+        "key",
+        "credential",
+        "access denied",
+        "connection refused",
+    )
+    if any(marker in lowered for marker in sensitive_markers):
+        return "An internal error occurred. Please try again later."
+    return message[:200]
+
+
 class NotificationDispatcher:
     def __init__(self, api_base_url: str, internal_api_key: str = ""):
         self.api_base_url = api_base_url
@@ -76,7 +98,7 @@ class NotificationDispatcher:
                 user_id=user_id,
                 notification_type="scan_failed",
                 title="Scan failed after multiple retries",
-                body=f"Scan has failed and will not be retried automatically. Error: {error[:200]}",
+                body=(f"Scan has failed and will not be retried automatically. Error: {_safe_error_message(error)}"),
                 link=self._scan_link(org_id, project_id, scan_id),
                 target_type="scan",
                 target_id=scan_id,

@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.github_state import issue_github_state
 from app.db.models.organization import OrganizationIntegration
 from app.schemas.github import GitHubConnectRequest, GitHubOAuthCallbackRequest, GitHubRepoItem
 
@@ -31,21 +32,21 @@ class GitHubService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    def get_install_url(self, org_id: str) -> str:
-        state = org_id
+    def get_install_url(self, org_id: UUID, user_id: UUID) -> str:
+        state = issue_github_state(org_id, user_id, "install")
         return f"https://github.com/apps/{settings.GITHUB_APP_SLUG}/installations/new?state={state}"
 
-    def get_oauth_authorize_url(self, org_id: str, callback_url: str) -> str:
+    def get_oauth_authorize_url(self, org_id: UUID, user_id: UUID, callback_url: str) -> str:
         """Build GitHub OAuth authorize URL. The state parameter (org_id) is preserved by GitHub."""
         params = {
             "client_id": settings.GITHUB_CLIENT_ID,
             "redirect_uri": callback_url,
-            "state": org_id,
+            "state": issue_github_state(org_id, user_id, "oauth"),
         }
         return f"https://github.com/login/oauth/authorize?{urlencode(params)}"
 
     async def handle_oauth_callback(
-        self, data: GitHubOAuthCallbackRequest, callback_url: str
+        self, data: GitHubOAuthCallbackRequest, callback_url: str, org_id: UUID
     ) -> OrganizationIntegration:
         """Exchange OAuth code for user token, get installation, and save integration."""
         user_token = await self._exchange_code_for_user_token(data.code, callback_url)
@@ -53,10 +54,11 @@ class GitHubService:
 
         connect_data = GitHubConnectRequest(
             installation_id=str(install["id"]),
+            state="",
             account_login=install.get("account", {}).get("login"),
             account_type=install.get("account", {}).get("type"),
         )
-        return await self.save_integration(UUID(data.state), connect_data)
+        return await self.save_integration(org_id, connect_data)
 
     async def _exchange_code_for_user_token(self, code: str, redirect_uri: str) -> str:
         """Exchange OAuth authorization code for a user access token."""
@@ -185,7 +187,8 @@ class GitHubService:
             if not resp.is_success:
                 logger.error(
                     "GitHub installation token exchange failed: %s %s",
-                    resp.status_code, resp.text,
+                    resp.status_code,
+                    resp.text,
                 )
             resp.raise_for_status()
             return resp.json()["token"]
@@ -209,7 +212,8 @@ class GitHubService:
                 if not resp.is_success:
                     logger.error(
                         "GitHub list repositories failed: %s %s",
-                        resp.status_code, resp.text,
+                        resp.status_code,
+                        resp.text,
                     )
                 resp.raise_for_status()
                 data = resp.json()

@@ -1,5 +1,7 @@
 import asyncio
+import copy
 import os
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -70,6 +72,12 @@ class ScanOrchestrator:
         self._notifier: NotificationDispatcher | None = None
         self._internal_api_key = os.environ.get("INTERNAL_API_KEY", "")
 
+    def _redact_sensitive_text(self, value: str) -> str:
+        redacted = value or ""
+        if self._internal_api_key:
+            redacted = redacted.replace(self._internal_api_key, "[REDACTED]")
+        return re.sub(r"Authorization: Basic\s+\S+", "Authorization: Basic [REDACTED]", redacted)
+
     def set_notifier(self, notifier: "NotificationDispatcher"):
         self._notifier = notifier
 
@@ -135,21 +143,22 @@ class ScanOrchestrator:
 
         except Exception as e:
             context.scan_failed = True
-            context.error_message = str(e)
-            await self._update_status(context, "failed", {"error": str(e)})
+            safe_error = self._redact_sensitive_text(str(e))
+            context.error_message = safe_error
+            await self._update_status(context, "failed", {"error": safe_error})
 
             retry_count = await self.queue.increment_retry(context.job_id)
 
             await self._update_scan_status(
                 context,
                 "failed",
-                error=str(e),
+                error=safe_error,
                 summary={"retry_count": retry_count},
             )
 
             if retry_count >= self.MAX_RETRIES:
                 await self.queue.enqueue_to_dlq(job)
-                await self._update_scan_status(context, "failed", error=f"Max retries exceeded: {e}")
+                await self._update_scan_status(context, "failed", error=f"Max retries exceeded: {safe_error}")
                 await self._send_failure_notification(context, retry_count)
                 return False
 
@@ -166,7 +175,15 @@ class ScanOrchestrator:
         repo_dir = Path(mkdtemp(prefix="scan_repo_"))
 
         # Fetch the installation token from the API
-        clone_url = await self._get_clone_url(context)
+        clone_url, auth_header = await self._get_clone_url(context)
+        git_env = copy.deepcopy(os.environ)
+        git_env.update(
+            {
+                "GIT_CONFIG_COUNT": "1",
+                "GIT_CONFIG_KEY_0": "http.extraHeader",
+                "GIT_CONFIG_VALUE_0": auth_header,
+            }
+        )
 
         try:
             result = await asyncio.to_thread(
@@ -184,9 +201,10 @@ class ScanOrchestrator:
                 capture_output=True,
                 text=True,
                 timeout=300,
+                env=git_env,
             )
             if result.returncode != 0:
-                raise RuntimeError(f"git clone failed: {result.stderr.strip()}")
+                raise RuntimeError(f"git clone failed: {self._redact_sensitive_text(result.stderr).strip()}")
         except subprocess.TimeoutExpired:
             raise RuntimeError("git clone timed out after 5 minutes")
 
@@ -213,7 +231,7 @@ class ScanOrchestrator:
                 continue
         return []
 
-    async def _get_clone_url(self, context: ScanContext) -> str:
+    async def _get_clone_url(self, context: ScanContext) -> tuple[str, str]:
         """Build an authenticated clone URL via the internal API."""
 
         async with httpx.AsyncClient() as client:
@@ -225,7 +243,7 @@ class ScanOrchestrator:
             )
             resp.raise_for_status()
             data = resp.json()
-            return data["clone_url"]
+            return data["clone_url"], data["auth_header"]
 
     async def _create_scanner_run(
         self, context: ScanContext, scanner_name: str, version: str | None = None

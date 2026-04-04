@@ -78,7 +78,7 @@ class R2Client:
         )
 
         return {
-            "storage_uri": f"{self.public_base_url}/{key}",
+            "storage_uri": key,
             "checksum_sha256": checksum,
             "size_bytes": file_size,
             "content_type": content_type,
@@ -101,7 +101,7 @@ class R2Client:
             ContentType="application/json",
         )
 
-        return f"{self.public_base_url}/{key}"
+        return key
 
     def upload_sarif(
         self,
@@ -119,7 +119,7 @@ class R2Client:
             ContentType="application/sarif+json",
         )
 
-        return f"{self.public_base_url}/{key}"
+        return key
 
     def upload_log(
         self,
@@ -136,7 +136,7 @@ class R2Client:
             ContentType="text/plain",
         )
 
-        return f"{self.public_base_url}/{key}"
+        return key
 
     def generate_presigned_url(
         self,
@@ -162,4 +162,4 @@ class R2Client:
                 )
 
     def get_artifact_url(self, key: str) -> str:
-        return f"{self.public_base_url}/{key}"
+        return key

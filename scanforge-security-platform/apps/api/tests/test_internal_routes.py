@@ -50,10 +50,10 @@ async def test_internal_endpoints_require_service_auth():
 def test_update_scanner_run_request_allows_partial_artifact_updates():
     payload = UpdateScannerRunRequest.model_validate(
         {
-            "artifact_uri": "https://artifacts.example/scans/123/output.json",
-            "metadata_json": {"raw_output_uri": "https://artifacts.example/scans/123/raw.json"},
+            "artifact_uri": "scans/123/output.json",
+            "metadata_json": {"raw_output_uri": "scans/123/raw.json"},
         }
     )
 
     assert payload.status is None
-    assert payload.artifact_uri == "https://artifacts.example/scans/123/output.json"
+    assert payload.artifact_uri == "scans/123/output.json"

@@ -2,10 +2,13 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.route_auth import get_project_in_org_or_404, get_repository_in_project_or_404
+from app.clients.r2 import R2Client
 from app.core.config import settings
+from app.core.error_messages import GENERIC_QUEUE_ERROR
 from app.db.session import get_db
 from app.middleware.auth import UserContext, get_current_user
 from app.schemas.common import PaginatedResponse, PaginationParams
@@ -21,6 +24,31 @@ from app.services.scans import ScanService
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _build_scan_artifact_download_url(org_id: UUID, project_id: UUID, scan_id: UUID, run_id: UUID) -> str:
+    return f"/api/v1/organizations/{org_id}/projects/{project_id}/scans/{scan_id}/scanner-runs/{run_id}/download"
+
+
+def _apply_scan_download_urls(scan, *, org_id: UUID, project_id: UUID) -> ScanDetailResponse:
+    payload = ScanDetailResponse.model_validate(scan)
+    for run in payload.scanner_runs:
+        run.artifact_download_url = (
+            _build_scan_artifact_download_url(org_id, project_id, payload.id, run.id) if run.artifact_uri else None
+        )
+        run.artifact_uri = None
+        if isinstance(run.metadata_json, dict):
+            run.metadata_json = {key: value for key, value in run.metadata_json.items() if not key.endswith("_uri")}
+    return payload
+
+
+def _get_r2_client() -> R2Client:
+    return R2Client(
+        endpoint=settings.R2_ENDPOINT,
+        bucket=settings.R2_BUCKET,
+        access_key_id=settings.R2_ACCESS_KEY_ID,
+        secret_access_key=settings.R2_SECRET_ACCESS_KEY,
+    )
 
 
 @router.post("/", response_model=ScanResponse, status_code=status.HTTP_201_CREATED)
@@ -82,11 +110,11 @@ async def create_scan(
             },
         )
         logger.info("Enqueued scan %s as job %s (%s)", scan.id, job_id, job_type)
-    except Exception as e:
-        logger.error("Failed to enqueue scan %s: %s", scan.id, e)
+    except Exception:
+        logger.error("Failed to enqueue scan %s", scan.id, exc_info=True)
         # Update scan to failed so UI shows the error
         scan.status = "failed"
-        scan.error_message = f"Failed to enqueue: {e}"
+        scan.error_message = GENERIC_QUEUE_ERROR
         await db.commit()
         await db.refresh(scan)
 
@@ -136,7 +164,30 @@ async def get_scan(
     if not scan or scan.project_id != project_id:
         raise HTTPException(status_code=404, detail="Scan not found")
 
-    return ScanDetailResponse.model_validate(scan)
+    return _apply_scan_download_urls(scan, org_id=org_id, project_id=project_id)
+
+
+@router.get("/{scan_id}/scanner-runs/{run_id}/download")
+async def download_scan_artifact(
+    org_id: UUID,
+    project_id: UUID,
+    scan_id: UUID,
+    run_id: UUID,
+    current_user: UserContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)
+
+    scan_service = ScanService(db)
+    scan = await scan_service.get_by_id(scan_id, current_user.user_id)
+    if not scan or scan.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    run = next((item for item in scan.scanner_runs if item.id == run_id), None)
+    if not run or not run.artifact_uri:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+
+    return RedirectResponse(url=_get_r2_client().generate_presigned_url(run.artifact_uri))
 
 
 @router.post("/{scan_id}/cancel", response_model=ScanResponse)

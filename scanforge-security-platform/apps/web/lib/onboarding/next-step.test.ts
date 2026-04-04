@@ -28,9 +28,9 @@ test("preserves onboarding as a top-level route in step action URLs", () => {
   assert.equal(actions[0]?.url, "/onboarding?org_id=org-1&github_connected=true");
 });
 
-test("marks callback as recoverable when installation and org context exist", () => {
+test("marks callback as recoverable when installation and signed state exist", () => {
   assert.deepEqual(
-    deriveCallbackState({ installation_id: "123", storedOrgId: "org-1" }),
-    { kind: "success", orgId: "org-1" }
+    deriveCallbackState({ installation_id: "123", state: "signed-state" }),
+    { kind: "success" }
   );
 });

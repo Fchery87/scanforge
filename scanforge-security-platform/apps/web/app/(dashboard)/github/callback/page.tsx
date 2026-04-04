@@ -20,11 +20,11 @@ function CallbackContent() {
     ran.current = true;
 
     const installationId = searchParams.get("installation_id");
-    const orgId = localStorage.getItem("github_connect_org_id");
+    const stateParam = searchParams.get("state");
 
     const state = deriveCallbackState({
       installation_id: installationId,
-      storedOrgId: orgId,
+      state: stateParam,
     });
 
     if (state.kind !== "success") {
@@ -32,11 +32,9 @@ function CallbackContent() {
       return;
     }
 
-    localStorage.removeItem("github_connect_org_id");
-
-    api.github.connect(state.orgId, { installation_id: installationId! })
+    api.github.installCallback(installationId!, stateParam!)
       .then(() => {
-        router.replace(`/onboarding?org_id=${state.orgId}&github_connected=true`);
+        router.replace(`/onboarding?github_connected=true`);
       })
       .catch(() => {
         setRecoveryState({ kind: "connect-failed" });
@@ -68,7 +66,7 @@ function CallbackContent() {
     );
   }
 
-  if (recoveryState?.kind === "missing-org-context") {
+  if (recoveryState?.kind === "missing-state") {
     return (
       <main className="mx-auto flex min-h-screen max-w-3xl items-center justify-center px-6 py-12">
         <div className="card-serif w-full max-w-lg p-8 text-center">
@@ -78,7 +76,7 @@ function CallbackContent() {
           <p className="section-title mb-3">Integration</p>
           <h1 className="font-display text-[2.4rem] leading-none tracking-[-0.05em] text-text-primary">Session Expired</h1>
           <p className="mt-4 text-sm leading-relaxed text-text-secondary">
-            The organization context was lost. This can happen if the page was refreshed or the session timed out during the GitHub flow.
+            The GitHub callback state is missing or expired. Please restart the GitHub connection flow.
           </p>
           <div className="mt-6 flex items-center justify-center gap-3">
             <Link href="/dashboard">

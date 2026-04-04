@@ -79,18 +79,18 @@ export function getOnboardingCompletionSummary(steps: OnboardingStep[]): {
 }
 
 export type CallbackRecoveryState =
-  | { kind: "success"; orgId: string }
+  | { kind: "success" }
   | { kind: "missing-install-id" }
-  | { kind: "missing-org-context" }
+  | { kind: "missing-state" }
   | { kind: "connect-failed" };
 
 export function deriveCallbackState(params: {
   installation_id?: string | null;
-  storedOrgId?: string | null;
+  state?: string | null;
   connectError?: boolean;
 }): CallbackRecoveryState {
   if (params.connectError) return { kind: "connect-failed" };
   if (!params.installation_id) return { kind: "missing-install-id" };
-  if (!params.storedOrgId) return { kind: "missing-org-context" };
-  return { kind: "success", orgId: params.storedOrgId };
+  if (!params.state) return { kind: "missing-state" };
+  return { kind: "success" };
 }

@@ -5,6 +5,8 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.route_auth import get_project_in_org_or_404
+from app.clients.r2 import R2Client
+from app.core.config import settings
 from app.db.session import get_db
 from app.middleware.auth import UserContext, get_current_user
 from app.schemas.common import PaginatedResponse, PaginationParams
@@ -13,6 +15,26 @@ from app.services.exports import ExportService
 from app.services.organizations import OrganizationService
 
 router = APIRouter()
+
+
+def _build_download_url(org_id: UUID, project_id: UUID, export_id: UUID) -> str:
+    return f"/api/v1/organizations/{org_id}/projects/{project_id}/exports/{export_id}/download"
+
+
+def _serialize_export(export, *, org_id: UUID, project_id: UUID) -> ExportResponse:
+    payload = ExportResponse.model_validate(export)
+    payload.storage_uri = None
+    payload.download_url = _build_download_url(org_id, project_id, payload.id) if export.status == "completed" else None
+    return payload
+
+
+def _get_r2_client() -> R2Client:
+    return R2Client(
+        endpoint=settings.R2_ENDPOINT,
+        bucket=settings.R2_BUCKET,
+        access_key_id=settings.R2_ACCESS_KEY_ID,
+        secret_access_key=settings.R2_SECRET_ACCESS_KEY,
+    )
 
 
 @router.post("/", response_model=ExportResponse, status_code=status.HTTP_201_CREATED)
@@ -40,7 +62,7 @@ async def create_export(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
-    return export
+    return _serialize_export(export, org_id=org_id, project_id=project_id)
 
 
 @router.get("/", response_model=PaginatedResponse[ExportResponse])
@@ -62,7 +84,7 @@ async def list_exports(
     )
 
     return PaginatedResponse(
-        items=exports,
+        items=[_serialize_export(export, org_id=org_id, project_id=project_id) for export in exports],
         total=total,
         skip=pagination.skip,
         limit=pagination.limit,
@@ -84,7 +106,7 @@ async def get_export(
     if not export or export.project_id != str(project_id):
         raise HTTPException(status_code=404, detail="Export not found")
 
-    return export
+    return _serialize_export(export, org_id=org_id, project_id=project_id)
 
 
 @router.get("/{export_id}/download")
@@ -105,4 +127,4 @@ async def download_export(
     if export.status != "completed" or not export.storage_uri:
         raise HTTPException(status_code=400, detail="Export not ready for download")
 
-    return RedirectResponse(url=export.storage_uri)
+    return RedirectResponse(url=_get_r2_client().generate_presigned_url(export.storage_uri))

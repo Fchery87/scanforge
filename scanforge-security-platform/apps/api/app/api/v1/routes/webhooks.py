@@ -1,10 +1,13 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.webhook import verify_github_webhook_async
 from app.db.enums import ScanTriggerType
+from app.db.models import Project, Repository, RepositoryIntegration, WebhookDelivery
 from app.db.session import AsyncSession, get_db
 from app.schemas.scans import ScanCreate
 from app.services.audit_logs import AuditLogService
@@ -25,8 +28,55 @@ async def github_webhook(
 
     event = request.headers.get("x-github-event", "")
     delivery = request.headers.get("x-github-delivery", "")
+    if not delivery:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing delivery ID")
 
     payload = await request.json()
+
+    repo = await db.get(Repository, repository_id)
+    project = await db.get(Project, project_id)
+    integration = await db.scalar(
+        select(RepositoryIntegration).where(RepositoryIntegration.repository_id == repository_id)
+    )
+
+    if not repo or not project or repo.project_id != project_id or project.organization_id != org_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Webhook target not found")
+
+    if integration is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository integration not found")
+
+    payload_repo = payload.get("repository") or {}
+    payload_installation = payload.get("installation") or {}
+    payload_full_name = payload_repo.get("full_name")
+    payload_repo_id = str(payload_repo.get("id")) if payload_repo.get("id") is not None else None
+    payload_installation_id = (
+        str(payload_installation.get("id")) if payload_installation.get("id") is not None else None
+    )
+
+    if payload_full_name != repo.full_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Webhook repository mismatch")
+
+    if repo.external_repo_id and payload_repo_id and repo.external_repo_id != payload_repo_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Webhook repository ID mismatch")
+
+    if integration.installation_id and payload_installation_id != integration.installation_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Webhook installation mismatch")
+
+    db.add(
+        WebhookDelivery(
+            provider="github",
+            delivery_id=delivery,
+            event_type=event or "unknown",
+            organization_id=str(org_id),
+            project_id=str(project_id),
+            repository_id=str(repository_id),
+        )
+    )
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Duplicate webhook delivery") from exc
 
     if event == "push":
         branch = payload.get("ref", "").replace("refs/heads/", "")
@@ -39,9 +89,7 @@ async def github_webhook(
             commit_sha=payload.get("after"),
         )
 
-        scan, _, _ = await scan_service.create(
-            str(repository_id), scan_data, user_id=None
-        )
+        scan, _, _ = await scan_service.create(str(repository_id), scan_data, user_id=None)
 
         audit_service = AuditLogService(db)
         await audit_service.create(
@@ -57,12 +105,13 @@ async def github_webhook(
                 "trigger": "github_push",
             },
         )
+        await db.commit()
 
         return {"status": "queued", "scan_id": str(scan.id)}
 
     if event == "ping":
+        await db.commit()
         return {"status": "ok", "message": "Pong"}
 
+    await db.commit()
     return {"status": "ignored", "event": event}
-
-

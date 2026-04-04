@@ -9,12 +9,18 @@ class GitHubInstallUrlResponse(BaseModel):
 
 class GitHubConnectRequest(BaseModel):
     installation_id: str
+    state: str
     account_login: str | None = None
     account_type: str | None = None
 
 
 class GitHubOAuthCallbackRequest(BaseModel):
     code: str
+    state: str
+
+
+class GitHubInstallCallbackRequest(BaseModel):
+    installation_id: str
     state: str
 
 

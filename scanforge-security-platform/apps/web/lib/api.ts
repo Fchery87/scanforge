@@ -75,7 +75,12 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ code, state }),
       }),
-    connect: (orgId: string, data: { installation_id: string; account_login?: string; account_type?: string }) =>
+    installCallback: (installationId: string, state: string) =>
+      request<any>("/github/install/callback", {
+        method: "POST",
+        body: JSON.stringify({ installation_id: installationId, state }),
+      }),
+    connect: (orgId: string, data: { installation_id: string; state: string; account_login?: string; account_type?: string }) =>
       request<any>(`/organizations/${orgId}/github/connect`, {
         method: "POST",
         body: JSON.stringify(data),
