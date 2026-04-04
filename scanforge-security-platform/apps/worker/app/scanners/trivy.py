@@ -9,6 +9,7 @@ from app.scanners.base import ScannerAdapter, ScannerResult
 class TrivyAdapter(ScannerAdapter):
     name = "trivy"
     binary_name = "trivy"
+    binary_env_var = "TRIVY_BINARY"
 
     def get_version(self) -> str:
         try:
@@ -27,6 +28,7 @@ class TrivyAdapter(ScannerAdapter):
 
     def run(self, repo_path: Path) -> ScannerResult:
         import time
+
         start = time.time()
 
         try:
@@ -34,9 +36,14 @@ class TrivyAdapter(ScannerAdapter):
                 [
                     self.binary_name,
                     "fs",
-                    "--format", "json",
-                    "--output", "trivy-results.json",
-                    "--scanners", "vuln,secret,misconfig",
+                    "--no-progress",
+                    "--skip-version-check",
+                    "--format",
+                    "json",
+                    "--output",
+                    "trivy-results.json",
+                    "--scanners",
+                    "vuln,secret,misconfig",
                     str(repo_path),
                 ],
                 capture_output=True,

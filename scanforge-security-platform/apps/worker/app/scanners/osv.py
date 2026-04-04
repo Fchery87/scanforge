@@ -8,18 +8,23 @@ from app.scanners.base import ScannerAdapter, ScannerResult
 class OsvAdapter(ScannerAdapter):
     name = "osv"
     binary_name = "osv-scanner"
+    binary_env_var = "OSV_SCANNER_BINARY"
 
     def run(self, repo_path: Path) -> ScannerResult:
         import time
+
         start = time.time()
 
         try:
             result = subprocess.run(
                 [
                     self.binary_name,
-                    "--format", "json",
-                    "--output", "osv-results.json",
-                    "-r", str(repo_path),
+                    "--format",
+                    "json",
+                    "--output",
+                    "osv-results.json",
+                    "-r",
+                    str(repo_path),
                 ],
                 capture_output=True,
                 text=True,

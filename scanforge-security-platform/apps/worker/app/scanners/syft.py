@@ -9,9 +9,11 @@ from app.scanners.base import ScannerAdapter, ScannerResult
 class SyftAdapter(ScannerAdapter):
     name = "syft"
     binary_name = "syft"
+    binary_env_var = "SYFT_BINARY"
 
     def run(self, repo_path: Path) -> ScannerResult:
         import time
+
         start = time.time()
 
         try:
@@ -22,8 +24,10 @@ class SyftAdapter(ScannerAdapter):
                     self.binary_name,
                     "scan",
                     f"dir:{repo_path}",
-                    "-o", "json",
-                    "--file", str(output_file),
+                    "-o",
+                    "json",
+                    "--file",
+                    str(output_file),
                 ],
                 capture_output=True,
                 text=True,

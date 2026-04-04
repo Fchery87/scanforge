@@ -1,14 +1,29 @@
 export type ScanPhase = "active" | "completed" | "failed" | "stale";
 
+const STALE_ACTIVE_SCAN_MS = 60 * 60 * 1000;
+
 export interface ScanInput {
   status: string;
   scanner_runs?: unknown[];
   created_at?: string;
 }
 
-export function deriveScanPhase(scan: ScanInput): ScanPhase {
+export function isStaleActiveScan(scan: ScanInput, now: Date = new Date()): boolean {
   const status = scan.status?.toLowerCase() ?? "";
-  if (status === "running" || status === "queued") return "active";
+  if (status !== "running" && status !== "queued") return false;
+  if (!scan.created_at) return false;
+
+  const createdAtMs = new Date(scan.created_at).getTime();
+  if (Number.isNaN(createdAtMs)) return false;
+
+  return now.getTime() - createdAtMs >= STALE_ACTIVE_SCAN_MS;
+}
+
+export function deriveScanPhase(scan: ScanInput, now: Date = new Date()): ScanPhase {
+  const status = scan.status?.toLowerCase() ?? "";
+  if (status === "running" || status === "queued") {
+    return isStaleActiveScan(scan, now) ? "stale" : "active";
+  }
   if (status === "failed" || status === "canceled") return "failed";
   if (status === "completed") return "completed";
   return "stale";
@@ -69,12 +84,15 @@ export function getArtifactAvailability(run: { artifact_uri?: string | null; sta
   return { available: false, reason: "No artifact available" };
 }
 
-export function getScannerRunStatus(run: { status?: string }): {
+export function getScannerRunStatus(run: { status?: string }, scan?: ScanInput, now: Date = new Date()): {
   label: string;
   variant: "active" | "success" | "error" | "pending";
 } {
   const status = run.status?.toLowerCase() ?? "";
-  if (status === "running" || status === "queued") return { label: status, variant: "active" };
+  if (status === "running" || status === "queued") {
+    if (scan && isStaleActiveScan(scan, now)) return { label: "stale", variant: "error" };
+    return { label: status, variant: "active" };
+  }
   if (status === "completed" || status === "success") return { label: "completed", variant: "success" };
   if (status === "failed" || status === "error") return { label: "failed", variant: "error" };
   return { label: status || "unknown", variant: "pending" };

@@ -8,6 +8,7 @@ from app.scanners.base import ScannerAdapter, ScannerResult
 class CheckovAdapter(ScannerAdapter):
     name = "checkov"
     binary_name = "checkov"
+    binary_env_var = "CHECKOV_BINARY"
 
     def run(self, repo_path: Path) -> ScannerResult:
         import time
@@ -21,6 +22,8 @@ class CheckovAdapter(ScannerAdapter):
                     self.binary_name,
                     "--directory",
                     str(repo_path),
+                    "--quiet",
+                    "--skip-download",
                     "--output",
                     "json",
                 ],

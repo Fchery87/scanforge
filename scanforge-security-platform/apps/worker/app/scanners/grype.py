@@ -8,6 +8,7 @@ from app.scanners.base import ScannerAdapter, ScannerResult
 class GrypeAdapter(ScannerAdapter):
     name = "grype"
     binary_name = "grype"
+    binary_env_var = "GRYPE_BINARY"
 
     def run(self, repo_path: Path) -> ScannerResult:
         import time
@@ -19,6 +20,7 @@ class GrypeAdapter(ScannerAdapter):
             result = subprocess.run(
                 [
                     self.binary_name,
+                    "--quiet",
                     f"dir:{repo_path}",
                     "-o",
                     "json",
@@ -43,7 +45,9 @@ class GrypeAdapter(ScannerAdapter):
                         output = {"raw": f.read()}
                 artifacts.append(output_file)
 
-            has_output = bool(output and (output.get("matches") is not None or output != {"raw": ""}))
+            has_output = bool(
+                output and ((isinstance(output, dict) and output.get("matches") is not None) or output != {"raw": ""})
+            )
             return ScannerResult(
                 scanner_name=self.name,
                 success=result.returncode == 0 or has_output,

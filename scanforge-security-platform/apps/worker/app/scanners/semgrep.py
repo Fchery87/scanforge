@@ -8,9 +8,11 @@ from app.scanners.base import ScannerAdapter, ScannerResult
 class SemgrepAdapter(ScannerAdapter):
     name = "semgrep"
     binary_name = "semgrep"
+    binary_env_var = "SEMGREP_BINARY"
 
     def run(self, repo_path: Path) -> ScannerResult:
         import time
+
         start = time.time()
 
         try:
@@ -19,8 +21,13 @@ class SemgrepAdapter(ScannerAdapter):
                     self.binary_name,
                     "scan",
                     "--json",
-                    "--config", "auto",
-                    "--json-output", "semgrep-results.json",
+                    "--disable-version-check",
+                    "--jobs",
+                    "1",
+                    "--config",
+                    "auto",
+                    "--json-output",
+                    "semgrep-results.json",
                     str(repo_path),
                 ],
                 capture_output=True,

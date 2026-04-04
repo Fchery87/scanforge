@@ -9,9 +9,11 @@ from app.scanners.base import ScannerAdapter, ScannerResult
 class GitleaksAdapter(ScannerAdapter):
     name = "gitleaks"
     binary_name = "gitleaks"
+    binary_env_var = "GITLEAKS_BINARY"
 
     def run(self, repo_path: Path) -> ScannerResult:
         import time
+
         start = time.time()
 
         try:
@@ -19,8 +21,10 @@ class GitleaksAdapter(ScannerAdapter):
                 [
                     self.binary_name,
                     "detect",
-                    "--source", str(repo_path),
-                    "--report-format", "json",
+                    "--source",
+                    str(repo_path),
+                    "--report-format",
+                    "json",
                     "--no-git",
                 ],
                 capture_output=True,

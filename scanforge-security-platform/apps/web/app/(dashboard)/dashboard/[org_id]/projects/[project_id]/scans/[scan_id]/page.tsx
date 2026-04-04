@@ -12,6 +12,7 @@ import {
   canCancelScan,
   deriveRerunPayload,
   formatScanSummary,
+  isStaleActiveScan,
 } from "@/lib/scans/lifecycle";
 import { formatRelativeTime, formatScanDuration } from "@/lib/project-surface";
 import { PageHeader } from "@/components/scanforge/page-header";
@@ -84,6 +85,7 @@ export default function ScanDetailPage() {
   const phase = deriveScanPhase(scan);
   const summary = formatScanSummary(scan);
   const duration = formatScanDuration(scan.summary_json || {});
+  const isStale = isStaleActiveScan(scan);
 
   return (
     <div>
@@ -119,8 +121,18 @@ export default function ScanDetailPage() {
         branch={summary.branch}
         duration={duration}
         findingCount={summary.findingCount}
+        stale={isStale}
         className="mb-8"
       />
+
+      {isStale ? (
+        <div className="mb-6 flex items-start gap-3 rounded-[10px] border border-warning/30 bg-warning/10 p-4">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
+          <span className="text-sm text-warning-foreground">
+            This scan has been running longer than expected. Check worker logs for the specific scanner still in progress.
+          </span>
+        </div>
+      ) : null}
 
       {scan.error_message ? (
         <div className="mb-6 flex items-start gap-3 rounded-[10px] border border-danger/30 bg-danger/10 p-4">

@@ -376,6 +376,8 @@ The canonical starter file is `.env.example`.
 - `OSV_SCANNER_BINARY`
 - `SYFT_BINARY`
 - `GRYPE_BINARY`
+- `SEMGREP_BINARY`
+- `CHECKOV_BINARY`
 
 ## API Surface
 

@@ -1,7 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { deriveScanPhase, canRerunScan, canDeleteScan, canCancelScan, deriveRerunPayload, getArtifactAvailability, getScannerRunStatus } from "./lifecycle.ts";
+import {
+  deriveScanPhase,
+  canRerunScan,
+  canDeleteScan,
+  canCancelScan,
+  deriveRerunPayload,
+  getArtifactAvailability,
+  getScannerRunStatus,
+  isStaleActiveScan,
+} from "./lifecycle.ts";
 
 test("maps running scans to active phase", () => {
   assert.equal(deriveScanPhase({ status: "running", scanner_runs: [] }), "active");
@@ -13,6 +22,16 @@ test("maps completed scans to completed phase", () => {
 
 test("maps failed scans to failed phase", () => {
   assert.equal(deriveScanPhase({ status: "failed" }), "failed");
+});
+
+test("maps long-running scans to stale phase", () => {
+  assert.equal(
+    deriveScanPhase({
+      status: "running",
+      created_at: "2026-04-03T00:00:00.000Z",
+    }, new Date("2026-04-03T01:01:00.000Z")),
+    "stale"
+  );
 });
 
 test("allows rerun for failed scans", () => {
@@ -39,4 +58,25 @@ test("reports artifact unavailable for failed run", () => {
 
 test("reports scanner run status correctly", () => {
   assert.deepEqual(getScannerRunStatus({ status: "completed" }), { label: "completed", variant: "success" });
+});
+
+test("marks active scans stale after one hour", () => {
+  assert.equal(
+    isStaleActiveScan(
+      { status: "queued", created_at: "2026-04-03T00:00:00.000Z" },
+      new Date("2026-04-03T01:01:00.000Z")
+    ),
+    true
+  );
+});
+
+test("reports stale scanner run status for long-running scans", () => {
+  assert.deepEqual(
+    getScannerRunStatus(
+      { status: "running" },
+      { status: "running", created_at: "2026-04-03T00:00:00.000Z" },
+      new Date("2026-04-03T01:01:00.000Z")
+    ),
+    { label: "stale", variant: "error" }
+  );
 });

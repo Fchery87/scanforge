@@ -282,6 +282,10 @@ class ScanOrchestrator:
             if run_id:
                 context.scanner_run_ids[scanner_name] = run_id
             start = datetime.utcnow()
+            print(
+                f"[orchestrator] scanner {scanner_name} started "
+                f"scan={context.scan_id} run_id={run_id or 'n/a'} version={version or 'unknown'}"
+            )
 
             try:
                 result = await asyncio.wait_for(
@@ -299,6 +303,11 @@ class ScanOrchestrator:
                         exit_code=0 if result.success else 1,
                         error_message=result.error or None,
                     )
+                print(
+                    f"[orchestrator] scanner {scanner_name} finished "
+                    f"scan={context.scan_id} success={result.success} duration_ms={duration_ms} "
+                    f"error={result.error or 'none'}"
+                )
                 return scanner_name, result
             except TimeoutError:
                 if run_id:
@@ -309,6 +318,9 @@ class ScanOrchestrator:
                         duration_ms=duration_ms,
                         error_message="Scanner timed out after 30 minutes",
                     )
+                print(
+                    f"[orchestrator] scanner {scanner_name} timed out scan={context.scan_id} duration_ms={duration_ms}"
+                )
                 return scanner_name, ScannerResult(
                     scanner_name=scanner_name,
                     success=False,
@@ -325,6 +337,7 @@ class ScanOrchestrator:
                         duration_ms=duration_ms,
                         error_message=str(e),
                     )
+                print(f"[orchestrator] scanner {scanner_name} crashed scan={context.scan_id} error={e}")
                 return scanner_name, ScannerResult(
                     scanner_name=scanner_name,
                     success=False,

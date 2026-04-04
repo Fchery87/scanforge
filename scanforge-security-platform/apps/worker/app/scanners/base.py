@@ -1,3 +1,4 @@
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,6 +19,11 @@ class ScannerResult:
 class ScannerAdapter(ABC):
     name: str = "base"
     binary_name: str = ""
+    binary_env_var: str | None = None
+
+    def __init__(self):
+        if self.binary_env_var:
+            self.binary_name = os.environ.get(self.binary_env_var, self.binary_name)
 
     @abstractmethod
     def run(self, repo_path: Path) -> ScannerResult:
@@ -25,6 +31,7 @@ class ScannerAdapter(ABC):
 
     def get_version(self) -> str:
         import subprocess
+
         try:
             result = subprocess.run(
                 [self.binary_name, "--version"],

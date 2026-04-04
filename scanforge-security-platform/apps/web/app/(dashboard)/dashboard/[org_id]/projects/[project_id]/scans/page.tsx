@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Activity, Plus, Trash2, XCircle as XCircleIcon } from "lucide-react";
 
 import { api } from "@/lib/api";
-import { canRerunScan, canDeleteScan, canCancelScan } from "@/lib/scans/lifecycle";
+import { canRerunScan, canDeleteScan, canCancelScan, deriveScanPhase } from "@/lib/scans/lifecycle";
 import { formatRelativeTime, formatScanDuration } from "@/lib/project-surface";
 import { EmptyState } from "@/components/scanforge/empty-state";
 import { PageHeader } from "@/components/scanforge/page-header";
@@ -165,7 +165,8 @@ export default function ScansPage() {
 
           <div className="card-serif overflow-hidden">
             {filteredScans.map((scan) => {
-              const isFailedOrStale = scan.status === "failed" || scan.status === "canceled";
+              const phase = deriveScanPhase(scan);
+              const isFailedOrStale = phase === "failed" || phase === "stale";
               return (
                 <div
                   key={scan.id}
@@ -178,9 +179,10 @@ export default function ScansPage() {
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-3">
-                      <StatusBadge status={scan.status} />
+                      <StatusBadge status={phase === "stale" ? "failed" : scan.status} />
                       <code className="font-mono text-sm text-text-primary">{scan.id.slice(0, 8)}</code>
                       <span className="text-xs text-text-tertiary">{scan.trigger_type}</span>
+                      {phase === "stale" ? <Badge variant="destructive">stale</Badge> : null}
                     </div>
                     <p className="mt-2 text-sm text-text-secondary">
                       {scan.branch_name ?? "default branch"} · created {formatRelativeTime(scan.created_at)}

@@ -8,12 +8,13 @@ interface ScanSummaryCardsProps {
   branch: string;
   duration: string;
   findingCount: number;
+  stale?: boolean;
   className?: string;
 }
 
-export function ScanSummaryCards({ status, branch, duration, findingCount, className }: ScanSummaryCardsProps) {
+export function ScanSummaryCards({ status, branch, duration, findingCount, stale = false, className }: ScanSummaryCardsProps) {
   const cards = [
-    { label: "Status", value: <StatusBadge status={status} /> },
+    { label: "Status", value: <StatusBadge status={stale ? "failed" : status} /> },
     { label: "Branch", value: <span className="text-sm text-text-primary">{branch}</span> },
     { label: "Duration", value: <span className="text-sm text-text-primary">{duration}</span> },
     { label: "Findings", value: <span className="font-display text-[1.8rem] leading-none text-text-primary">{findingCount}</span> },
