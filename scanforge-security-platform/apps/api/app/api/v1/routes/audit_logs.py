@@ -3,19 +3,17 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.route_auth import get_project_in_org_or_404
 from app.db.session import get_db
 from app.middleware.auth import UserContext, get_current_user
 from app.schemas.common import PaginatedResponse, PaginationParams
 from app.services.audit_logs import AuditLogService
 from app.services.organizations import OrganizationService
-from app.services.projects import ProjectService
 
 router = APIRouter()
 
 
-@router.get(
-    "/organizations/{org_id}/audit-logs", response_model=PaginatedResponse[dict]
-)
+@router.get("/organizations/{org_id}/audit-logs", response_model=PaginatedResponse[dict])
 async def list_audit_logs_org(
     org_id: UUID,
     pagination: PaginationParams = Depends(),
@@ -61,10 +59,7 @@ async def list_audit_logs_project(
     current_user: UserContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    project_service = ProjectService(db)
-    has_access = await project_service.user_has_access(project_id, current_user.user_id)
-    if not has_access:
-        raise HTTPException(status_code=403, detail="No access to this project")
+    await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)
 
     service = AuditLogService(db)
     logs, total = await service.list_for_project(

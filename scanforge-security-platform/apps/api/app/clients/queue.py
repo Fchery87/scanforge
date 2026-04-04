@@ -58,14 +58,13 @@ class QueueClient:
         payload: dict,
         delay_seconds: int = 0,
     ) -> str:
+        if delay_seconds > 0:
+            raise NotImplementedError("Delayed jobs are not implemented for the scan queue")
+
         job = QueueJob.create(job_type, payload)
         job_json = job.model_dump_json()
 
-        if delay_seconds > 0:
-            score = datetime.utcnow().timestamp() + delay_seconds
-            await self._command("ZADD", self.SCAN_QUEUE, score, job_json)
-        else:
-            await self._command("LPUSH", self.SCAN_QUEUE, job_json)
+        await self._command("LPUSH", self.SCAN_QUEUE, job_json)
 
         return job.job_id
 

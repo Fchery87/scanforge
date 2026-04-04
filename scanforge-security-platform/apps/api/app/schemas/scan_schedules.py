@@ -5,7 +5,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ScanScheduleCreate(BaseModel):
-    repository_id: UUID
     schedule_type: str = Field(..., pattern="^(daily|weekly|on_push)$")
     cron_expression: str | None = Field(None, max_length=100)
     scan_type: str = Field(default="full", pattern="^(full|diff|dependencies|secrets)$")

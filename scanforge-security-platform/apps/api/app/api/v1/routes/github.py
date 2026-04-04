@@ -72,8 +72,16 @@ async def github_oauth_callback(
     db: AsyncSession = Depends(get_db),
 ):
     """Handle GitHub OAuth callback. Exchanges code for user token, finds installation, saves integration."""
+    try:
+        org_id = UUID(data.state)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid OAuth state",
+        ) from exc
+
     org_service = OrganizationService(db)
-    has_permission = await org_service.user_has_permission(UUID(data.state), current_user.user_id, ["admin", "owner"])
+    has_permission = await org_service.user_has_permission(org_id, current_user.user_id, ["admin", "owner"])
     if not has_permission:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

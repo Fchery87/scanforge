@@ -1,3 +1,5 @@
+import hmac
+
 from fastapi import Header, HTTPException, status
 
 from app.core.config import settings
@@ -10,7 +12,7 @@ async def require_service_auth(x_service_key: str | None = Header(None)):
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Internal API not configured",
         )
-    if not x_service_key or x_service_key != settings.INTERNAL_API_KEY:
+    if not x_service_key or not hmac.compare_digest(x_service_key, settings.INTERNAL_API_KEY):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing service key",

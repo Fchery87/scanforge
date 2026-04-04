@@ -83,15 +83,11 @@ class ScanService:
             )
         )
 
-        count_result = await self.db.execute(
-            select(func.count(Scan.id))
-            .where(Scan.repository_id == repo_id)
-        )
+        count_result = await self.db.execute(select(func.count()).select_from(base_query.order_by(None).subquery()))
         total = count_result.scalar_one()
 
         result = await self.db.execute(
-            base_query
-            .options(selectinload(Scan.scanner_runs))
+            base_query.options(selectinload(Scan.scanner_runs))
             .order_by(Scan.created_at.desc())
             .offset(skip)
             .limit(limit)
@@ -122,15 +118,11 @@ class ScanService:
         if status_filter:
             base_query = base_query.where(Scan.status == status_filter)
 
-        count_result = await self.db.execute(
-            select(func.count(Scan.id))
-            .where(Scan.project_id == project_id)
-        )
+        count_result = await self.db.execute(select(func.count()).select_from(base_query.order_by(None).subquery()))
         total = count_result.scalar_one()
 
         result = await self.db.execute(
-            base_query
-            .options(selectinload(Scan.scanner_runs))
+            base_query.options(selectinload(Scan.scanner_runs))
             .order_by(Scan.created_at.desc())
             .offset(skip)
             .limit(limit)
@@ -160,8 +152,11 @@ class ScanService:
         await self.db.refresh(scan)
         return scan
 
-    async def cancel(self, scan_id: UUID, reason: str | None = None) -> Scan | None:
-        scan = await self.db.get(Scan, scan_id)
+    async def cancel(self, scan_id: UUID, reason: str | None = None, user_id: UUID | None = None) -> Scan | None:
+        if user_id is not None:
+            scan = await self.get_by_id(scan_id, user_id)
+        else:
+            scan = await self.db.get(Scan, scan_id)
         if not scan:
             return None
 
@@ -245,8 +240,6 @@ class ScanService:
 
     async def get_scanner_runs(self, scan_id: UUID) -> list[ScannerRun]:
         result = await self.db.execute(
-            select(ScannerRun)
-            .where(ScannerRun.scan_id == scan_id)
-            .order_by(ScannerRun.created_at)
+            select(ScannerRun).where(ScannerRun.scan_id == scan_id).order_by(ScannerRun.created_at)
         )
         return list(result.scalars().all())

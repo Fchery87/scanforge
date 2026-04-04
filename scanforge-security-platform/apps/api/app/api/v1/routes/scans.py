@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.route_auth import get_project_in_org_or_404, get_repository_in_project_or_404
 from app.core.config import settings
 from app.db.session import get_db
 from app.middleware.auth import UserContext, get_current_user
@@ -14,8 +15,7 @@ from app.schemas.scans import (
     ScanDetailResponse,
     ScanResponse,
 )
-from app.services.projects import ProjectService
-from app.services.repositories import RepositoryService
+from app.services.organizations import OrganizationService
 from app.services.scans import ScanService
 
 logger = logging.getLogger(__name__)
@@ -31,15 +31,21 @@ async def create_scan(
     current_user: UserContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    project_service = ProjectService(db)
-    has_access = await project_service.user_has_access(project_id, current_user.user_id)
-    if not has_access:
-        raise HTTPException(status_code=403, detail="No access to this project")
+    await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)
 
-    repo_service = RepositoryService(db)
-    repo = await repo_service.get_by_id(data.repository_id, current_user.user_id)
-    if not repo or repo.project_id != project_id:
-        raise HTTPException(status_code=404, detail="Repository not found in this project")
+    org_service = OrganizationService(db)
+    has_permission = await org_service.user_has_permission(
+        org_id, current_user.user_id, ["owner", "admin", "developer"]
+    )
+    if not has_permission:
+        raise HTTPException(status_code=403, detail="Developer, admin, or owner role required to trigger scans")
+
+    await get_repository_in_project_or_404(
+        db,
+        repo_id=data.repository_id,
+        project_id=project_id,
+        user_id=current_user.user_id,
+    )
 
     scan_service = ScanService(db)
     try:
@@ -89,16 +95,14 @@ async def create_scan(
 
 @router.get("/", response_model=PaginatedResponse[ScanResponse])
 async def list_scans(
+    org_id: UUID,
     project_id: UUID,
     pagination: PaginationParams = Depends(),
     status_filter: str | None = Query(None, alias="status"),
     current_user: UserContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    project_service = ProjectService(db)
-    has_access = await project_service.user_has_access(project_id, current_user.user_id)
-    if not has_access:
-        raise HTTPException(status_code=403, detail="No access to this project")
+    await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)
 
     scan_service = ScanService(db)
     scans, total = await scan_service.list_for_project(
@@ -119,15 +123,13 @@ async def list_scans(
 
 @router.get("/{scan_id}", response_model=ScanDetailResponse)
 async def get_scan(
+    org_id: UUID,
     project_id: UUID,
     scan_id: UUID,
     current_user: UserContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    project_service = ProjectService(db)
-    has_access = await project_service.user_has_access(project_id, current_user.user_id)
-    if not has_access:
-        raise HTTPException(status_code=403, detail="No access to this project")
+    await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)
 
     scan_service = ScanService(db)
     scan = await scan_service.get_by_id(scan_id, current_user.user_id)
@@ -139,16 +141,21 @@ async def get_scan(
 
 @router.post("/{scan_id}/cancel", response_model=ScanResponse)
 async def cancel_scan(
+    org_id: UUID,
     project_id: UUID,
     scan_id: UUID,
     data: ScanCancel,
     current_user: UserContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    project_service = ProjectService(db)
-    has_access = await project_service.user_has_access(project_id, current_user.user_id)
-    if not has_access:
-        raise HTTPException(status_code=403, detail="No access to this project")
+    await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)
+
+    org_service = OrganizationService(db)
+    has_permission = await org_service.user_has_permission(
+        org_id, current_user.user_id, ["owner", "admin", "developer"]
+    )
+    if not has_permission:
+        raise HTTPException(status_code=403, detail="Developer, admin, or owner role required to cancel scans")
 
     scan_service = ScanService(db)
     scan = await scan_service.get_by_id(scan_id, current_user.user_id)
@@ -156,7 +163,7 @@ async def cancel_scan(
         raise HTTPException(status_code=404, detail="Scan not found")
 
     try:
-        canceled = await scan_service.cancel(scan_id, data.reason)
+        canceled = await scan_service.cancel(scan_id, data.reason, user_id=current_user.user_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
@@ -165,15 +172,18 @@ async def cancel_scan(
 
 @router.delete("/{scan_id}", response_model=ScanResponse)
 async def delete_scan(
+    org_id: UUID,
     project_id: UUID,
     scan_id: UUID,
     current_user: UserContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    project_service = ProjectService(db)
-    has_access = await project_service.user_has_access(project_id, current_user.user_id)
-    if not has_access:
-        raise HTTPException(status_code=403, detail="No access to this project")
+    await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)
+
+    org_service = OrganizationService(db)
+    has_permission = await org_service.user_has_permission(org_id, current_user.user_id, ["owner", "admin"])
+    if not has_permission:
+        raise HTTPException(status_code=403, detail="Only owners and admins can delete scans")
 
     scan_service = ScanService(db)
 

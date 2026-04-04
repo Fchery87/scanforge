@@ -6,15 +6,7 @@ const authMiddleware = auth.middleware({
 });
 
 export default function proxy(request: NextRequest) {
-  console.log('[Proxy] Processing request:', request.nextUrl.pathname);
-  console.log(
-    '[Proxy] Cookies:',
-    request.headers.get('cookie')?.substring(0, 100),
-  );
-
   const result = authMiddleware(request);
-
-  console.log('[Proxy] Middleware result dispatched.');
 
   return result;
 }

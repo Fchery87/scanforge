@@ -81,18 +81,10 @@ class ProjectService:
         if is_active is not None:
             base_query = base_query.where(Project.is_active == is_active)
 
-        count_result = await self.db.execute(
-            select(func.count(Project.id))
-            .where(Project.organization_id == org_id)
-        )
+        count_result = await self.db.execute(select(func.count()).select_from(base_query.order_by(None).subquery()))
         total = count_result.scalar_one()
 
-        result = await self.db.execute(
-            base_query
-            .order_by(Project.created_at.desc())
-            .offset(skip)
-            .limit(limit)
-        )
+        result = await self.db.execute(base_query.order_by(Project.created_at.desc()).offset(skip).limit(limit))
         projects = list(result.scalars().all())
 
         return projects, total
@@ -101,8 +93,12 @@ class ProjectService:
         self,
         project_id: UUID,
         data: ProjectUpdate,
+        user_id: UUID | None = None,
     ) -> Project | None:
-        project = await self.db.get(Project, project_id)
+        if user_id is not None:
+            project = await self.get_by_id(project_id, user_id)
+        else:
+            project = await self.db.get(Project, project_id)
         if not project:
             return None
 
@@ -114,8 +110,11 @@ class ProjectService:
         await self.db.refresh(project)
         return project
 
-    async def delete(self, project_id: UUID) -> bool:
-        project = await self.db.get(Project, project_id)
+    async def delete(self, project_id: UUID, user_id: UUID | None = None) -> bool:
+        if user_id is not None:
+            project = await self.get_by_id(project_id, user_id)
+        else:
+            project = await self.db.get(Project, project_id)
         if not project:
             return False
 
@@ -127,32 +126,32 @@ class ProjectService:
         self,
         project_id: UUID,
     ) -> dict:
-        repo_count = await self.db.scalar(
-            select(func.count(Repository.id))
-            .where(Repository.project_id == project_id)
-        ) or 0
+        repo_count = (
+            await self.db.scalar(select(func.count(Repository.id)).where(Repository.project_id == project_id)) or 0
+        )
 
-        scan_count = await self.db.scalar(
-            select(func.count(Scan.id))
-            .where(Scan.project_id == project_id)
-        ) or 0
+        scan_count = await self.db.scalar(select(func.count(Scan.id)).where(Scan.project_id == project_id)) or 0
 
-        open_findings = await self.db.scalar(
-            select(func.count(Finding.id))
-            .where(
-                Finding.project_id == project_id,
-                Finding.status == "open",
+        open_findings = (
+            await self.db.scalar(
+                select(func.count(Finding.id)).where(
+                    Finding.project_id == project_id,
+                    Finding.status == "open",
+                )
             )
-        ) or 0
+            or 0
+        )
 
-        critical_findings = await self.db.scalar(
-            select(func.count(Finding.id))
-            .where(
-                Finding.project_id == project_id,
-                Finding.status == "open",
-                Finding.severity == "critical",
+        critical_findings = (
+            await self.db.scalar(
+                select(func.count(Finding.id)).where(
+                    Finding.project_id == project_id,
+                    Finding.status == "open",
+                    Finding.severity == "critical",
+                )
             )
-        ) or 0
+            or 0
+        )
 
         return {
             "repo_count": repo_count,

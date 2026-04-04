@@ -6,11 +6,11 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.route_auth import get_project_in_org_or_404
 from app.db.models.finding import Finding
 from app.db.models.scan import Scan
 from app.db.session import get_db
 from app.middleware.auth import UserContext, get_current_user
-from app.services.projects import ProjectService
 
 router = APIRouter()
 
@@ -57,10 +57,7 @@ async def get_project_scorecard(
     current_user: UserContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    project_service = ProjectService(db)
-    has_access = await project_service.user_has_access(project_id, current_user.user_id)
-    if not has_access:
-        raise HTTPException(status_code=403, detail="No access to this project")
+    await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)
 
     now = datetime.now(UTC)
 
@@ -81,12 +78,7 @@ async def get_project_scorecard(
 
     open_total = sum(sev_counts.values())
 
-    penalty = (
-        sev_counts["critical"] * 25
-        + sev_counts["high"] * 10
-        + sev_counts["medium"] * 3
-        + sev_counts["low"] * 0.5
-    )
+    penalty = sev_counts["critical"] * 25 + sev_counts["high"] * 10 + sev_counts["medium"] * 3 + sev_counts["low"] * 0.5
     security_score = round(max(0, 100 - penalty), 1)
 
     open_secrets = (
@@ -141,16 +133,11 @@ async def get_project_scorecard(
     ).scalar_one_or_none() or 0
 
     scan_count = (
-        await db.execute(
-            select(func.count()).select_from(Scan).where(Scan.project_id == project_id)
-        )
+        await db.execute(select(func.count()).select_from(Scan).where(Scan.project_id == project_id))
     ).scalar_one_or_none() or 0
     last_scan = (
         await db.execute(
-            select(Scan.created_at)
-            .where(Scan.project_id == project_id)
-            .order_by(Scan.created_at.desc())
-            .limit(1)
+            select(Scan.created_at).where(Scan.project_id == project_id).order_by(Scan.created_at.desc()).limit(1)
         )
     ).scalar_one_or_none()
 

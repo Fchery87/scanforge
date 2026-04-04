@@ -5,10 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import Date, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.route_auth import get_project_in_org_or_404
 from app.db.models.finding import Finding
 from app.db.session import get_db
 from app.middleware.auth import UserContext, get_current_user
-from app.services.projects import ProjectService
 
 router = APIRouter()
 
@@ -21,10 +21,7 @@ async def get_findings_trend(
     current_user: UserContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    project_service = ProjectService(db)
-    has_access = await project_service.user_has_access(project_id, current_user.user_id)
-    if not has_access:
-        raise HTTPException(status_code=403, detail="No access to this project")
+    await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)
 
     now = datetime.now(UTC)
     start = now - timedelta(days=days)

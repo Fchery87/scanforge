@@ -32,7 +32,7 @@ class FindingService:
         reason: str | None = None,
         metadata_json: dict | None = None,
     ) -> Finding | None:
-        finding = await self.db.get(Finding, finding_id)
+        finding = await self.get_by_id(finding_id, user_id)
         if not finding:
             return None
 
@@ -99,9 +99,7 @@ class FindingService:
         total_result = await self.db.execute(count_query)
         total = total_result.scalar_one()
 
-        result = await self.db.execute(
-            base_query.order_by(Finding.created_at.desc()).offset(skip).limit(limit)
-        )
+        result = await self.db.execute(base_query.order_by(Finding.created_at.desc()).offset(skip).limit(limit))
         findings = list(result.scalars().all())
 
         return findings, total
@@ -136,7 +134,7 @@ class FindingService:
         assignee_user_id: UUID | None = None,
         due_date: date | None = None,
     ) -> Finding | None:
-        finding = await self.db.get(Finding, finding_id)
+        finding = await self.get_by_id(finding_id, user_id)
         if not finding:
             return None
 
@@ -171,9 +169,7 @@ class FindingService:
         self.db.add(event)
         await self.db.commit()
         result = await self.db.execute(
-            select(Finding)
-            .options(selectinload(Finding.assignee))
-            .where(Finding.id == finding_id)
+            select(Finding).options(selectinload(Finding.assignee)).where(Finding.id == finding_id)
         )
         return result.scalar_one()
 

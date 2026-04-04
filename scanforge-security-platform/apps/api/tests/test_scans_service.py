@@ -42,3 +42,18 @@ async def test_delete_scan_rejects_completed_scans():
 
     db.delete.assert_not_called()
     db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cancel_scan_returns_none_when_user_cannot_access_scan():
+    scan_id = uuid4()
+    user_id = uuid4()
+
+    db = AsyncMock()
+    service = ScanService(db)
+    service.get_by_id = AsyncMock(return_value=None)
+
+    canceled = await service.cancel(scan_id, user_id=user_id)
+
+    assert canceled is None
+    db.commit.assert_not_awaited()

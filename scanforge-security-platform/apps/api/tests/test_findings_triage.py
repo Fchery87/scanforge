@@ -44,10 +44,9 @@ async def test_accept_risk_updates_status_and_records_event():
     db.execute.return_value = execute_result
 
     service = FindingService(db)
+    service.get_by_id = AsyncMock(return_value=finding)
 
-    result = await service.accept_risk(
-        finding_id, user_id, "Risk accepted with compensating controls"
-    )
+    result = await service.accept_risk(finding_id, user_id, "Risk accepted with compensating controls")
 
     assert result is finding
     assert finding.status == "accepted_risk"
@@ -71,6 +70,7 @@ async def test_mark_duplicate_updates_status_and_records_event():
     db.add = Mock()
 
     service = FindingService(db)
+    service.get_by_id = AsyncMock(return_value=finding)
 
     result = await service.mark_duplicate(finding_id, user_id, "Duplicate of another finding")
 
@@ -107,6 +107,7 @@ async def test_update_triage_sets_assignee_and_due_date_and_records_event():
     db.execute.return_value = execute_result
 
     service = FindingService(db)
+    service.get_by_id = AsyncMock(return_value=finding)
 
     result = await service.update_triage(
         finding_id,
@@ -163,3 +164,19 @@ def test_finding_response_exposes_assignment_fields():
 
 def test_finding_model_exposes_assignee_relationship():
     assert hasattr(Finding, "assignee")
+
+
+@pytest.mark.asyncio
+async def test_accept_risk_returns_none_when_user_cannot_access_finding():
+    finding_id = uuid4()
+    user_id = uuid4()
+
+    db = AsyncMock()
+    service = FindingService(db)
+    service.get_by_id = AsyncMock(return_value=None)
+
+    result = await service.accept_risk(finding_id, user_id, "Risk accepted with compensating controls")
+
+    assert result is None
+    db.add.assert_not_called()
+    db.commit.assert_not_awaited()

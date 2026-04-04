@@ -67,16 +67,11 @@ class OrganizationService:
         if not membership.scalar_one_or_none():
             return None
 
-        result = await self.db.execute(
-            select(Organization)
-            .where(Organization.id == org_id)
-        )
+        result = await self.db.execute(select(Organization).where(Organization.id == org_id))
         return result.scalar_one_or_none()
 
     async def get_by_slug(self, slug: str) -> Organization | None:
-        result = await self.db.execute(
-            select(Organization).where(Organization.slug == slug)
-        )
+        result = await self.db.execute(select(Organization).where(Organization.slug == slug))
         return result.scalar_one_or_none()
 
     async def list_for_user(
@@ -108,8 +103,12 @@ class OrganizationService:
         self,
         org_id: UUID,
         data: OrganizationUpdate,
+        user_id: UUID | None = None,
     ) -> Organization | None:
-        org = await self.db.get(Organization, org_id)
+        if user_id is not None:
+            org = await self.get_by_id(org_id, user_id)
+        else:
+            org = await self.db.get(Organization, org_id)
         if not org:
             return None
 
@@ -121,8 +120,11 @@ class OrganizationService:
         await self.db.refresh(org)
         return org
 
-    async def delete(self, org_id: UUID) -> bool:
-        org = await self.db.get(Organization, org_id)
+    async def delete(self, org_id: UUID, user_id: UUID | None = None) -> bool:
+        if user_id is not None:
+            org = await self.get_by_id(org_id, user_id)
+        else:
+            org = await self.db.get(Organization, org_id)
         if not org:
             return False
 

@@ -5,7 +5,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ExportCreate(BaseModel):
-    project_id: UUID
     export_type: str = Field(..., pattern="^(findings|pipeline|summary)$")
     format: str = Field(..., pattern="^(csv|json|pdf)$")
     filters: dict | None = None

@@ -1,11 +1,10 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.middleware.auth import UserContext, get_current_user
-from app.middleware.rbac import require_role
 from app.schemas.common import PaginatedResponse, PaginationParams
 from app.schemas.organizations import (
     OrganizationCreate,
@@ -95,9 +94,7 @@ async def update_organization(
 ):
     service = OrganizationService(db)
 
-    has_permission = await service.user_has_permission(
-        org_id, current_user.user_id, ["admin", "owner"]
-    )
+    has_permission = await service.user_has_permission(org_id, current_user.user_id, ["admin", "owner"])
     if not has_permission:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -112,7 +109,7 @@ async def update_organization(
                 detail="Organization with this slug already exists",
             )
 
-    org = await service.update(org_id, data)
+    org = await service.update(org_id, data, user_id=current_user.user_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
     return org
@@ -121,10 +118,19 @@ async def update_organization(
 @router.delete("/{org_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_organization(
     org_id: UUID,
-    current_user: UserContext = Depends(require_role("owner")),
+    current_user: UserContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     service = OrganizationService(db)
-    deleted = await service.delete(org_id)
+    has_permission = await service.user_has_permission(org_id, current_user.user_id, ["owner"])
+    if not has_permission:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only owners can delete organizations",
+        )
+
+    deleted = await service.delete(org_id, user_id=current_user.user_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Organization not found")
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

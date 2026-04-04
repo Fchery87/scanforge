@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Repository, ScanSchedule
 from app.schemas.scan_schedules import ScanScheduleCreate, ScanScheduleUpdate
+from app.services.access_policies import get_repository_for_user
 
 
 class ScanScheduleService:
@@ -19,7 +20,7 @@ class ScanScheduleService:
         data: "ScanScheduleCreate",
         user_id: UUID,
     ) -> "ScanSchedule":
-        repo = await self.db.get(Repository, repository_id)
+        repo = await get_repository_for_user(self.db, repository_id, user_id)
         if not repo:
             raise ValueError("Repository not found")
 
@@ -33,13 +34,13 @@ class ScanScheduleService:
         )
 
         if data.schedule_type == "daily":
-            schedule.next_run_at = datetime.now(UTC).replace(
-                hour=2, minute=0, second=0, microsecond=0
-            ) + timedelta(days=1)
+            schedule.next_run_at = datetime.now(UTC).replace(hour=2, minute=0, second=0, microsecond=0) + timedelta(
+                days=1
+            )
         elif data.schedule_type == "weekly":
-            schedule.next_run_at = datetime.now(UTC).replace(
-                hour=2, minute=0, second=0, microsecond=0
-            ) + timedelta(days=7)
+            schedule.next_run_at = datetime.now(UTC).replace(hour=2, minute=0, second=0, microsecond=0) + timedelta(
+                days=7
+            )
 
         self.db.add(schedule)
         await self.db.commit()
@@ -49,8 +50,12 @@ class ScanScheduleService:
     async def list_for_repository(
         self,
         repository_id: UUID,
-        _user_id: UUID,
+        user_id: UUID,
     ) -> list["ScanSchedule"]:
+        repo = await get_repository_for_user(self.db, repository_id, user_id)
+        if not repo:
+            return []
+
         result = await self.db.execute(
             select(ScanSchedule)
             .where(ScanSchedule.repository_id == str(repository_id))
@@ -61,16 +66,28 @@ class ScanScheduleService:
     async def get_by_id(
         self,
         schedule_id: UUID,
-        _user_id: UUID,
+        user_id: UUID,
     ) -> Optional["ScanSchedule"]:
-        return await self.db.get(ScanSchedule, str(schedule_id))
+        schedule = await self.db.get(ScanSchedule, str(schedule_id))
+        if not schedule:
+            return None
+
+        repo = await get_repository_for_user(self.db, UUID(schedule.repository_id), user_id)
+        if not repo:
+            return None
+
+        return schedule
 
     async def update(
         self,
         schedule_id: UUID,
         data: "ScanScheduleUpdate",
+        user_id: UUID | None = None,
     ) -> Optional["ScanSchedule"]:
-        schedule = await self.db.get(ScanSchedule, str(schedule_id))
+        if user_id is not None:
+            schedule = await self.get_by_id(schedule_id, user_id)
+        else:
+            schedule = await self.db.get(ScanSchedule, str(schedule_id))
         if not schedule:
             return None
 
@@ -82,8 +99,11 @@ class ScanScheduleService:
         await self.db.refresh(schedule)
         return schedule
 
-    async def delete(self, schedule_id: UUID) -> bool:
-        schedule = await self.db.get(ScanSchedule, str(schedule_id))
+    async def delete(self, schedule_id: UUID, user_id: UUID | None = None) -> bool:
+        if user_id is not None:
+            schedule = await self.get_by_id(schedule_id, user_id)
+        else:
+            schedule = await self.db.get(ScanSchedule, str(schedule_id))
         if not schedule:
             return False
 

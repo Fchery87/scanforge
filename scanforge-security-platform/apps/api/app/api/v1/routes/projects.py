@@ -23,14 +23,19 @@ router = APIRouter()
 
 @router.post("/", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 async def create_project(
+    org_id: UUID,
     data: ProjectCreate,
     current_user: UserContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if data.organization_id != org_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="organization_id in request body must match the organization in the URL",
+        )
+
     org_service = OrganizationService(db)
-    has_permission = await org_service.user_has_permission(
-        data.organization_id, current_user.user_id, ["owner", "admin"]
-    )
+    has_permission = await org_service.user_has_permission(org_id, current_user.user_id, ["owner", "admin"])
     if not has_permission:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -38,14 +43,14 @@ async def create_project(
         )
 
     service = ProjectService(db)
-    existing = await service.get_by_org_and_slug(data.organization_id, data.slug)
+    existing = await service.get_by_org_and_slug(org_id, data.slug)
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Project with this slug already exists in the organization",
         )
 
-    return await service.create(data.organization_id, data, current_user.user_id)
+    return await service.create(org_id, data, current_user.user_id)
 
 
 @router.get("/", response_model=PaginatedResponse[ProjectWithStats])
@@ -78,11 +83,7 @@ async def list_projects(
     enriched = []
     for project in projects:
         repo_count = (
-            await db.execute(
-                select(func.count())
-                .select_from(Repository)
-                .where(Repository.project_id == project.id)
-            )
+            await db.execute(select(func.count()).select_from(Repository).where(Repository.project_id == project.id))
         ).scalar_one_or_none() or 0
         open_count = (
             await db.execute(
@@ -108,13 +109,14 @@ async def list_projects(
 
 @router.get("/{project_id}", response_model=ProjectWithStats)
 async def get_project(
+    org_id: UUID,
     project_id: UUID,
     current_user: UserContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     service = ProjectService(db)
     project = await service.get_by_id(project_id, current_user.user_id)
-    if not project:
+    if not project or project.organization_id != org_id:
         raise HTTPException(status_code=404, detail="Project not found")
 
     stats = await service.get_project_stats(project_id)
@@ -130,14 +132,23 @@ async def get_project(
 
 @router.patch("/{project_id}", response_model=ProjectResponse)
 async def update_project(
+    org_id: UUID,
     project_id: UUID,
     data: ProjectUpdate,
     current_user: UserContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    org_service = OrganizationService(db)
+    has_permission = await org_service.user_has_permission(org_id, current_user.user_id, ["owner", "admin"])
+    if not has_permission:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only owners and admins can update projects",
+        )
+
     service = ProjectService(db)
     project = await service.get_by_id(project_id, current_user.user_id)
-    if not project:
+    if not project or project.organization_id != org_id:
         raise HTTPException(status_code=404, detail="Project not found")
 
     if data.slug:
@@ -148,18 +159,27 @@ async def update_project(
                 detail="Project with this slug already exists",
             )
 
-    return await service.update(project_id, data)
+    return await service.update(project_id, data, user_id=current_user.user_id)
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_project(
+    org_id: UUID,
     project_id: UUID,
     current_user: UserContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    org_service = OrganizationService(db)
+    has_permission = await org_service.user_has_permission(org_id, current_user.user_id, ["owner", "admin"])
+    if not has_permission:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only owners and admins can delete projects",
+        )
+
     service = ProjectService(db)
     project = await service.get_by_id(project_id, current_user.user_id)
-    if not project:
+    if not project or project.organization_id != org_id:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    await service.delete(project_id)
+    await service.delete(project_id, user_id=current_user.user_id)

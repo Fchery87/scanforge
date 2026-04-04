@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Organization, OrganizationMember, Project, Repository, RepositoryIntegration
 from app.schemas.repositories import RepositoryConnect, RepositoryUpdate
+from app.services.access_policies import get_repository_for_user
 
 
 class RepositoryService:
@@ -96,18 +97,10 @@ class RepositoryService:
         if is_active is not None:
             base_query = base_query.where(Repository.is_active == is_active)
 
-        count_result = await self.db.execute(
-            select(func.count(Repository.id))
-            .where(Repository.project_id == project_id)
-        )
+        count_result = await self.db.execute(select(func.count()).select_from(base_query.order_by(None).subquery()))
         total = count_result.scalar_one()
 
-        result = await self.db.execute(
-            base_query
-            .order_by(Repository.created_at.desc())
-            .offset(skip)
-            .limit(limit)
-        )
+        result = await self.db.execute(base_query.order_by(Repository.created_at.desc()).offset(skip).limit(limit))
         repos = list(result.scalars().all())
 
         return repos, total
@@ -116,8 +109,12 @@ class RepositoryService:
         self,
         repo_id: UUID,
         data: RepositoryUpdate,
+        user_id: UUID | None = None,
     ) -> Repository | None:
-        repo = await self.db.get(Repository, repo_id)
+        if user_id is not None:
+            repo = await get_repository_for_user(self.db, repo_id, user_id)
+        else:
+            repo = await self.db.get(Repository, repo_id)
         if not repo:
             return None
 
@@ -129,8 +126,11 @@ class RepositoryService:
         await self.db.refresh(repo)
         return repo
 
-    async def disconnect(self, repo_id: UUID) -> bool:
-        repo = await self.db.get(Repository, repo_id)
+    async def disconnect(self, repo_id: UUID, user_id: UUID | None = None) -> bool:
+        if user_id is not None:
+            repo = await get_repository_for_user(self.db, repo_id, user_id)
+        else:
+            repo = await self.db.get(Repository, repo_id)
         if not repo:
             return False
 
@@ -143,14 +143,15 @@ class RepositoryService:
         repo_id: UUID,
     ) -> RepositoryIntegration | None:
         result = await self.db.execute(
-            select(RepositoryIntegration).where(
-                RepositoryIntegration.repository_id == repo_id
-            )
+            select(RepositoryIntegration).where(RepositoryIntegration.repository_id == repo_id)
         )
         return result.scalar_one_or_none()
 
-    async def delete(self, repo_id: UUID) -> bool:
-        repo = await self.db.get(Repository, repo_id)
+    async def delete(self, repo_id: UUID, user_id: UUID | None = None) -> bool:
+        if user_id is not None:
+            repo = await get_repository_for_user(self.db, repo_id, user_id)
+        else:
+            repo = await self.db.get(Repository, repo_id)
         if not repo:
             return False
 
