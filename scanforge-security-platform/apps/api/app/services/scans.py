@@ -17,7 +17,7 @@ class ScanService:
         self,
         repo_id: UUID,
         data: ScanCreate,
-        user_id: UUID,
+        user_id: UUID | None,
     ) -> tuple[Scan, Repository, Project]:
         repo = await self.db.get(Repository, repo_id)
         if not repo:
@@ -31,6 +31,7 @@ class ScanService:
             project_id=repo.project_id,
             repository_id=repo_id,
             trigger_type=data.trigger_type,
+            scan_type=data.scan_type,
             status=ScanStatusEnum.QUEUED,
             branch_name=data.branch_name or repo.default_branch,
             commit_sha=data.commit_sha,

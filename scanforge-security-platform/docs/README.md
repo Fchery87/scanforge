@@ -13,7 +13,11 @@ This directory contains the current operational documentation for ScanForge.
 ## Supporting Sections
 
 - `adr/`: architecture decisions worth preserving long-term
+- `adr/ADR-003-scan-lifecycle-architecture-program.md`: scan lifecycle module ownership and adjacent module decisions
+- `adr/ADR-004-finding-lifecycle-policy.md`: finding workflow state, not observed handling, and lifecycle transition policy
 - `plans/`: historical or in-progress work plans that may still be useful for context
+- `plans/2026-05-02-scan-lifecycle-architecture-program.md`: vertical slice plan for deepening the scan lifecycle architecture
+- `plans/2026-05-02-module-first-security-operations-roadmap.md`: module-first roadmap for repository security operations improvements
 - `neon-setup.md`: Neon-specific setup notes
 
 ## Source Of Truth

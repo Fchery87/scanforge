@@ -1,64 +1,36 @@
 import asyncio
 import os
-import sys
 
-sys.path.insert(
-    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
-)
+import httpx
 
-from app.db.session import AsyncSessionLocal
-from app.services.scan_schedules import ScanScheduleService
-from app.services.scans import ScanService
+
+async def trigger_due_scan_schedules(
+    *,
+    api_base_url: str | None = None,
+    internal_api_key: str | None = None,
+) -> dict:
+    base_url = (api_base_url or os.environ.get("API_BASE_URL") or "http://localhost:8000").rstrip("/")
+    service_key = internal_api_key or os.environ.get("INTERNAL_API_KEY", "")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{base_url}/api/v1/internal/scan-schedules/run-due",
+            headers={"X-Service-Key": service_key},
+            timeout=60.0,
+        )
+        response.raise_for_status()
+        return response.json()
 
 
 async def run_scheduled_scans():
-    async with AsyncSessionLocal() as db:
-        schedule_service = ScanScheduleService(db)
-        scan_service = ScanService(db)
-
-        due_schedules = await schedule_service.get_due_schedules(limit=50)
-
-        print(f"[scheduler] Found {len(due_schedules)} due schedules")
-
-        for schedule in due_schedules:
-            try:
-                from app.db.enums import ScanTriggerType
-                from app.schemas.scans import ScanCreate
-
-                scan_data = ScanCreate(
-                    repository_id=schedule.repository_id,
-                    trigger_type=ScanTriggerType.SCHEDULED,
-                    branch_name=None,
-                )
-
-                scan, _, _ = await scan_service.create(
-                    schedule.repository_id, scan_data, user_id=None
-                )
-
-                from app.db.enums import ScanTriggerType
-
-                from app.clients.queue import QueueClient
-
-                queue = QueueClient(
-                    redis_url=os.environ["UPSTASH_REDIS_REST_URL"],
-                    redis_token=os.environ["UPSTASH_REDIS_REST_TOKEN"],
-                )
-                await queue.enqueue(
-                    "scan.repo.full",
-                    {
-                        "scan_id": str(scan.id),
-                        "repository_id": str(schedule.repository_id),
-                        "project_id": str(scan.project_id),
-                        "trigger_type": ScanTriggerType.SCHEDULED.value,
-                    },
-                )
-
-                await schedule_service.mark_run(schedule.id)
-
-                print(f"[scheduler] Queued scan {scan.id} for schedule {schedule.id}")
-
-            except Exception as e:
-                print(f"[scheduler] Error processing schedule {schedule.id}: {e}")
+    try:
+        result = await trigger_due_scan_schedules()
+        print(
+            "[scheduler] Processed due schedules "
+            f"found={result.get('found', 0)} queued={result.get('queued', 0)} failed={result.get('failed', 0)}"
+        )
+    except Exception as e:
+        print(f"[scheduler] Error processing due schedules: {e}")
 
 
 if __name__ == "__main__":

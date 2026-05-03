@@ -25,10 +25,13 @@ class FindingSeverity(str):
 
 class FindingStatus(str):
     OPEN = "open"
-    FIXED = "fixed"
-    SUPPRESSED = "suppressed"
+    REVIEWING = "reviewing"
+    TO_FIX = "to_fix"
     ACCEPTED_RISK = "accepted_risk"
+    FALSE_POSITIVE = "false_positive"
     DUPLICATE = "duplicate"
+    NOT_OBSERVED = "not_observed"
+    FIXED = "fixed"
 
 
 class FindingInstanceResponse(BaseModel):
@@ -85,12 +88,14 @@ class FindingResponse(BaseModel):
     canonical_fingerprint: str
     primary_scanner: str | None
     confidence_score: float | None
+    risk_score: int | None = None
     fixed_version: str | None
     metadata_json: dict | None
     assignee_user_id: UUID | None = None
     assignee_name: str | None = None
     assignee_email: str | None = None
     due_date: date | None = None
+    sla_status: dict | None = None
     first_seen_at: datetime
     last_seen_at: datetime
     created_at: datetime
@@ -101,6 +106,7 @@ class FindingDetailResponse(FindingResponse):
     instances: list[FindingInstanceResponse] = []
     references: list[FindingReferenceResponse] = []
     events: list[FindingEventResponse] = []
+    remediation_guidance: dict | None = None
 
 
 class FindingSuppress(BaseModel):

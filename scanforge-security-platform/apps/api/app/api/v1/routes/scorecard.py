@@ -11,6 +11,7 @@ from app.db.models.finding import Finding
 from app.db.models.scan import Scan
 from app.db.session import get_db
 from app.middleware.auth import UserContext, get_current_user
+from app.services.policy_evaluation import evaluate_advisory_policy
 
 router = APIRouter()
 
@@ -31,6 +32,10 @@ class ScorecardResponse(BaseModel):
     new_this_week: int = 0
     scan_count: int = 0
     last_scan_at: str | None = None
+    risk_score_average: float | None = None
+    sla_overdue: int = 0
+    scanner_health: dict = {}
+    policy_evaluation: dict | None = None
 
 
 def _grade(score: float) -> str:
@@ -141,6 +146,41 @@ async def get_project_scorecard(
         )
     ).scalar_one_or_none()
 
+    risk_score_average = (
+        await db.execute(
+            select(func.avg(Finding.risk_score)).where(
+                Finding.project_id == project_id,
+                Finding.status.in_(["open", "reviewing", "to_fix", "not_observed"]),
+            )
+        )
+    ).scalar_one_or_none()
+
+    overdue_findings = (
+        await db.execute(
+            select(Finding).where(
+                Finding.project_id == project_id,
+                Finding.due_date.is_not(None),
+                Finding.status.in_(["open", "reviewing", "to_fix", "not_observed"]),
+            )
+        )
+    ).scalars().all()
+    sla_overdue = sum(1 for finding in overdue_findings if finding.sla_status.get("status") == "overdue")
+
+    scan_summaries = (
+        await db.execute(select(Scan.summary_json).where(Scan.project_id == project_id, Scan.summary_json.is_not(None)))
+    ).scalars().all()
+    complete_scans = 0
+    partial_scans = 0
+    for summary in scan_summaries:
+        scanner_health = (summary or {}).get("scanner_health") or {}
+        if scanner_health.get("complete") is True:
+            complete_scans += 1
+        elif scanner_health:
+            partial_scans += 1
+
+    scanner_health_summary = {"complete_scans": complete_scans, "partial_scans": partial_scans}
+    risk_average = round(float(risk_score_average), 1) if risk_score_average is not None else None
+
     return ScorecardResponse(
         project_id=str(project_id),
         overall_score=overall,
@@ -157,4 +197,12 @@ async def get_project_scorecard(
         new_this_week=new_this_week,
         scan_count=scan_count,
         last_scan_at=last_scan.isoformat() if last_scan else None,
+        risk_score_average=risk_average,
+        sla_overdue=sla_overdue,
+        scanner_health=scanner_health_summary,
+        policy_evaluation=evaluate_advisory_policy(
+            risk_score_average=risk_average,
+            sla_overdue=sla_overdue,
+            scanner_health=scanner_health_summary,
+        ),
     )

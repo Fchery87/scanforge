@@ -56,6 +56,19 @@ test("reports artifact unavailable for failed run", () => {
   assert.equal(result.available, false);
 });
 
+test("uses scan history download URL instead of internal artifact URI", () => {
+  const result = getArtifactAvailability({
+    artifact_download_url: "/api/v1/scans/s1/scanner-runs/r1/download",
+    artifact_uri: "scans/s1/trivy/raw.json",
+    status: "completed",
+  });
+
+  assert.deepEqual(result, {
+    available: true,
+    uri: "/api/v1/scans/s1/scanner-runs/r1/download",
+  });
+});
+
 test("reports scanner run status correctly", () => {
   assert.deepEqual(getScannerRunStatus({ status: "completed" }), { label: "completed", variant: "success" });
 });

@@ -73,12 +73,12 @@ export function formatScanSummary(scan: {
   };
 }
 
-export function getArtifactAvailability(run: { artifact_uri?: string | null; status?: string }): {
+export function getArtifactAvailability(run: { artifact_download_url?: string | null; artifact_uri?: string | null; status?: string }): {
   available: boolean;
   uri?: string;
   reason?: string;
 } {
-  if (run.artifact_uri) return { available: true, uri: run.artifact_uri };
+  if (run.artifact_download_url) return { available: true, uri: run.artifact_download_url };
   if (run.status === "failed") return { available: false, reason: "Run failed — no artifact generated" };
   if (run.status === "running" || run.status === "queued") return { available: false, reason: "Run in progress — artifact pending" };
   return { available: false, reason: "No artifact available" };

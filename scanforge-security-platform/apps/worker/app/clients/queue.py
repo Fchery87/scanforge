@@ -1,30 +1,9 @@
 import json
 from datetime import datetime
-from typing import Literal
-from uuid import uuid4
 
 import httpx
-from pydantic import BaseModel
+from app.contracts.queue import QueueJob, ScanJobType
 
-
-class QueueJob(BaseModel):
-    job_type: str
-    job_id: str
-    payload: dict
-    created_at: str
-
-    @classmethod
-    def create(
-        cls,
-        job_type: Literal["scan.repo.full", "scan.repo.diff", "scan.dependencies", "scan.secrets"],
-        payload: dict,
-    ) -> "QueueJob":
-        return cls(
-            job_type=job_type,
-            job_id=str(uuid4()),
-            payload=payload,
-            created_at=datetime.utcnow().isoformat(),
-        )
 
 
 class QueueClient:
@@ -54,7 +33,7 @@ class QueueClient:
 
     async def enqueue(
         self,
-        job_type: Literal["scan.repo.full", "scan.repo.diff", "scan.dependencies", "scan.secrets"],
+        job_type: ScanJobType,
         payload: dict,
         delay_seconds: int = 0,
     ) -> str:

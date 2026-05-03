@@ -13,10 +13,19 @@ from app.db.models import (
     Organization,
     OrganizationMember,
     Project,
+    Repository,
 )
 from app.schemas.findings import (
     FindingStats,
 )
+from app.schemas.canonical_findings import CanonicalFindingCandidate
+from app.services.finding_lifecycle import (
+    can_mark_not_observed,
+    can_promote_to_fixed,
+    transition_event_for_state,
+    validate_transition,
+)
+from app.services.risk_scoring import calculate_risk_score
 
 
 class FindingService:
@@ -28,7 +37,7 @@ class FindingService:
         finding_id: UUID,
         user_id: UUID,
         status: str,
-        event_type: str,
+        event_type: str | None = None,
         reason: str | None = None,
         metadata_json: dict | None = None,
     ) -> Finding | None:
@@ -36,11 +45,12 @@ class FindingService:
         if not finding:
             return None
 
-        finding.status = status
+        next_state = validate_transition(finding.status, status)
+        finding.status = next_state.value
 
         event = FindingEvent(
             finding_id=finding_id,
-            event_type=event_type,
+            event_type=event_type or transition_event_for_state(next_state.value),
             actor_user_id=user_id,
             reason=reason,
             metadata_json=metadata_json,
@@ -178,15 +188,22 @@ class FindingService:
         scan_id: str,
         repository_id: str,
         project_id: str,
-        normalized_findings: list[dict],
+        normalized_findings: list[dict | CanonicalFindingCandidate],
     ) -> tuple[int, int]:
         new_count = 0
         updated_count = 0
+        repository = await self.db.get(Repository, repository_id)
+        repository_importance = getattr(repository, "importance", "normal") or "normal"
 
-        for finding_data in normalized_findings:
-            fingerprint = finding_data["canonical_fingerprint"]
-            instance_data = finding_data.pop("instance", None) or {}
-            references_data = finding_data.pop("references", None) or []
+        for finding_input in normalized_findings:
+            candidate = (
+                finding_input
+                if isinstance(finding_input, CanonicalFindingCandidate)
+                else CanonicalFindingCandidate.model_validate(finding_input)
+            )
+            fingerprint = candidate.canonical_fingerprint
+            instance_data = candidate.instance.model_dump() if candidate.instance else {}
+            references_data = [reference.model_dump() for reference in candidate.references]
 
             existing = await self.db.execute(
                 select(Finding).where(
@@ -207,16 +224,22 @@ class FindingService:
                 finding = Finding(
                     project_id=project_id,
                     repository_id=repository_id,
-                    category=finding_data.get("category", "unknown"),
-                    severity=finding_data.get("severity", "medium"),
+                    category=candidate.category,
+                    severity=candidate.severity,
                     status="open",
-                    title=finding_data.get("title", "Untitled Finding"),
-                    description=finding_data.get("description"),
+                    title=candidate.title,
+                    description=candidate.description,
                     canonical_fingerprint=fingerprint,
-                    primary_scanner=finding_data.get("primary_scanner"),
-                    confidence_score=finding_data.get("confidence_score"),
-                    fixed_version=finding_data.get("fixed_version"),
-                    metadata_json=finding_data.get("metadata_json"),
+                    primary_scanner=candidate.primary_scanner,
+                    confidence_score=candidate.confidence_score,
+                    risk_score=calculate_risk_score(
+                        severity=candidate.severity,
+                        confidence_score=candidate.confidence_score,
+                        workflow_state="open",
+                        repository_importance=repository_importance,
+                    ),
+                    fixed_version=candidate.fixed_version,
+                    metadata_json=candidate.metadata_json,
                     first_seen_at=datetime.now(UTC),
                     last_seen_at=datetime.now(UTC),
                 )
@@ -250,6 +273,61 @@ class FindingService:
         await self.db.commit()
         return new_count, updated_count
 
+    async def _list_open_findings_for_repository(self, repository_id: str) -> list[Finding]:
+        result = await self.db.execute(
+            select(Finding).where(
+                Finding.repository_id == repository_id,
+                Finding.status.in_(["open", "reviewing", "to_fix", "not_observed"]),
+            )
+        )
+        return list(result.scalars().all())
+
+    async def mark_not_observed_after_scan(
+        self,
+        *,
+        repository_id: str,
+        scan_id: str,
+        seen_fingerprints: set[str],
+        scan_summary: dict | None,
+    ) -> int:
+        updated = 0
+        open_findings = await self._list_open_findings_for_repository(repository_id)
+
+        for finding in open_findings:
+            if finding.canonical_fingerprint in seen_fingerprints:
+                continue
+            if not can_mark_not_observed(scan_summary, primary_scanner=finding.primary_scanner):
+                continue
+
+            metadata = dict(finding.metadata_json or {})
+            not_observed_count = int(metadata.get("not_observed_count") or 0) + 1
+            metadata["not_observed_count"] = not_observed_count
+            finding.metadata_json = metadata
+            next_state = "fixed" if can_promote_to_fixed(finding.status, not_observed_count=not_observed_count) else "not_observed"
+            finding.status = next_state
+            self.db.add(
+                FindingEvent(
+                    finding_id=finding.id,
+                    event_type=transition_event_for_state(next_state),
+                    actor_user_id=None,
+                    metadata_json={"scan_id": str(scan_id), "not_observed_count": not_observed_count},
+                )
+            )
+            updated += 1
+
+        if updated:
+            await self.db.commit()
+
+        return updated
+
+    async def mark_not_observed_for_completed_scan(self, scan) -> int:
+        return await self.mark_not_observed_after_scan(
+            repository_id=str(scan.repository_id),
+            scan_id=str(scan.id),
+            seen_fingerprints=set((scan.summary_json or {}).get("seen_fingerprints") or []),
+            scan_summary=scan.summary_json,
+        )
+
     async def suppress(
         self,
         finding_id: UUID,
@@ -260,8 +338,7 @@ class FindingService:
         return await self._set_status(
             finding_id,
             user_id,
-            "suppressed",
-            "suppressed",
+            "false_positive",
             reason=reason,
             metadata_json={"rule_id": str(rule_id)} if rule_id else None,
         )
@@ -276,7 +353,6 @@ class FindingService:
         finding = await self._set_status(
             finding_id,
             user_id,
-            "fixed",
             "fixed",
             reason=reason,
             metadata_json={"fixed_version": fixed_version} if fixed_version else None,
@@ -299,7 +375,6 @@ class FindingService:
             finding_id,
             user_id,
             "accepted_risk",
-            "accepted_risk",
             reason=reason,
         )
 
@@ -312,7 +387,6 @@ class FindingService:
         return await self._set_status(
             finding_id,
             user_id,
-            "duplicate",
             "duplicate",
             reason=reason,
         )
@@ -327,7 +401,6 @@ class FindingService:
             finding_id,
             user_id,
             "open",
-            "reopened",
             reason=reason,
         )
 
@@ -396,7 +469,7 @@ class FindingService:
             or 0
         )
 
-        suppressed_count = (
+        false_positive_count = (
             await self.db.scalar(
                 select(func.count())
                 .select_from(Finding)
@@ -406,7 +479,7 @@ class FindingService:
                 .where(
                     Finding.project_id == project_id,
                     OrganizationMember.user_id == user_id,
-                    Finding.status == "suppressed",
+                    Finding.status == "false_positive",
                     *repo_filter,
                 )
             )
@@ -463,7 +536,7 @@ class FindingService:
             total=total,
             open=open_count,
             fixed=fixed_count,
-            suppressed=suppressed_count,
+            suppressed=false_positive_count,
             by_severity=severity_counts,
             by_category=category_counts,
         )

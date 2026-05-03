@@ -12,6 +12,7 @@ interface ScannerRun {
   duration_ms?: number;
   error_message?: string;
   artifact_uri?: string | null;
+  artifact_download_url?: string | null;
 }
 
 interface ScanTimelineProps {
@@ -63,9 +64,9 @@ export function ScanTimeline({ runs, scanStatus, className }: ScanTimelineProps)
                 {run.error_message}
               </div>
             )}
-            {run.artifact_uri && (
+            {run.artifact_download_url && (
               <a
-                href={run.artifact_uri}
+                href={run.artifact_download_url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="mt-3 inline-flex items-center gap-2 text-sm text-primary hover:underline"

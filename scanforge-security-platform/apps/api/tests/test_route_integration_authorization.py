@@ -25,10 +25,8 @@ async def test_repository_connect_returns_403_for_viewer_member(monkeypatch):
 
     monkeypatch.setattr(
         route_auth,
-        "ProjectService",
-        lambda db: SimpleNamespace(
-            get_by_id=AsyncMock(return_value=SimpleNamespace(id=project_id, organization_id=org_id))
-        ),
+        "get_project_in_org_for_user",
+        AsyncMock(return_value=SimpleNamespace(id=project_id, organization_id=org_id)),
     )
     monkeypatch.setattr(
         repositories,

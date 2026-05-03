@@ -15,16 +15,16 @@ from app.schemas.findings import (
     FindingStats,
     FindingSuppress,
 )
+from app.services.access_policies import get_project_in_org_for_user
 from app.services.findings import FindingService
 from app.services.organizations import OrganizationService
-from app.services.projects import ProjectService
 
 router = APIRouter()
 
 
 async def _get_project_in_org_or_404(db: AsyncSession, project_id: UUID, org_id: UUID, user_id: UUID):
-    project = await ProjectService(db).get_by_id(project_id, user_id)
-    if not project or project.organization_id != org_id:
+    project = await get_project_in_org_for_user(db, project_id=project_id, org_id=org_id, user_id=user_id)
+    if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     return project
 

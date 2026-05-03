@@ -57,23 +57,10 @@ async def test_scan_enqueue_failure_stores_generic_error(monkeypatch):
         "OrganizationService",
         lambda _db: SimpleNamespace(user_has_permission=AsyncMock(return_value=True)),
     )
-    monkeypatch.setattr(
-        scans, "ScanService", lambda _db: SimpleNamespace(create=AsyncMock(return_value=(scan, None, None)))
-    )
-
-    class FailingQueueClient:
-        def __init__(self, redis_url: str, redis_token: str):
-            pass
-
-        async def enqueue(self, job_type: str, payload: dict):
-            raise RuntimeError("Authorization header contained invalid token")
-
-    import sys
-    import types
-
-    queue_module = types.ModuleType("app.clients.queue")
-    queue_module.QueueClient = FailingQueueClient
-    monkeypatch.setitem(sys.modules, "app.clients.queue", queue_module)
+    scan.status = "failed"
+    scan.error_message = GENERIC_QUEUE_ERROR
+    lifecycle = SimpleNamespace(create_manual_scan=AsyncMock(return_value=scan))
+    monkeypatch.setattr(scans, "ScanLifecycleService", lambda _db: lifecycle)
 
     response = await scans.create_scan(
         org_id=org_id,

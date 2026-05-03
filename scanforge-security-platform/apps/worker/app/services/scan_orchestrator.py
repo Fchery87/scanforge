@@ -15,6 +15,7 @@ import httpx
 from app.clients.queue import QueueClient, QueueJob
 from app.clients.r2 import R2Client
 from app.scanners.base import ScannerResult
+from app.scanners.registry import SCANNER_REGISTRY, scanners_for_scan_type
 
 if TYPE_CHECKING:
     from app.services.notifications import NotificationDispatcher
@@ -37,6 +38,8 @@ class ScanContext:
     artifact_uris: dict = None
     scanner_run_ids: dict = None
     changed_files: list[str] | None = None
+    expected_scanners: list[str] | None = None
+    coverage_scope: dict | None = None
     critical_count: int = 0
     high_count: int = 0
     scan_failed: bool = False
@@ -82,16 +85,7 @@ class ScanOrchestrator:
         self._notifier = notifier
 
     async def process_job(self, job: QueueJob) -> bool:
-        context = ScanContext(
-            scan_id=job.payload["scan_id"],
-            organization_id=job.payload["org_id"],
-            repository_id=job.payload["repository_id"],
-            project_id=job.payload["project_id"],
-            branch=job.payload.get("branch"),
-            commit_sha=job.payload.get("commit_sha"),
-            user_id=job.payload.get("user_id"),
-            job_id=job.job_id,
-        )
+        context = await self._load_scan_context(job)
 
         try:
             await self._update_status(context, "claimed")
@@ -124,17 +118,7 @@ class ScanOrchestrator:
             await self._update_scan_status(
                 context,
                 "completed",
-                summary={
-                    "finding_count": len(context.findings),
-                    "critical_count": context.critical_count,
-                    "high_count": context.high_count,
-                    "scanners_run": list(context.scanner_results.keys()),
-                    "scope": "diff" if job.job_type == "scan.repo.diff" else "full",
-                    "changed_files": context.changed_files or [],
-                    "duration_ms": int(duration * 1000),
-                    "duration_seconds": round(duration, 1),
-                    "artifact_uris": context.artifact_uris,
-                },
+                summary=self._build_completion_summary(context, job_type=job.job_type, duration_seconds=duration),
             )
 
             await self._send_notifications(context)
@@ -230,6 +214,33 @@ class ScanOrchestrator:
             except Exception:
                 continue
         return []
+
+    async def _load_scan_context(self, job: QueueJob) -> ScanContext:
+        scan_id = job.payload.get("scan_id")
+        if not scan_id:
+            raise RuntimeError("scan job payload missing scan_id")
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{self.api_base_url}/api/v1/internal/scans/{scan_id}/execution-context",
+                headers={"X-Service-Key": self._internal_api_key},
+                timeout=30.0,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        return ScanContext(
+            scan_id=data["scan_id"],
+            organization_id=data["org_id"],
+            repository_id=data["repository_id"],
+            project_id=data["project_id"],
+            branch=data.get("branch"),
+            commit_sha=data.get("commit_sha"),
+            user_id=data.get("user_id"),
+            job_id=job.job_id,
+            expected_scanners=data.get("expected_scanners"),
+            coverage_scope=data.get("coverage_scope"),
+        )
 
     async def _get_clone_url(self, context: ScanContext) -> tuple[str, str]:
         """Build an authenticated clone URL via the internal API."""
@@ -376,43 +387,12 @@ class ScanOrchestrator:
         return results
 
     def _get_scanners_for_type(self, scan_type: str) -> list[str]:
-        mapping = {
-            "scan.repo.full": ["trivy", "gitleaks", "osv", "semgrep", "syft", "checkov", "grype"],
-            "scan.repo.diff": ["gitleaks", "semgrep", "checkov"],
-            "scan.dependencies": ["trivy", "osv", "syft", "grype"],
-            "scan.secrets": ["gitleaks"],
-        }
-        return mapping.get(scan_type, ["trivy", "gitleaks", "osv", "semgrep", "syft", "checkov", "grype"])
+        return scanners_for_scan_type(scan_type)
 
     def _get_scanner(self, name: str):
-        if name == "trivy":
-            from app.scanners.trivy import TrivyAdapter
-
-            return TrivyAdapter()
-        elif name == "gitleaks":
-            from app.scanners.gitleaks import GitleaksAdapter
-
-            return GitleaksAdapter()
-        elif name == "osv":
-            from app.scanners.osv import OsvAdapter
-
-            return OsvAdapter()
-        elif name == "semgrep":
-            from app.scanners.semgrep import SemgrepAdapter
-
-            return SemgrepAdapter()
-        elif name == "syft":
-            from app.scanners.syft import SyftAdapter
-
-            return SyftAdapter()
-        elif name == "checkov":
-            from app.scanners.checkov import CheckovAdapter
-
-            return CheckovAdapter()
-        elif name == "grype":
-            from app.scanners.grype import GrypeAdapter
-
-            return GrypeAdapter()
+        registration = SCANNER_REGISTRY.get(name)
+        if registration:
+            return registration.adapter_factory()
         return None
 
     async def _upload_artifacts(self, context: ScanContext) -> dict:
@@ -473,34 +453,9 @@ class ScanOrchestrator:
         return all_findings
 
     def _get_normalizer(self, name: str):
-        if name == "trivy":
-            from app.normalizers.trivy import normalize_trivy_output
-
-            return normalize_trivy_output
-        elif name == "gitleaks":
-            from app.normalizers.gitleaks import normalize_gitleaks_output
-
-            return normalize_gitleaks_output
-        elif name == "osv":
-            from app.normalizers.osv import normalize_osv_output
-
-            return normalize_osv_output
-        elif name == "semgrep":
-            from app.normalizers.semgrep import normalize_semgrep_output
-
-            return normalize_semgrep_output
-        elif name == "syft":
-            from app.normalizers.syft import normalize_syft_output
-
-            return normalize_syft_output
-        elif name == "checkov":
-            from app.normalizers.checkov import normalize_checkov_output
-
-            return normalize_checkov_output
-        elif name == "grype":
-            from app.normalizers.grype import normalize_grype_output
-
-            return normalize_grype_output
+        registration = SCANNER_REGISTRY.get(name)
+        if registration:
+            return registration.normalize
         return None
 
     def _filter_findings_to_changed_files(self, findings: list[dict], changed_files: list[str]) -> list[dict]:
@@ -515,6 +470,36 @@ class ScanOrchestrator:
             if not path or path in changed:
                 filtered.append(finding)
         return filtered
+
+    def _build_completion_summary(self, context: ScanContext, *, job_type: str, duration_seconds: float) -> dict:
+        expected = context.expected_scanners or list(context.scanner_results.keys())
+        completed = [name for name, result in context.scanner_results.items() if result.success]
+        failed = [name for name, result in context.scanner_results.items() if not result.success]
+        missing = [name for name in expected if name not in context.scanner_results]
+
+        return {
+            "finding_count": len(context.findings),
+            "critical_count": context.critical_count,
+            "high_count": context.high_count,
+            "scanners_run": list(context.scanner_results.keys()),
+            "scanner_health": {
+                "expected": expected,
+                "completed": completed,
+                "failed": failed,
+                "missing": missing,
+                "complete": not failed and not missing,
+            },
+            "seen_fingerprints": [
+                finding["canonical_fingerprint"]
+                for finding in context.findings
+                if finding.get("canonical_fingerprint")
+            ],
+            "scope": "diff" if job_type == "scan.repo.diff" else "full",
+            "changed_files": context.changed_files or [],
+            "duration_ms": int(duration_seconds * 1000),
+            "duration_seconds": round(duration_seconds, 1),
+            "artifact_uris": context.artifact_uris,
+        }
 
     async def _persist_findings(self, context: ScanContext):
         if not context.findings:

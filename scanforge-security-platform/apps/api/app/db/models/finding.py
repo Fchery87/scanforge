@@ -27,6 +27,7 @@ class Finding(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     canonical_fingerprint: Mapped[str] = mapped_column(String(255), nullable=False)
     primary_scanner: Mapped[str | None] = mapped_column(String(50))
     confidence_score: Mapped[float | None] = mapped_column(Float)
+    risk_score: Mapped[int | None]
     fixed_version: Mapped[str | None] = mapped_column(String(128))
     metadata_json: Mapped[dict | None] = mapped_column(JSONB)
     assignee_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
@@ -47,6 +48,18 @@ class Finding(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     def assignee_email(self) -> str | None:
         assignee = self.__dict__.get("assignee")
         return assignee.email if assignee else None
+
+    @property
+    def sla_status(self) -> dict:
+        from app.services.sla_policy import preview_sla_status
+
+        return preview_sla_status(workflow_state=self.status, due_date=self.due_date)
+
+    @property
+    def remediation_guidance(self) -> dict:
+        from app.services.remediation_guidance import build_remediation_guidance
+
+        return build_remediation_guidance(self)
 
 class FindingInstance(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "finding_instances"

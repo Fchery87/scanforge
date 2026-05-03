@@ -34,6 +34,7 @@ def build_onboarding_checklist(
     has_repositories: bool,
     has_scans: bool,
     has_findings: bool,
+    has_schedules: bool = False,
 ) -> OnboardingChecklist:
     steps = []
 
@@ -102,7 +103,7 @@ def build_onboarding_checklist(
             id="setup_schedule",
             label="Set up automated scanning",
             description="Schedule daily or weekly scans for continuous monitoring",
-            completed=False,
+            completed=has_schedules,
             action_url=None,
         )
     )

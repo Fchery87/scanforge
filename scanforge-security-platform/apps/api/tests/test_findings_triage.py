@@ -160,6 +160,13 @@ def test_finding_response_exposes_assignment_fields():
     assert payload.assignee_name == "Jane Dev"
     assert payload.assignee_email == "jane@example.com"
     assert payload.due_date == date(2026, 4, 15)
+    assert payload.sla_status is None
+
+
+def test_finding_model_exposes_sla_status_preview():
+    finding = Finding(status="open", due_date=date(2026, 1, 5))
+
+    assert finding.sla_status["status"] in {"overdue", "due_soon", "on_track"}
 
 
 def test_finding_model_exposes_assignee_relationship():
@@ -180,3 +187,78 @@ async def test_accept_risk_returns_none_when_user_cannot_access_finding():
     assert result is None
     db.add.assert_not_called()
     db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_mark_not_observed_updates_absent_findings_only_with_complete_scanner_coverage():
+    seen = SimpleNamespace(id=uuid4(), canonical_fingerprint="seen", primary_scanner="trivy", status="open", metadata_json=None)
+    absent = SimpleNamespace(id=uuid4(), canonical_fingerprint="absent", primary_scanner="trivy", status="open", metadata_json=None)
+    failed_scanner = SimpleNamespace(
+        id=uuid4(),
+        canonical_fingerprint="failed",
+        primary_scanner="gitleaks",
+        status="open",
+        metadata_json=None,
+    )
+    db = AsyncMock()
+    db.add = Mock()
+
+    service = FindingService(db)
+    service._list_open_findings_for_repository = AsyncMock(return_value=[seen, absent, failed_scanner])
+
+    updated = await service.mark_not_observed_after_scan(
+        repository_id="repo-1",
+        scan_id="scan-1",
+        seen_fingerprints={"seen"},
+        scan_summary={
+            "scanner_health": {
+                "expected": ["trivy", "gitleaks"],
+                "completed": ["trivy"],
+                "failed": ["gitleaks"],
+                "missing": [],
+                "complete": False,
+            }
+        },
+    )
+
+    assert updated == 1
+    assert seen.status == "open"
+    assert absent.status == "not_observed"
+    assert failed_scanner.status == "open"
+    event = db.add.call_args.args[0]
+    assert isinstance(event, FindingEvent)
+    assert event.finding_id == absent.id
+    assert event.event_type == "marked_not_observed"
+    assert event.metadata_json == {"scan_id": "scan-1", "not_observed_count": 1}
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_mark_not_observed_promotes_repeated_absence_to_fixed():
+    finding = SimpleNamespace(
+        id=uuid4(),
+        canonical_fingerprint="absent",
+        primary_scanner="trivy",
+        status="not_observed",
+        metadata_json={"not_observed_count": 1},
+    )
+    db = AsyncMock()
+    db.add = Mock()
+
+    service = FindingService(db)
+    service._list_open_findings_for_repository = AsyncMock(return_value=[finding])
+
+    updated = await service.mark_not_observed_after_scan(
+        repository_id="repo-1",
+        scan_id="scan-2",
+        seen_fingerprints=set(),
+        scan_summary={"scanner_health": {"completed": ["trivy"]}},
+    )
+
+    assert updated == 1
+    assert finding.status == "fixed"
+    assert finding.metadata_json["not_observed_count"] == 2
+    event = db.add.call_args.args[0]
+    assert event.event_type == "fixed"
+    assert event.metadata_json == {"scan_id": "scan-2", "not_observed_count": 2}
+    db.commit.assert_awaited_once()

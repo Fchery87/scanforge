@@ -30,6 +30,14 @@ def _current_user(role: str = "viewer") -> SimpleNamespace:
     return SimpleNamespace(user_id=uuid4(), role=role)
 
 
+def _patch_project_access(monkeypatch, project):
+    monkeypatch.setattr(route_auth, "get_project_in_org_for_user", AsyncMock(return_value=project))
+
+
+def _patch_repository_access(monkeypatch, repo):
+    monkeypatch.setattr(route_auth, "get_repository_in_project_for_user", AsyncMock(return_value=repo))
+
+
 @pytest.mark.asyncio
 async def test_delete_organization_requires_org_permission_not_token_role(monkeypatch):
     org_id = uuid4()
@@ -92,9 +100,7 @@ async def test_connect_repository_requires_admin_or_owner(monkeypatch):
     current_user = _current_user(role="viewer")
     project = SimpleNamespace(id=project_id, organization_id=org_id)
 
-    monkeypatch.setattr(
-        route_auth, "ProjectService", lambda db: SimpleNamespace(get_by_id=AsyncMock(return_value=project))
-    )
+    _patch_project_access(monkeypatch, project)
     org_service = SimpleNamespace(user_has_permission=AsyncMock(return_value=False))
     monkeypatch.setattr(repositories, "OrganizationService", lambda db: org_service)
 
@@ -125,9 +131,7 @@ async def test_create_scan_requires_developer_or_higher(monkeypatch):
     current_user = _current_user(role="viewer")
     project = SimpleNamespace(id=project_id, organization_id=org_id)
 
-    monkeypatch.setattr(
-        route_auth, "ProjectService", lambda db: SimpleNamespace(get_by_id=AsyncMock(return_value=project))
-    )
+    _patch_project_access(monkeypatch, project)
     org_service = SimpleNamespace(user_has_permission=AsyncMock(return_value=False))
     monkeypatch.setattr(scans, "OrganizationService", lambda db: org_service)
 
@@ -155,9 +159,7 @@ async def test_scorecard_rejects_project_outside_org_path(monkeypatch):
     current_user = _current_user()
     project = SimpleNamespace(id=project_id, organization_id=other_org_id)
 
-    monkeypatch.setattr(
-        route_auth, "ProjectService", lambda db: SimpleNamespace(get_by_id=AsyncMock(return_value=project))
-    )
+    _patch_project_access(monkeypatch, None)
 
     with pytest.raises(HTTPException) as exc_info:
         await scorecard.get_project_scorecard(
@@ -176,9 +178,7 @@ async def test_findings_trend_rejects_project_outside_org_path(monkeypatch):
     current_user = _current_user()
     project = SimpleNamespace(id=project_id, organization_id=other_org_id)
 
-    monkeypatch.setattr(
-        route_auth, "ProjectService", lambda db: SimpleNamespace(get_by_id=AsyncMock(return_value=project))
-    )
+    _patch_project_access(monkeypatch, None)
 
     with pytest.raises(HTTPException) as exc_info:
         await findings_trend.get_findings_trend(
@@ -196,9 +196,7 @@ async def test_create_export_requires_security_reviewer_or_higher(monkeypatch):
     current_user = _current_user(role="developer")
     project = SimpleNamespace(id=project_id, organization_id=org_id)
 
-    monkeypatch.setattr(
-        route_auth, "ProjectService", lambda db: SimpleNamespace(get_by_id=AsyncMock(return_value=project))
-    )
+    _patch_project_access(monkeypatch, project)
     org_service = SimpleNamespace(user_has_permission=AsyncMock(return_value=False))
     monkeypatch.setattr(exports, "OrganizationService", lambda db: org_service)
 
@@ -227,9 +225,7 @@ async def test_download_export_rejects_project_outside_org_path(monkeypatch):
     current_user = _current_user()
     project = SimpleNamespace(id=project_id, organization_id=other_org_id)
 
-    monkeypatch.setattr(
-        route_auth, "ProjectService", lambda db: SimpleNamespace(get_by_id=AsyncMock(return_value=project))
-    )
+    _patch_project_access(monkeypatch, None)
 
     with pytest.raises(HTTPException) as exc_info:
         await exports.download_export(
@@ -252,11 +248,7 @@ async def test_suppress_finding_requires_security_reviewer_or_higher(monkeypatch
     current_user = _current_user(role="developer")
     project = SimpleNamespace(id=project_id, organization_id=org_id)
 
-    monkeypatch.setattr(
-        findings,
-        "ProjectService",
-        lambda db: SimpleNamespace(get_by_id=AsyncMock(return_value=project)),
-    )
+    monkeypatch.setattr(findings, "get_project_in_org_for_user", AsyncMock(return_value=project))
     org_service = SimpleNamespace(user_has_permission=AsyncMock(return_value=False))
     monkeypatch.setattr(findings, "OrganizationService", lambda db: org_service)
 
@@ -285,9 +277,7 @@ async def test_project_audit_logs_reject_project_outside_org_path(monkeypatch):
     current_user = _current_user()
     project = SimpleNamespace(id=project_id, organization_id=other_org_id)
 
-    monkeypatch.setattr(
-        route_auth, "ProjectService", lambda db: SimpleNamespace(get_by_id=AsyncMock(return_value=project))
-    )
+    _patch_project_access(monkeypatch, None)
 
     with pytest.raises(HTTPException) as exc_info:
         await audit_logs.list_audit_logs_project(
@@ -314,16 +304,8 @@ async def test_update_schedule_rejects_schedule_outside_repo_path(monkeypatch):
     repo = SimpleNamespace(id=repo_id, project_id=project_id)
     schedule = SimpleNamespace(id=schedule_id, repository_id=other_repo_id)
 
-    monkeypatch.setattr(
-        route_auth,
-        "ProjectService",
-        lambda db: SimpleNamespace(
-            get_by_id=AsyncMock(return_value=SimpleNamespace(id=project_id, organization_id=org_id))
-        ),
-    )
-    monkeypatch.setattr(
-        route_auth, "RepositoryService", lambda db: SimpleNamespace(get_by_id=AsyncMock(return_value=repo))
-    )
+    _patch_project_access(monkeypatch, SimpleNamespace(id=project_id, organization_id=org_id))
+    _patch_repository_access(monkeypatch, repo)
     monkeypatch.setattr(
         scan_schedules,
         "ScanScheduleService",
@@ -372,16 +354,8 @@ async def test_delete_schedule_rejects_schedule_outside_repo_path(monkeypatch):
     repo = SimpleNamespace(id=repo_id, project_id=project_id)
     schedule = SimpleNamespace(id=schedule_id, repository_id=other_repo_id)
 
-    monkeypatch.setattr(
-        route_auth,
-        "ProjectService",
-        lambda db: SimpleNamespace(
-            get_by_id=AsyncMock(return_value=SimpleNamespace(id=project_id, organization_id=org_id))
-        ),
-    )
-    monkeypatch.setattr(
-        route_auth, "RepositoryService", lambda db: SimpleNamespace(get_by_id=AsyncMock(return_value=repo))
-    )
+    _patch_project_access(monkeypatch, SimpleNamespace(id=project_id, organization_id=org_id))
+    _patch_repository_access(monkeypatch, repo)
     monkeypatch.setattr(
         scan_schedules,
         "ScanScheduleService",

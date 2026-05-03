@@ -27,6 +27,7 @@ class RepositoryConnect(BaseModel):
 class RepositoryUpdate(BaseModel):
     default_branch: str | None = Field(None, max_length=255)
     is_active: bool | None = None
+    importance: str | None = Field(None, pattern="^(critical|high|normal|low)$")
 
 
 class RepositoryResponse(BaseModel):
@@ -43,6 +44,7 @@ class RepositoryResponse(BaseModel):
     clone_url: str | None
     html_url: str | None
     is_active: bool
+    importance: str = "normal"
     created_at: datetime
     updated_at: datetime
 

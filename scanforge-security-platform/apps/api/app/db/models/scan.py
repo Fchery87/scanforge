@@ -14,6 +14,7 @@ class Scan(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
     repository_id: Mapped[str] = mapped_column(ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False, index=True)
     trigger_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    scan_type: Mapped[str] = mapped_column(String(50), nullable=False, default="full")
     status: Mapped[ScanStatus] = mapped_column(
         Enum(ScanStatus, name="scan_status", values_callable=lambda e: [m.value for m in e]),
         nullable=False, default=ScanStatus.QUEUED,

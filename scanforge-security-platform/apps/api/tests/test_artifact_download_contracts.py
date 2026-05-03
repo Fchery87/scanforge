@@ -46,6 +46,7 @@ def test_scan_detail_redacts_artifact_uris_and_sets_download_urls():
         project_id=project_id,
         repository_id=uuid4(),
         trigger_type="manual",
+        scan_type="full",
         status="completed",
         branch_name="main",
         commit_sha="deadbeef",

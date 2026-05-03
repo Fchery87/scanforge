@@ -23,6 +23,7 @@ class Repository(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     clone_url: Mapped[str | None] = mapped_column(String(1024))
     html_url: Mapped[str | None] = mapped_column(String(1024))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    importance: Mapped[str] = mapped_column(String(20), default="normal", nullable=False)
 
 class RepositoryIntegration(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "repository_integrations"

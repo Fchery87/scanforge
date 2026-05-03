@@ -11,6 +11,8 @@ from app.db.models import Project, Repository, RepositoryIntegration, WebhookDel
 from app.db.session import AsyncSession, get_db
 from app.schemas.scans import ScanCreate
 from app.services.audit_logs import AuditLogService
+from app.services.github_pr_advisory import build_pr_advisory_payload
+from app.services.scan_lifecycle import ScanLifecycleService
 from app.services.scans import ScanService
 
 router = APIRouter()
@@ -108,6 +110,45 @@ async def github_webhook(
         await db.commit()
 
         return {"status": "queued", "scan_id": str(scan.id)}
+
+    if event == "pull_request" and payload.get("action") in {"opened", "reopened", "synchronize"}:
+        pull_request = payload.get("pull_request") or {}
+        head = pull_request.get("head") or {}
+        scan_data = ScanCreate(
+            repository_id=repository_id,
+            trigger_type=ScanTriggerType.PULL_REQUEST,
+            branch_name=head.get("ref"),
+            commit_sha=head.get("sha"),
+            pull_request_number=pull_request.get("number"),
+            scan_type="diff",
+        )
+
+        scan = await ScanLifecycleService(db).create_manual_scan(org_id=org_id, data=scan_data, user_id=None)
+
+        audit_service = AuditLogService(db)
+        await audit_service.create(
+            actor_user_id=None,
+            action="scan_triggered",
+            target_type="scan",
+            target_id=scan.id,
+            organization_id=org_id,
+            metadata_json={
+                "event": event,
+                "delivery": delivery,
+                "pull_request_number": pull_request.get("number"),
+                "trigger": "github_pull_request_advisory",
+            },
+        )
+        await db.commit()
+
+        return {
+            "status": "queued",
+            "scan_id": str(scan.id),
+            "advisory": build_pr_advisory_payload(
+                scan_id=str(scan.id),
+                policy_evaluation={"status": "pass", "blocking": False, "reasons": []},
+            ),
+        }
 
     if event == "ping":
         await db.commit()

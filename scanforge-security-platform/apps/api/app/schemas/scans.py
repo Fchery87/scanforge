@@ -42,6 +42,7 @@ class ScanResponse(BaseModel):
     project_id: UUID
     repository_id: UUID
     trigger_type: str
+    scan_type: str
     status: str
     branch_name: str | None
     commit_sha: str | None

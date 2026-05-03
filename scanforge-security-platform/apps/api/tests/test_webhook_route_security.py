@@ -160,3 +160,59 @@ async def test_github_webhook_queues_scan_for_matching_payload(monkeypatch):
 
     assert response == {"status": "queued", "scan_id": str(fake_scan.id)}
     scan_service.create.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_github_pull_request_webhook_queues_advisory_diff_scan(monkeypatch):
+    org_id = uuid4()
+    project_id = uuid4()
+    repository_id = uuid4()
+    repo = SimpleNamespace(
+        id=repository_id, project_id=project_id, full_name="scanforge/platform", external_repo_id="42"
+    )
+    project = SimpleNamespace(id=project_id, organization_id=org_id)
+    integration = SimpleNamespace(installation_id="99")
+    db = _FakeDB(repo=repo, project=project, integration=integration)
+    request = _FakeRequest(
+        {
+            "action": "synchronize",
+            "pull_request": {
+                "number": 17,
+                "head": {"sha": "cafebabe", "ref": "feature/security"},
+            },
+            "repository": {"full_name": "scanforge/platform", "id": 42},
+            "installation": {"id": 99},
+        },
+        event="pull_request",
+    )
+    fake_scan = SimpleNamespace(id=uuid4())
+    lifecycle = SimpleNamespace(create_manual_scan=AsyncMock(return_value=fake_scan))
+    audit_service = SimpleNamespace(create=AsyncMock())
+
+    monkeypatch.setattr(webhooks, "verify_github_webhook_async", AsyncMock(return_value=True))
+    monkeypatch.setattr(webhooks, "ScanLifecycleService", lambda _db: lifecycle)
+    monkeypatch.setattr(webhooks, "AuditLogService", lambda _db: audit_service)
+
+    response = await webhooks.github_webhook(
+        org_id=org_id,
+        project_id=project_id,
+        repository_id=repository_id,
+        request=request,
+        db=db,
+    )
+
+    assert response == {
+        "status": "queued",
+        "scan_id": str(fake_scan.id),
+        "advisory": {
+            "scan_id": str(fake_scan.id),
+            "state": "neutral",
+            "blocking": False,
+            "summary": "Advisory policy evaluation passed",
+        },
+    }
+    lifecycle.create_manual_scan.assert_awaited_once()
+    created_data = lifecycle.create_manual_scan.await_args.kwargs["data"]
+    assert created_data.scan_type == "diff"
+    assert created_data.trigger_type == "pull_request"
+    assert created_data.pull_request_number == 17

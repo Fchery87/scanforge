@@ -109,7 +109,10 @@ class RedisRateLimitMiddleware(BaseHTTPMiddleware):
 
     async def _check_limit(self, key: str) -> tuple[bool, int]:
         if self.rate_limiter.enabled:
-            return await self.rate_limiter.check(key, self.requests_per_minute)
+            try:
+                return await self.rate_limiter.check(key, self.requests_per_minute)
+            except httpx.HTTPError:
+                return LOCAL_STATE.check(key, self.requests_per_minute)
         return LOCAL_STATE.check(key, self.requests_per_minute)
 
     async def dispatch(self, request: Request, call_next) -> Response:

@@ -7,16 +7,27 @@ from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.enums import ScanStatus
-from app.db.models import Finding, OrganizationIntegration, Project, Repository, Scan
+from app.db.models import Finding, OrganizationIntegration, Project, Repository, Scan, ScanSchedule
 from app.db.models.scan import ScannerRun
 from app.db.session import get_db
 from app.middleware.auth import UserContext, get_current_user
 from app.middleware.service_auth import require_service_auth
 from app.schemas.notifications import NotificationCreate
 from app.schemas.scans import ScanStatusUpdate
+from app.schemas.canonical_findings import CanonicalFindingCandidate
 from app.services.findings import FindingService
 from app.services.notifications import NotificationService
 from app.services.onboarding import build_onboarding_checklist
+from app.services.scan_lifecycle import ScanLifecycleService
+from app.services.scan_schedules import ScanScheduleService
+
+
+SCAN_TYPE_SCANNERS = {
+    "full": ["trivy", "gitleaks", "osv", "semgrep", "syft", "checkov", "grype"],
+    "diff": ["gitleaks", "semgrep", "checkov"],
+    "dependencies": ["trivy", "osv", "syft", "grype"],
+    "secrets": ["gitleaks"],
+}
 
 router = APIRouter(prefix="/internal", tags=["internal"], dependencies=[Depends(require_service_auth)])
 
@@ -59,6 +70,8 @@ async def update_scan_status_internal(
 
     await db.commit()
     await db.refresh(scan)
+    if data.status == "completed":
+        await FindingService(db).mark_not_observed_for_completed_scan(scan)
     return scan
 
 
@@ -126,23 +139,8 @@ async def update_scanner_run(
     return {"id": run.id, "status": run.status.value}
 
 
-class FindingItem(BaseModel):
-    model_config = {"extra": "allow"}
-
-    canonical_fingerprint: str
-    severity: str
-    category: str
-    title: str
-    description: str | None = None
-    primary_scanner: str | None = None
-    confidence_score: float | None = None
-    fixed_version: str | None = None
-    instance: dict | None = None
-    references: list[dict] | None = None
-
-
 class PersistFindingsRequest(BaseModel):
-    findings: list[FindingItem]
+    findings: list[CanonicalFindingCandidate]
 
 
 @router.post("/scans/{scan_id}/findings")
@@ -162,12 +160,11 @@ async def persist_scan_findings(
     repo_id, proj_id = row
 
     service = FindingService(db)
-    findings_dicts = [f.model_dump() for f in data.findings]
     new_count, updated_count = await service.upsert_from_scan(
         scan_id=str(scan_id),
         repository_id=str(repo_id),
         project_id=str(proj_id),
-        normalized_findings=findings_dicts,
+        normalized_findings=data.findings,
     )
 
     return {"inserted": new_count, "updated": updated_count}
@@ -210,6 +207,39 @@ async def get_repository_clone_url(
     }
 
 
+@router.get("/scans/{scan_id}/execution-context")
+async def get_scan_execution_context(
+    scan_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    scan = await db.get(Scan, str(scan_id))
+    if not scan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan not found")
+
+    project = await db.get(Project, str(scan.project_id))
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    scan_type = getattr(scan, "scan_type", None) or "full"
+
+    return {
+        "scan_id": str(scan.id),
+        "org_id": str(project.organization_id),
+        "repository_id": str(scan.repository_id),
+        "project_id": str(scan.project_id),
+        "scan_type": scan_type,
+        "expected_scanners": SCAN_TYPE_SCANNERS.get(scan_type, SCAN_TYPE_SCANNERS["full"]),
+        "coverage_scope": {
+            "branch": scan.branch_name,
+            "commit_sha": scan.commit_sha,
+            "scan_type": scan_type,
+        },
+        "branch": scan.branch_name,
+        "commit_sha": scan.commit_sha,
+        "user_id": str(scan.requested_by_user_id) if scan.requested_by_user_id else None,
+    }
+
+
 @router.get("/onboarding")
 async def get_onboarding_checklist(
     org_id: str | None = None,
@@ -225,6 +255,7 @@ async def get_onboarding_checklist(
     has_repositories = False
     has_scans = False
     has_findings = False
+    has_schedules = False
 
     if org_id:
         project_result = await db.execute(select(exists().where(Project.organization_id == org_id)))
@@ -247,6 +278,19 @@ async def get_onboarding_checklist(
         )
         has_findings = finding_result.scalar()
 
+        schedule_result = await db.execute(
+            select(
+                exists().where(
+                    ScanSchedule.repository_id.in_(
+                        select(Repository.id).where(
+                            Repository.project_id.in_(select(Project.id).where(Project.organization_id == org_id))
+                        )
+                    )
+                )
+            )
+        )
+        has_schedules = schedule_result.scalar()
+
     return build_onboarding_checklist(
         user_id=current_user.user_id,
         org_id=org_id,
@@ -255,4 +299,29 @@ async def get_onboarding_checklist(
         has_repositories=has_repositories,
         has_scans=has_scans,
         has_findings=has_findings,
+        has_schedules=has_schedules,
     )
+
+
+@router.post("/scan-schedules/run-due")
+async def run_due_scan_schedules(
+    db: AsyncSession = Depends(get_db),
+):
+    schedule_service = ScanScheduleService(db)
+    lifecycle = ScanLifecycleService(db)
+    due_schedules = await schedule_service.get_due_schedules(limit=50)
+    queued = 0
+    failed = 0
+
+    for schedule in due_schedules:
+        try:
+            outcome = await lifecycle.create_scheduled_scan(schedule)
+            if outcome.enqueued:
+                await schedule_service.mark_run(schedule.id)
+                queued += 1
+            else:
+                failed += 1
+        except Exception:
+            failed += 1
+
+    return {"found": len(due_schedules), "queued": queued, "failed": failed}
