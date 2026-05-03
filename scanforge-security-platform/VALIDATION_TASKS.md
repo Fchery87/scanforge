@@ -6,6 +6,8 @@ Validation Health Score: 76/100
 Target Threshold: 95/100
 Perfectionist State: no
 
+> Superseded note: This is a historical April 2026 validation task list. The current project overview and latest broad API/worker verification status are maintained in `README.md` and `docs/SYSTEM_OVERVIEW.md`.
+
 ## Summary
 
 - Tech stack: Next.js 16, React 19, TypeScript, FastAPI, SQLAlchemy, Alembic, Python 3.12, Upstash Redis REST, Cloudflare R2/MinIO

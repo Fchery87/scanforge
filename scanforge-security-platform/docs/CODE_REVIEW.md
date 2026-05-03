@@ -3,6 +3,8 @@
 Last reviewed: 2026-04-04
 Reviewer: OpenCode
 
+> Superseded note: This file is a historical April 2026 code review snapshot. The current project overview and latest broad API/worker verification status are maintained in `../README.md` and `SYSTEM_OVERVIEW.md`.
+
 ## Project Understanding
 
 ScanForge is a repository security operations platform for teams that want one workflow around code scanning instead of juggling raw output from multiple tools.
