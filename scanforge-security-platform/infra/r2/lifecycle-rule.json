@@ -1,0 +1,34 @@
+{
+  "Rules": [
+    {
+      "ID": "expire-scan-artifacts-90d",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": "scan-artifacts/"
+      },
+      "Expiration": {
+        "Days": 90
+      }
+    },
+    {
+      "ID": "expire-sboms-90d",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": "sboms/"
+      },
+      "Expiration": {
+        "Days": 90
+      }
+    },
+    {
+      "ID": "expire-exports-90d",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": "exports/"
+      },
+      "Expiration": {
+        "Days": 90
+      }
+    }
+  ]
+}

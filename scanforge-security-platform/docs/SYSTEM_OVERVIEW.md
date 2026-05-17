@@ -105,6 +105,15 @@ User
 
 Repository integrations attach GitHub installation metadata to repositories. Scan schedules create scheduled scan lifecycle outcomes. Webhook deliveries preserve GitHub webhook replay and processing metadata. Exports and scan artifacts expose generated or raw data through storage-backed download flows.
 
+## Artifact Retention
+
+Scan artifacts, SBOMs, and exports stored in Cloudflare R2 expire after **90 days** via S3-compatible
+object lifecycle rules. The rules are defined in `infra/r2/lifecycle-rule.json` and must be applied
+to the bucket manually (see `infra/r2/r2-layout.md` for the exact command).
+
+Per-organization retention overrides are deferred. The 90-day default applies uniformly until that
+feature ships.
+
 ## Operational Notes
 
 - Auth is JWT-based and wired for Neon Auth claims verification.
