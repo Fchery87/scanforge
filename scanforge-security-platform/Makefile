@@ -1,5 +1,5 @@
 .PHONY: help install dev lint test migrate migrate-generate migrate-rollback migrate-status migrate-reset \
-        web-install web-dev web-build web-lint \
+        web-install web-dev web-build web-lint web-test \
         api-install api-dev \
         worker-install worker-dev worker-prod worker-purge-queue \
         db-up db-down db-logs \
@@ -30,6 +30,7 @@ help:
 	@echo ""
 	@echo "  Build"
 	@echo "    make web-build        Build Next.js app"
+	@echo "    make web-test         Vitest component test suite"
 	@echo "    make lint             Lint all apps"
 	@echo ""
 	@echo "  Production"
@@ -146,6 +147,9 @@ web-build:
 web-lint:
 	cd apps/web && npm run lint
 
+web-test:
+	cd apps/web && npm test
+
 # ─── API ─────────────────────────────────────────────────────────────
 
 api-install:
@@ -193,3 +197,4 @@ lint:
 test:
 	PYTHONPATH="$(PWD)/apps/api" $(API_PYTHON) -m pytest apps/api
 	PYTHONPATH="$(PWD)/apps/worker" $(WORKER_PYTHON) -m pytest apps/worker
+	cd apps/web && npm test

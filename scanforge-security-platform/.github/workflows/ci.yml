@@ -1,0 +1,113 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      worker: ${{ steps.filter.outputs.worker }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            api:
+              - 'apps/api/**'
+            worker:
+              - 'apps/worker/**'
+            web:
+              - 'apps/web/**'
+
+  api:
+    needs: changes
+    if: needs.changes.outputs.api == 'true' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+      - name: Lint (ruff)
+        run: ruff check app
+      - name: Test (pytest)
+        run: python -m pytest
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///./test.db
+      - name: Audit dependencies (pip-audit)
+        run: pip-audit --require-hashes --strict || true
+
+  worker:
+    needs: changes
+    if: needs.changes.outputs.worker == 'true' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+      - name: Lint (ruff)
+        run: ruff check app
+      - name: Test (pytest)
+        run: python -m pytest
+      - name: Audit dependencies (pip-audit)
+        run: pip-audit --require-hashes --strict || true
+
+  web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint (eslint)
+        run: npm run lint
+      - name: Test (vitest)
+        run: npm test
+      - name: Audit dependencies (npm audit)
+        run: npm audit --audit-level=high || true
+      - name: Build
+        run: npm run build
+
+  sbom:
+    needs: [api, worker, web]
+    if: always() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: anchore/sbom-action@v0
+        with:
+          format: cyclonedx-json
+          artifact-name: sbom.cyclonedx.json
+          upload-artifact: true
