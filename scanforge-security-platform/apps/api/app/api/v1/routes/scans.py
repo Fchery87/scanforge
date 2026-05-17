@@ -9,6 +9,7 @@ from app.clients.r2 import R2Client
 from app.core.config import settings
 from app.db.session import get_db
 from app.middleware.auth import UserContext, get_current_user
+from app.middleware.redis_rate_limit import per_route_limiter
 from app.schemas.common import PaginatedResponse, PaginationParams
 from app.schemas.scans import (
     ScanCancel,
@@ -48,7 +49,12 @@ def _get_r2_client() -> R2Client:
     )
 
 
-@router.post("/", response_model=ScanResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/",
+    response_model=ScanResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(per_route_limiter(20, 60, "scans:create"))],
+)
 async def create_scan(
     org_id: UUID,
     project_id: UUID,

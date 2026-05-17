@@ -55,7 +55,7 @@ select = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
-"tests/*" = ["S", "B", "PLR0913"]
+"tests/*" = ["S", "B", "PLR0913", "PLR2004"]
 "app/api/**/*.py" = ["B008", "PLR0913", "ARG001", "ARG002"]
 "app/middleware/*.py" = ["B008", "ARG001", "ARG002", "PLR0913", "PLR2004", "S110", "SIM108"]
 "app/main.py" = ["ARG001"]

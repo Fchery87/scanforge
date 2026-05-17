@@ -1,6 +1,8 @@
 import pytest
+from starlette.exceptions import HTTPException
+from starlette.requests import Request
 
-from app.middleware.redis_rate_limit import RateLimitState, UpstashRateLimiter
+from app.middleware.redis_rate_limit import RateLimitState, UpstashRateLimiter, per_route_limiter
 
 
 def test_rate_limit_state_initialization():
@@ -76,3 +78,26 @@ async def test_upstash_rate_limiter_blocks_when_over_limit(monkeypatch):
 
     assert limited is True
     assert remaining == 12
+
+
+@pytest.mark.asyncio
+async def test_per_route_limiter_allows_under_limit(monkeypatch):
+    monkeypatch.setattr("app.middleware.redis_rate_limit._ROUTE_LIMITER.enabled", False)
+    dep = per_route_limiter(limit=3, window=60, key_prefix="test:allow")
+    request = Request({"type": "http", "method": "POST", "path": "/", "headers": [], "client": ("10.0.0.51", 1)})
+    # Three calls within limit should not raise
+    for _ in range(3):
+        await dep(request)
+
+
+@pytest.mark.asyncio
+async def test_per_route_limiter_blocks_over_limit(monkeypatch):
+    monkeypatch.setattr("app.middleware.redis_rate_limit._ROUTE_LIMITER.enabled", False)
+    dep = per_route_limiter(limit=3, window=60, key_prefix="test:block")
+    request = Request({"type": "http", "method": "POST", "path": "/", "headers": [], "client": ("10.0.0.52", 1)})
+    for _ in range(3):
+        await dep(request)
+    with pytest.raises(HTTPException) as exc_info:
+        await dep(request)
+    assert exc_info.value.status_code == 429
+    assert "Retry-After" in (exc_info.value.headers or {})

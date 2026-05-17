@@ -9,6 +9,7 @@ from app.core.error_messages import GENERIC_EXTERNAL_SERVICE_ERROR
 from app.core.github_state import GitHubStateError, verify_github_state
 from app.db.session import get_db
 from app.middleware.auth import UserContext, get_current_user
+from app.middleware.redis_rate_limit import per_route_limiter
 from app.schemas.github import (
     GitHubConnectRequest,
     GitHubInstallCallbackRequest,
@@ -78,6 +79,7 @@ async def get_github_oauth_authorize_url(
 @router.post(
     "/github/oauth/callback",
     response_model=GitHubIntegrationResponse,
+    dependencies=[Depends(per_route_limiter(10, 60, "github:oauth"))],
 )
 async def github_oauth_callback(
     data: GitHubOAuthCallbackRequest,
@@ -120,6 +122,7 @@ async def github_oauth_callback(
 @router.post(
     "/github/install/callback",
     response_model=GitHubIntegrationResponse,
+    dependencies=[Depends(per_route_limiter(10, 60, "github:install"))],
 )
 async def github_install_callback(
     data: GitHubInstallCallbackRequest,

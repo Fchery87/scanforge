@@ -1,6 +1,8 @@
+import os
 import time
 
 import httpx
+from starlette.exceptions import HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -77,6 +79,10 @@ class UpstashRateLimiter:
 
 
 LOCAL_STATE = RateLimitState()
+_ROUTE_LIMITER = UpstashRateLimiter(
+    redis_url=os.environ.get("UPSTASH_REDIS_REST_URL", ""),
+    redis_token=os.environ.get("UPSTASH_REDIS_REST_TOKEN", ""),
+)
 
 
 def get_client_ip(request: Request, trusted_proxies: set[str] | None = None) -> str:
@@ -143,3 +149,27 @@ class RedisRateLimitMiddleware(BaseHTTPMiddleware):
         response.headers["X-RateLimit-Limit"] = str(self.requests_per_minute)
         response.headers["X-RateLimit-Remaining"] = str(max(0, remaining))
         return response
+
+
+def per_route_limiter(limit: int, window: int = 60, key_prefix: str = "route"):
+    """
+    Returns a FastAPI dependency that enforces a per-route rate limit.
+    Key = "<key_prefix>:<client_ip>", backed by Upstash Redis with local fallback.
+    """
+    async def _dep(request: Request) -> None:
+        ip = get_client_ip(request)
+        key = f"{key_prefix}:{ip}"
+        if _ROUTE_LIMITER.enabled:
+            try:
+                limited, retry_after = await _ROUTE_LIMITER.check(key, limit, window)
+            except httpx.HTTPError:
+                limited, retry_after = LOCAL_STATE.check(key, limit, window)
+        else:
+            limited, retry_after = LOCAL_STATE.check(key, limit, window)
+        if limited:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many requests. Please slow down.",
+                headers={"Retry-After": str(retry_after)},
+            )
+    return _dep
