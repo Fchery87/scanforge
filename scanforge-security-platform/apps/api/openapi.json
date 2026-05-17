@@ -5217,6 +5217,18 @@
               }
             ],
             "title": "Fixed Version"
+          },
+          "ai_annotation": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Annotation"
           }
         },
         "additionalProperties": true,

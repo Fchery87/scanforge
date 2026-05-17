@@ -28,3 +28,5 @@ class ScanContext:
     high_count: int = 0
     scan_failed: bool = False
     error_message: str | None = None
+    ai_annotated_count: int = 0
+    ai_skipped_count: int = 0

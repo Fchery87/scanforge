@@ -73,6 +73,7 @@ class FindingInstance(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     installed_version: Mapped[str | None] = mapped_column(String(128))
     fixed_version: Mapped[str | None] = mapped_column(String(128))
     evidence_json: Mapped[dict | None] = mapped_column(JSONB)
+    ai_annotation: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     finding: Mapped[Finding] = relationship("Finding", back_populates="instances", lazy="noload")
 
 class FindingReference(Base, UUIDPrimaryKeyMixin, TimestampMixin):

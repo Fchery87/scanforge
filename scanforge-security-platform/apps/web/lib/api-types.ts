@@ -1127,6 +1127,10 @@ export interface components {
             installed_version?: string | null;
             /** Fixed Version */
             fixed_version?: string | null;
+            /** Ai Annotation */
+            ai_annotation?: {
+                [key: string]: unknown;
+            } | null;
         } & {
             [key: string]: unknown;
         };

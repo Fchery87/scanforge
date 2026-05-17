@@ -258,6 +258,7 @@ class FindingService:
                 installed_version=instance_data.get("installed_version"),
                 fixed_version=instance_data.get("fixed_version"),
                 evidence_json=instance_data,
+                ai_annotation=instance_data.get("ai_annotation"),
             )
             self.db.add(instance)
 

@@ -13,6 +13,7 @@ from app.clients.queue import QueueClient, QueueJob
 from app.clients.r2 import R2Client
 from app.core.alerts import send_slack_alert
 from app.core.logging import get_logger
+from app.services.ai_investigation.stage import AIInvestigationStage
 from app.services.scan_pipeline.context import ScanContext
 from app.services.scan_pipeline.execution import ScanExecutionStage
 from app.services.scan_pipeline.normalization import NormalizationStage
@@ -41,6 +42,7 @@ class ScanOrchestrator:
 
         self._execution = ScanExecutionStage(r2, api_base_url, self._internal_api_key)
         self._normalization = NormalizationStage()
+        self._ai_investigation = AIInvestigationStage()
         self._persistence = PersistenceStage(api_base_url, self._internal_api_key)
 
     def set_notifier(self, notifier: NotificationDispatcher) -> None:
@@ -83,7 +85,11 @@ class ScanOrchestrator:
             context.critical_count = sum(1 for f in context.findings if f.get("severity") == "critical")
             context.high_count = sum(1 for f in context.findings if f.get("severity") == "high")
 
-            # Stage 3 — Persistence: findings + notifications
+            # Stage 3 — AI investigation (non-blocking)
+            await self._update_status(context, "ai_investigating")
+            await self._ai_investigation.run(context, job_type=job.job_type)
+
+            # Stage 4 — Persistence: findings + notifications
             await self._update_status(context, "persisting")
             await self._persistence.persist_findings(context)
 
@@ -192,6 +198,8 @@ class ScanOrchestrator:
             "duration_ms": int(duration_seconds * 1000),
             "duration_seconds": round(duration_seconds, 1),
             "artifact_uris": context.artifact_uris,
+            "ai_annotated_count": context.ai_annotated_count,
+            "ai_skipped_count": context.ai_skipped_count,
         }
 
     def _get_scanners_for_type(self, scan_type: str) -> list[str]:

@@ -10,6 +10,7 @@ class CanonicalFindingInstance(BaseModel):
     package_name: str | None = None
     installed_version: str | None = None
     fixed_version: str | None = None
+    ai_annotation: dict | None = None
 
 
 class CanonicalFindingReference(BaseModel):
