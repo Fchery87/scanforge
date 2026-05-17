@@ -21,8 +21,12 @@ _load_env()
 
 from app.clients.queue import QueueClient  # noqa: E402
 from app.clients.r2 import R2Client  # noqa: E402
+from app.core.logging import configure_logging, get_logger  # noqa: E402
 from app.services.notifications import NotificationDispatcher  # noqa: E402
 from app.services.scan_orchestrator import ScanOrchestrator  # noqa: E402
+
+configure_logging(level=os.environ.get("LOG_LEVEL", "INFO"))
+_log = get_logger(__name__)
 
 
 class Worker:
