@@ -149,10 +149,16 @@ async def github_install_callback(
         )
 
     gh = GitHubService(db)
-    return await gh.save_integration(
-        org_id,
-        GitHubConnectRequest(installation_id=data.installation_id, state=data.state),
-    )
+    try:
+        return await gh.save_integration(
+            org_id,
+            GitHubConnectRequest(installation_id=data.installation_id, state=data.state),
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=GENERIC_EXTERNAL_SERVICE_ERROR,
+        ) from exc
 
 
 @router.post(

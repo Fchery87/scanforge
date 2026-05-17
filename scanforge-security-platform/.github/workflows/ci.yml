@@ -50,6 +50,10 @@ jobs:
         run: python -m pytest
         env:
           DATABASE_URL: sqlite+aiosqlite:///./test.db
+      - name: Audit exception handlers (advisory)
+        run: python scripts/check_exception_handlers.py
+        env:
+          DATABASE_URL: postgresql+asyncpg://dummy:dummy@localhost/dummy
       - name: Verify openapi.json is up-to-date
         run: python scripts/emit_openapi.py
         env:

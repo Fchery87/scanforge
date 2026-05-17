@@ -72,3 +72,77 @@ async def test_scan_enqueue_failure_stores_generic_error(monkeypatch):
 
     assert response.error_message == GENERIC_QUEUE_ERROR
     assert response.status == "failed"
+
+
+_INTERNAL_MARKERS = (
+    "Traceback",
+    "RuntimeError",
+    "ValueError",
+    "SELECT",
+    "INSERT",
+    "/home/",
+    ".py:",
+    "sqlalchemy",
+    "asyncpg",
+)
+
+
+def _assert_no_internal_details(detail: str) -> None:
+    for marker in _INTERNAL_MARKERS:
+        assert marker.lower() not in str(detail).lower(), f"Response leaks internal detail: {marker!r}"
+
+
+@pytest.mark.asyncio
+async def test_github_oauth_callback_errors_are_sanitized(monkeypatch):
+    org_id = uuid4()
+    current_user = SimpleNamespace(user_id=uuid4())
+    org_service = SimpleNamespace(
+        get_by_id=AsyncMock(return_value=SimpleNamespace(id=org_id)),
+        user_has_permission=AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(github, "OrganizationService", lambda db: org_service)
+    monkeypatch.setattr(github, "verify_github_state", lambda *_a, **_kw: None)
+    monkeypatch.setattr(github, "_extract_org_id_from_state_or_400", lambda _state: org_id)
+    monkeypatch.setattr(
+        github,
+        "GitHubService",
+        lambda db: SimpleNamespace(handle_oauth_callback=AsyncMock(side_effect=RuntimeError("token exchange failed: /home/user/secret.key"))),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await github.github_oauth_callback(
+            data=SimpleNamespace(code="abc", state="state"),
+            current_user=current_user,
+            db=object(),
+        )
+
+    assert exc_info.value.status_code == 502
+    _assert_no_internal_details(exc_info.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_github_install_callback_errors_are_sanitized(monkeypatch):
+    org_id = uuid4()
+    current_user = SimpleNamespace(user_id=uuid4())
+    org_service = SimpleNamespace(
+        get_by_id=AsyncMock(return_value=SimpleNamespace(id=org_id)),
+        user_has_permission=AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(github, "OrganizationService", lambda db: org_service)
+    monkeypatch.setattr(github, "verify_github_state", lambda *_a, **_kw: None)
+    monkeypatch.setattr(github, "_extract_org_id_from_state_or_400", lambda _state: org_id)
+    monkeypatch.setattr(
+        github,
+        "GitHubService",
+        lambda db: SimpleNamespace(save_integration=AsyncMock(side_effect=RuntimeError("DB connection refused: SELECT * FROM integrations"))),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await github.github_install_callback(
+            data=SimpleNamespace(installation_id="999", state="state"),
+            current_user=current_user,
+            db=object(),
+        )
+
+    assert exc_info.value.status_code == 502
+    _assert_no_internal_details(exc_info.value.detail)

@@ -1,4 +1,5 @@
 import base64
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -21,6 +22,8 @@ from app.services.notifications import NotificationService
 from app.services.onboarding import build_onboarding_checklist
 from app.services.scan_lifecycle import ScanLifecycleService
 from app.services.scan_schedules import ScanScheduleService
+
+logger = logging.getLogger(__name__)
 
 SCAN_TYPE_SCANNERS = {
     "full": ["trivy", "gitleaks", "osv", "semgrep", "syft", "checkov", "grype"],
@@ -320,6 +323,7 @@ async def run_due_scan_schedules(
             else:
                 failed += 1
         except Exception:
+            logger.error("Failed to create scheduled scan for schedule %s", schedule.id, exc_info=True)
             failed += 1
 
     return {"found": len(due_schedules), "queued": queued, "failed": failed}
