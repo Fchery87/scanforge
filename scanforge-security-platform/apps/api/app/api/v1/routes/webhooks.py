@@ -1,8 +1,8 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
 from app.core.webhook import verify_github_webhook_async

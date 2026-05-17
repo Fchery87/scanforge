@@ -4,7 +4,7 @@ import { Github, AlertCircle, CheckCircle2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { getIntegrationHealth, type IntegrationHealthState } from "@/lib/governance/member-policy";
+import { getIntegrationHealth } from "@/lib/governance/member-policy";
 
 interface IntegrationStatusCardProps {
   rawIntegration: unknown;

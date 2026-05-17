@@ -1,6 +1,6 @@
 "use client";
 
-import { X, FileText, Clock, Link2, CheckCircle, Pause } from "lucide-react";
+import { X, FileText, CheckCircle, Pause } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SeverityBadge } from "@/components/scanforge/severity-badge";
 import { StatusBadge } from "@/components/scanforge/status-badge";

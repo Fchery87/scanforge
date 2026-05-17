@@ -1,3 +1,6 @@
+RISK_SCORE_HIGH_THRESHOLD = 70
+
+
 def evaluate_advisory_policy(
     *,
     risk_score_average: float | None,
@@ -6,7 +9,7 @@ def evaluate_advisory_policy(
 ) -> dict:
     reasons = []
 
-    if risk_score_average is not None and risk_score_average >= 70:
+    if risk_score_average is not None and risk_score_average >= RISK_SCORE_HIGH_THRESHOLD:
         reasons.append("risk_score_high")
     if sla_overdue > 0:
         reasons.append("sla_overdue")

@@ -2,21 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, ArrowLeft, RefreshCw, Trash2, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowLeft, RefreshCw, Trash2 } from "lucide-react";
 
 import { api } from "@/lib/api";
 import {
   deriveScanPhase,
   canRerunScan,
   canDeleteScan,
-  canCancelScan,
   deriveRerunPayload,
   formatScanSummary,
   isStaleActiveScan,
 } from "@/lib/scans/lifecycle";
 import { formatRelativeTime, formatScanDuration } from "@/lib/project-surface";
 import { PageHeader } from "@/components/scanforge/page-header";
-import { StatusBadge } from "@/components/scanforge/status-badge";
 import { SkeletonTable } from "@/components/scanforge/loading-skeleton";
 import { ScanTimeline } from "@/components/scanforge/scan-timeline";
 import { ScanSummaryCards } from "@/components/scanforge/scan-summary-cards";
@@ -58,7 +56,9 @@ export default function ScanDetailPage() {
       const payload = deriveRerunPayload({ repository_id: scan.repository_id, branch_name: scan.branch_name });
       const newScan = await api.scans.create(org_id, project_id, payload);
       router.push(`/dashboard/${org_id}/projects/${project_id}/scans/${newScan.id}`);
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
 
   async function handleDelete() {
@@ -69,7 +69,9 @@ export default function ScanDetailPage() {
     try {
       await api.scans.delete(org_id, project_id, scan_id);
       router.push(`/dashboard/${org_id}/projects/${project_id}/scans`);
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
 
   if (loading) return <SkeletonTable rows={5} />;
@@ -82,7 +84,7 @@ export default function ScanDetailPage() {
     );
   }
 
-  const phase = deriveScanPhase(scan);
+  const _phase = deriveScanPhase(scan);
   const summary = formatScanSummary(scan);
   const duration = formatScanDuration(scan.summary_json || {});
   const isStale = isStaleActiveScan(scan);

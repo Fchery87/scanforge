@@ -18,7 +18,6 @@ import {
 import { api } from "@/lib/api";
 import { EmptyState } from "@/components/scanforge/empty-state";
 import { PageHeader } from "@/components/scanforge/page-header";
-import { SkeletonStats } from "@/components/scanforge/loading-skeleton";
 import { StatCard } from "@/components/scanforge/stat-card";
 import { PageStatePanel } from "@/components/scanforge/page-state-panel";
 import { derivePageState } from "@/lib/page-surface/page-state";

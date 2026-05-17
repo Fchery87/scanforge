@@ -7,7 +7,6 @@ import { api } from "@/lib/api";
 import { authClient } from "@/lib/auth/client";
 import { resolveProfileAuthState } from "@/lib/auth/profile-session";
 import { PageHeader } from "@/components/scanforge/page-header";
-import { SkeletonList } from "@/components/scanforge/loading-skeleton";
 import { PageStatePanel } from "@/components/scanforge/page-state-panel";
 import { derivePageState } from "@/lib/page-surface/page-state";
 

@@ -110,11 +110,11 @@ async def github_oauth_callback(
     gh = GitHubService(db)
     try:
         return await gh.handle_oauth_callback(data, callback_url, org_id)
-    except Exception:
+    except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=GENERIC_EXTERNAL_SERVICE_ERROR,
-        )
+        ) from exc
 
 
 @router.post(
@@ -203,11 +203,11 @@ async def list_github_repositories(
 
     try:
         repos = await gh.list_repositories(integration.installation_id)
-    except Exception:
+    except Exception as exc:
         raise HTTPException(
             status_code=502,
             detail=GENERIC_EXTERNAL_SERVICE_ERROR,
-        )
+        ) from exc
     return GitHubRepoListResponse(items=repos, total=len(repos))
 
 

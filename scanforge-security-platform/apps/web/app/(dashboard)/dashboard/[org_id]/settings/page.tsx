@@ -16,7 +16,6 @@ import { MemberInvitationsPanel } from "@/components/scanforge/member-invitation
 import { IntegrationStatusCard } from "@/components/scanforge/integration-status-card";
 import { PageHeader } from "@/components/scanforge/page-header";
 import { SkeletonTable } from "@/components/scanforge/loading-skeleton";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -34,7 +33,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
 
 function OrgSettingsContent() {
   const { org_id } = useParams();
@@ -49,7 +47,7 @@ function OrgSettingsContent() {
   const [inviteForm, setInviteForm] = useState({ email: "", role: "developer" });
   const [inviteError, setInviteError] = useState("");
   const [members, setMembers] = useState<any[]>([]);
-  const [invitations, setInvitations] = useState<any[]>([]);
+  const [invitations, _setInvitations] = useState<any[]>([]);
   const [githubIntegration, setGithubIntegration] = useState<GithubIntegrationState>({ status: "disconnected" });
   const [githubLoading, setGithubLoading] = useState(true);
   const [githubMessage, setGithubMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -137,7 +135,9 @@ function OrgSettingsContent() {
     try {
       await api.members.updateRole(org_id as string, userId, newRole);
       setMembers((prev) => prev.map((m) => m.user_id === userId ? { ...m, role: newRole } : m));
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
 
   async function handleRemoveMember(userId: string) {
@@ -153,7 +153,9 @@ function OrgSettingsContent() {
     try {
       await api.members.remove(org_id as string, userId);
       setMembers((prev) => prev.filter((m) => m.user_id !== userId));
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
 
   async function handleConnectGitHub() {
@@ -161,7 +163,9 @@ function OrgSettingsContent() {
       const { url } = await api.github.getInstallUrl(org_id as string);
       localStorage.setItem("github_connect_org_id", org_id as string);
       window.location.href = url;
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
 
   async function handleDisconnectGitHub() {
@@ -169,7 +173,9 @@ function OrgSettingsContent() {
     try {
       await api.github.disconnect(org_id as string);
       setGithubIntegration({ status: "disconnected" });
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
 
   async function handleDeleteOrg() {

@@ -34,9 +34,9 @@ class Finding(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     due_date: Mapped[date | None] = mapped_column(Date)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    instances: Mapped[list["FindingInstance"]] = relationship("FindingInstance", back_populates="finding", lazy="selectin")
-    references: Mapped[list["FindingReference"]] = relationship("FindingReference", back_populates="finding", lazy="selectin")
-    events: Mapped[list["FindingEvent"]] = relationship("FindingEvent", back_populates="finding", lazy="selectin")
+    instances: Mapped[list[FindingInstance]] = relationship("FindingInstance", back_populates="finding", lazy="selectin")
+    references: Mapped[list[FindingReference]] = relationship("FindingReference", back_populates="finding", lazy="selectin")
+    events: Mapped[list[FindingEvent]] = relationship("FindingEvent", back_populates="finding", lazy="selectin")
     assignee: Mapped[User | None] = relationship("User", foreign_keys=[assignee_user_id], lazy="selectin")
 
     @property
@@ -73,7 +73,7 @@ class FindingInstance(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     installed_version: Mapped[str | None] = mapped_column(String(128))
     fixed_version: Mapped[str | None] = mapped_column(String(128))
     evidence_json: Mapped[dict | None] = mapped_column(JSONB)
-    finding: Mapped["Finding"] = relationship("Finding", back_populates="instances", lazy="noload")
+    finding: Mapped[Finding] = relationship("Finding", back_populates="instances", lazy="noload")
 
 class FindingReference(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "finding_references"
@@ -81,7 +81,7 @@ class FindingReference(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     reference_type: Mapped[str] = mapped_column(String(50), nullable=False)
     reference_value: Mapped[str] = mapped_column(String(255), nullable=False)
     url: Mapped[str | None] = mapped_column(String(2048))
-    finding: Mapped["Finding"] = relationship("Finding", back_populates="references", lazy="noload")
+    finding: Mapped[Finding] = relationship("Finding", back_populates="references", lazy="noload")
 
 class FindingEvent(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "finding_events"
@@ -90,4 +90,4 @@ class FindingEvent(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     actor_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     reason: Mapped[str | None] = mapped_column(Text)
     metadata_json: Mapped[dict | None] = mapped_column(JSONB)
-    finding: Mapped["Finding"] = relationship("Finding", back_populates="events", lazy="noload")
+    finding: Mapped[Finding] = relationship("Finding", back_populates="events", lazy="noload")

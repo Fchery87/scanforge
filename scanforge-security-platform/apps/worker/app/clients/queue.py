@@ -2,8 +2,8 @@ import json
 from datetime import datetime
 
 import httpx
-from app.contracts.queue import QueueJob, ScanJobType
 
+from app.contracts.queue import QueueJob, ScanJobType
 
 
 class QueueClient:

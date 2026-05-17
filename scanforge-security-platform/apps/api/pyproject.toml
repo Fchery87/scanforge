@@ -56,11 +56,11 @@ select = [
 "__init__.py" = ["F401"]
 "tests/*" = ["S", "B", "PLR0913"]
 "app/api/**/*.py" = ["B008", "PLR0913", "ARG001", "ARG002"]
-"app/middleware/*.py" = ["B008", "ARG001", "ARG002", "PLR2004", "S110", "SIM108"]
+"app/middleware/*.py" = ["B008", "ARG001", "ARG002", "PLR0913", "PLR2004", "S110", "SIM108"]
 "app/main.py" = ["ARG001"]
 "app/api/v1/routes/scorecard.py" = ["PLR2004"]
 "app/services/*.py" = ["PLR0913", "TC001"]
-"app/db/models/*.py" = ["E501"]
+"app/db/models/*.py" = ["E501", "TC003", "PLC0415"]
 "app/db/mixins.py" = ["E501"]
 "app/schemas/findings.py" = ["S105"]
 

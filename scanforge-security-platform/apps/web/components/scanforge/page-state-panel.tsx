@@ -15,7 +15,7 @@ export function PageStatePanel({
   state,
   message,
   retry,
-  emptyIcon,
+  emptyIcon: _emptyIcon,
   children,
 }: PageStatePanelProps) {
   if (state === "loading") {

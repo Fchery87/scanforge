@@ -80,7 +80,9 @@ export default function SuppressionsPage() {
     try {
       const updated = await api.suppressionRules.update(org_id as string, rule.id, { is_active: !rule.is_active });
       setRules((current) => current.map((entry) => entry.id === rule.id ? updated : entry));
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
 
   async function handleDelete(ruleId: string) {
@@ -91,7 +93,9 @@ export default function SuppressionsPage() {
     try {
       await api.suppressionRules.remove(org_id as string, ruleId);
       setRules((current) => current.filter((rule) => rule.id !== ruleId));
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
 
   const sortedRules = [...rules].sort((a, b) => {

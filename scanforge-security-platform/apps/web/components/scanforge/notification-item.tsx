@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Shield, Activity, Scan, Key, User, FileText, Archive, Check, Trash2 } from "lucide-react";
+import { AlertTriangle, Shield, Scan, Key, User, FileText, Archive, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,

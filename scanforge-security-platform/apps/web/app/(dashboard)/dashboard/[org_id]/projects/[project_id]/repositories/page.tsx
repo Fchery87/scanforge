@@ -256,7 +256,11 @@ export default function RepositoriesPage() {
                         checked={selectedRepos.has(repo.external_repo_id)}
                         onCheckedChange={(checked) => {
                           const next = new Set(selectedRepos);
-                          checked ? next.add(repo.external_repo_id) : next.delete(repo.external_repo_id);
+                          if (checked) {
+                            next.add(repo.external_repo_id);
+                          } else {
+                            next.delete(repo.external_repo_id);
+                          }
                           setSelectedRepos(next);
                         }}
                       />

@@ -1,5 +1,5 @@
-import asyncio
 import argparse
+import asyncio
 import os
 import sys
 from pathlib import Path
@@ -20,7 +20,7 @@ def _load_env(current_file: str | Path | None = None):
 
 _load_env()
 
-from app.clients.queue import QueueClient
+from app.clients.queue import QueueClient  # noqa: E402
 
 
 async def run_cleanup(purge_scan_queue: bool = False):

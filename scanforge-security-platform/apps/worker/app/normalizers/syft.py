@@ -80,7 +80,10 @@ def normalize_syft_output(raw_output: dict, repository_id: str) -> list[dict]:
                     "category": "license_compliance",
                     "severity": "medium",
                     "title": f"Restrictive license: {name}@{version} ({license_id})",
-                    "description": f"Package {name}@{version} uses restrictive license {license_id} which may impose obligations on derivative works.",
+                    "description": (
+                        f"Package {name}@{version} uses restrictive license {license_id}"
+                        " which may impose obligations on derivative works."
+                    ),
                     "canonical_fingerprint": fingerprint,
                     "primary_scanner": "syft",
                     "confidence_score": 0.9,
@@ -114,7 +117,10 @@ def normalize_syft_output(raw_output: dict, repository_id: str) -> list[dict]:
                 "category": "license_compliance",
                 "severity": "low",
                 "title": f"No license declared: {name}@{version}",
-                "description": f"Package {name}@{version} has no license declared. This may pose legal risks for usage and distribution.",
+                "description": (
+                    f"Package {name}@{version} has no license declared."
+                    " This may pose legal risks for usage and distribution."
+                ),
                 "canonical_fingerprint": fingerprint,
                 "primary_scanner": "syft",
                 "confidence_score": 0.7,

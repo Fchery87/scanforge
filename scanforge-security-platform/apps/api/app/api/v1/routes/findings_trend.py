@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy import Date, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 

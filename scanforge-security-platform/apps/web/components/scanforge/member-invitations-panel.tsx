@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { Mail, RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";

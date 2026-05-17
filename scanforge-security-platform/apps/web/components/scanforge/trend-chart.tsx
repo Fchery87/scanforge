@@ -49,7 +49,7 @@ export function TrendChart({ data, className }: TrendChartProps) {
       path += ` C ${cp1x} ${points[i - 1].y}, ${cp1x} ${points[i].y}, ${points[i].x} ${points[i].y}`;
     }
     for (let i = basePoints.length - 1; i >= 0; i--) {
-      const cp1x = (basePoints[Math.min(i + 1, basePoints.length - 1)].x + basePoints[i].x) / 2;
+      const _cp1x = (basePoints[Math.min(i + 1, basePoints.length - 1)].x + basePoints[i].x) / 2;
       path += ` L ${basePoints[i].x} ${basePoints[i].y}`;
     }
     path += " Z";
@@ -57,7 +57,7 @@ export function TrendChart({ data, className }: TrendChartProps) {
   }
 
   const totals = data.map((d) => (d.critical ?? 0) + (d.high ?? 0) + (d.medium ?? 0) + (d.low ?? 0) + (d.info ?? 0));
-  const prevTotals = totals.map((_, i) => totals.slice(0, i + 1).reduce((a, b) => a + b, 0));
+  const _prevTotals = totals.map((_, i) => totals.slice(0, i + 1).reduce((a, b) => a + b, 0));
 
   return (
     <div className={cn("rounded-xl border border-border bg-surface p-4", className)}>

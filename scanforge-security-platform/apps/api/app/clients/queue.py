@@ -1,9 +1,9 @@
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 
 import httpx
-from app.contracts.queue import QueueJob, ScanJobType
 
+from app.contracts.queue import QueueJob, ScanJobType
 
 
 class QueueClient:
@@ -77,7 +77,7 @@ class QueueClient:
     ) -> None:
         status_data = {
             "stage": stage,
-            "updated_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.now(UTC).isoformat(),
             **(metadata or {}),
         }
         await self._command("SETEX", f"job:{job_id}:status", 86400, json.dumps(status_data))

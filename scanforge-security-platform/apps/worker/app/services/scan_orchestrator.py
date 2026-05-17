@@ -189,8 +189,8 @@ class ScanOrchestrator:
             )
             if result.returncode != 0:
                 raise RuntimeError(f"git clone failed: {self._redact_sensitive_text(result.stderr).strip()}")
-        except subprocess.TimeoutExpired:
-            raise RuntimeError("git clone timed out after 5 minutes")
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("git clone timed out after 5 minutes") from exc
 
         return repo_dir
 
@@ -211,7 +211,7 @@ class ScanOrchestrator:
                 )
                 if result.returncode == 0:
                     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
-            except Exception:
+            except Exception:  # noqa: S112
                 continue
         return []
 

@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowUpDown, ArrowUp, ArrowDown, Eye, Check, Archive } from "lucide-react";
+import { ArrowUpDown, ArrowUp, ArrowDown, Eye, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getRepoDisplayName } from "@/lib/findings/filter-state";
 import { getSLABadge } from "@/lib/findings/triage-policy";

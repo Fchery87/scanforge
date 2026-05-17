@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Repository, ScanSchedule
+from app.db.models import ScanSchedule
 from app.schemas.scan_schedules import ScanScheduleCreate, ScanScheduleUpdate
 from app.services.access_policies import get_repository_for_user
 

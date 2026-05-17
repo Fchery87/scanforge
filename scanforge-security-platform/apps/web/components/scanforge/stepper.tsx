@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Circle } from "lucide-react";
+import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Step {

@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Activity, Plus, Trash2, XCircle as XCircleIcon } from "lucide-react";
 
 import { api } from "@/lib/api";
-import { canRerunScan, canDeleteScan, canCancelScan, deriveScanPhase } from "@/lib/scans/lifecycle";
+import { canDeleteScan, canCancelScan, deriveScanPhase } from "@/lib/scans/lifecycle";
 import { formatRelativeTime, formatScanDuration } from "@/lib/project-surface";
 import { EmptyState } from "@/components/scanforge/empty-state";
 import { PageHeader } from "@/components/scanforge/page-header";
@@ -102,7 +102,9 @@ export default function ScansPage() {
     try {
       const updated = await api.scans.cancel(org_id as string, project_id as string, scanId, "Canceled from UI");
       setScans((current: any[]) => current.map((scan: any) => scan.id === scanId ? updated : scan));
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
 
   async function handleDelete(scanId: string) {
@@ -113,7 +115,9 @@ export default function ScansPage() {
       await api.scans.delete(org_id as string, project_id as string, scanId);
       setScans((current: any[]) => current.filter((scan: any) => scan.id !== scanId));
       setTotal((current) => Math.max(0, current - 1));
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
 
   const filteredScans = filterRepoId === "all"

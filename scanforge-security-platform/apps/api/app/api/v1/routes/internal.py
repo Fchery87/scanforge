@@ -12,15 +12,15 @@ from app.db.models.scan import ScannerRun
 from app.db.session import get_db
 from app.middleware.auth import UserContext, get_current_user
 from app.middleware.service_auth import require_service_auth
+from app.schemas.canonical_findings import CanonicalFindingCandidate
 from app.schemas.notifications import NotificationCreate
 from app.schemas.scans import ScanStatusUpdate
-from app.schemas.canonical_findings import CanonicalFindingCandidate
 from app.services.findings import FindingService
+from app.services.github import GitHubService
 from app.services.notifications import NotificationService
 from app.services.onboarding import build_onboarding_checklist
 from app.services.scan_lifecycle import ScanLifecycleService
 from app.services.scan_schedules import ScanScheduleService
-
 
 SCAN_TYPE_SCANNERS = {
     "full": ["trivy", "gitleaks", "osv", "semgrep", "syft", "checkov", "grype"],
@@ -193,8 +193,6 @@ async def get_repository_clone_url(
         raise HTTPException(status_code=404, detail="No GitHub integration for this org")
 
     # Get an installation access token
-    from app.services.github import GitHubService
-
     gh = GitHubService(db)
     token = await gh._get_installation_token(integration.installation_id)
 

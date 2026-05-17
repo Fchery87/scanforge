@@ -8,7 +8,6 @@ import { AlertTriangle, CheckCircle, Shield } from "lucide-react";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/scanforge/page-header";
 import { ScorecardRing } from "@/components/scanforge/scorecard-ring";
-import { SkeletonCards } from "@/components/scanforge/loading-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { PageStatePanel } from "@/components/scanforge/page-state-panel";
 import { derivePageState } from "@/lib/page-surface/page-state";

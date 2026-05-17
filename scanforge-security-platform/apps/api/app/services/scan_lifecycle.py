@@ -45,7 +45,9 @@ class ScanLifecycleService:
             scan_type=schedule.scan_type,
         )
         scan, _, project = await self.scan_service.create(schedule.repository_id, data, user_id=None)
-        return await self._enqueue_existing_scan(scan, org_id=project.organization_id, scan_type=data.scan_type, user_id=None)
+        return await self._enqueue_existing_scan(
+            scan, org_id=project.organization_id, scan_type=data.scan_type, user_id=None
+        )
 
     async def _create_and_enqueue_scan(self, *, org_id: UUID, data, user_id: UUID | None) -> ScanLifecycleOutcome:
         scan, _, _ = await self.scan_service.create(data.repository_id, data, user_id)
@@ -81,7 +83,7 @@ class ScanLifecycleService:
             "secrets": "scan.secrets",
         }.get(scan_type, "scan.repo.full")
 
-    def _queue_payload(self, scan, *, org_id: UUID, user_id: UUID | None) -> dict:
+    def _queue_payload(self, scan, *, org_id: UUID, user_id: UUID | None) -> dict:  # noqa: ARG002
         return {
             "scan_id": str(scan.id),
         }

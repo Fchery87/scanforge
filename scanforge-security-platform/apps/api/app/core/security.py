@@ -90,7 +90,8 @@ def _log_claim_verification_diagnostics(token: str, claim_kind: str) -> None:
         claims = {}
 
     logger.error(
-        "JWT claim verification failed: claim=%s token_claims=%s configured_issuer=%s configured_audience=%s configured_jwks_url=%s",
+        "JWT claim verification failed: claim=%s token_claims=%s "
+        "configured_issuer=%s configured_audience=%s configured_jwks_url=%s",
         claim_kind,
         {
             "iss": claims.get("iss"),

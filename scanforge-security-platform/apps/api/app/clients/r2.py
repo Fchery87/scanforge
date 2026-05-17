@@ -1,3 +1,7 @@
+import boto3
+from botocore.config import Config
+
+
 class R2Client:
     def __init__(
         self,
@@ -25,9 +29,6 @@ class R2Client:
         if not self._enabled:
             raise RuntimeError("R2 client is not configured")
         if self._s3 is None:
-            import boto3
-            from botocore.config import Config
-
             self._s3 = boto3.client(
                 "s3",
                 endpoint_url=self.endpoint,

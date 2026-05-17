@@ -20,7 +20,7 @@ import {
   hasActiveFilters,
   formatExportScope,
 } from "@/lib/findings/filter-state";
-import { canBulkAction, getSLABadge } from "@/lib/findings/triage-policy";
+import { canBulkAction } from "@/lib/findings/triage-policy";
 
 const SEVERITIES = ["critical", "high", "medium", "low", "info"];
 const CATEGORIES = [
@@ -164,7 +164,7 @@ function FindingsContent() {
   const limit = 30;
 
   // ── URL sync ────────────────────────────────────────────────────────────────
-  const updateUrl = useCallback(
+  const _updateUrl = useCallback(
     (overrides?: Record<string, string>) => {
       const filters = { severity, category, status, repositoryId, scanner, search };
       const serialized = serializeFindingsFilters({ ...filters, ...overrides });
@@ -219,7 +219,9 @@ function FindingsContent() {
         project_id as string
       );
       setRepos(res.items ?? []);
-    } catch {}
+    } catch {
+      // ignore fetch error
+    }
   }, [org_id, project_id]);
 
   useEffect(() => {
@@ -238,7 +240,6 @@ function FindingsContent() {
     if (filters.scanner !== scanner) setScanner(filters.scanner ?? "");
     if (filters.status !== status) setStatus(filters.status ?? "");
     if (filters.search !== search) setSearch(filters.search ?? "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParamsObj]);
 
   // ── Selection ───────────────────────────────────────────────────────────────

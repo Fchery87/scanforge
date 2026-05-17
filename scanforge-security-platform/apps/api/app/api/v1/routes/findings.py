@@ -9,11 +9,11 @@ from app.schemas.common import PaginatedResponse, PaginationParams
 from app.schemas.findings import (
     FindingBulkAction,
     FindingDetailResponse,
-    FindingTriageUpdate,
     FindingResolve,
     FindingResponse,
     FindingStats,
     FindingSuppress,
+    FindingTriageUpdate,
 )
 from app.services.access_policies import get_project_in_org_for_user
 from app.services.findings import FindingService

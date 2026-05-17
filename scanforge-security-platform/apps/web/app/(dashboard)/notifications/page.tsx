@@ -16,7 +16,6 @@ import { PageHeader } from "@/components/scanforge/page-header";
 import { NotificationItem } from "@/components/scanforge/notification-item";
 import { EmptyState } from "@/components/scanforge/empty-state";
 import { SkeletonList } from "@/components/scanforge/loading-skeleton";
-import { cn } from "@/lib/utils";
 import { summarizeNotificationGroups, getNotificationTypeLabel } from "@/lib/notifications/groups";
 import { resolveNotificationRoute } from "@/lib/notifications/routes";
 
@@ -59,7 +58,7 @@ export default function NotificationsPage() {
   }
 
   const groups = summarizeNotificationGroups(notifications);
-  const totalUnread = groups.reduce((sum, g) => sum + g.unreadCount, 0);
+  const _totalUnread = groups.reduce((sum, g) => sum + g.unreadCount, 0);
 
   return (
     <div>

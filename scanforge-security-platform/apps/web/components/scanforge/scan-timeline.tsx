@@ -45,7 +45,7 @@ export function ScanTimeline({ runs, scanStatus, className }: ScanTimelineProps)
 
   return (
     <div className={cn("space-y-3", className)}>
-      {runs.map((run, idx) => {
+      {runs.map((run, _idx) => {
         const statusInfo = getScannerRunStatus(run);
         return (
           <div key={run.id} className="card-serif p-4">

@@ -15,10 +15,10 @@ from app.db.models import (
     Project,
     Repository,
 )
+from app.schemas.canonical_findings import CanonicalFindingCandidate
 from app.schemas.findings import (
     FindingStats,
 )
-from app.schemas.canonical_findings import CanonicalFindingCandidate
 from app.services.finding_lifecycle import (
     can_mark_not_observed,
     can_promote_to_fixed,
@@ -303,7 +303,8 @@ class FindingService:
             not_observed_count = int(metadata.get("not_observed_count") or 0) + 1
             metadata["not_observed_count"] = not_observed_count
             finding.metadata_json = metadata
-            next_state = "fixed" if can_promote_to_fixed(finding.status, not_observed_count=not_observed_count) else "not_observed"
+            can_fix = can_promote_to_fixed(finding.status, not_observed_count=not_observed_count)
+            next_state = "fixed" if can_fix else "not_observed"
             finding.status = next_state
             self.db.add(
                 FindingEvent(

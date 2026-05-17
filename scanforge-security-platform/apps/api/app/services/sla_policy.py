@@ -1,7 +1,7 @@
 from datetime import UTC, date, datetime
 
-
 EXEMPT_WORKFLOW_STATES = {"accepted_risk", "false_positive", "duplicate", "fixed"}
+SLA_DUE_SOON_DAYS = 3
 
 
 def preview_sla_status(
@@ -20,7 +20,7 @@ def preview_sla_status(
     days_remaining = (due_date - current_date).days
     if days_remaining < 0:
         status = "overdue"
-    elif days_remaining <= 3:
+    elif days_remaining <= SLA_DUE_SOON_DAYS:
         status = "due_soon"
     else:
         status = "on_track"
