@@ -64,6 +64,22 @@ Scan modes determine which scanners run:
 - `scan.dependencies`: Trivy, OSV-Scanner, Syft, Grype
 - `scan.secrets`: Gitleaks
 
+## Worker Pipeline
+
+The scan worker decomposes scan execution into three sequential stages.
+
+```text
+ScanExecutionStage   — clone repo, run scanners, upload artifacts to R2
+NormalizationStage   — normalize raw scanner output to canonical findings
+PersistenceStage     — persist findings via internal API, dispatch notifications
+```
+
+The stages share a `ScanContext` dataclass that accumulates state across the pipeline. Each stage reads from and writes to the context; the orchestrator calls them in order.
+
+Source: `apps/worker/app/services/scan_pipeline/`
+
+Structured JSON logs flow to stdout. Scan failure alerts after `MAX_RETRIES` are sent via Slack webhook (`SLACK_ALERT_WEBHOOK_URL` env var). See ADR-007 for the decision against Sentry.
+
 ## Finding Lifecycle
 
 ScanForge distinguishes long-lived findings from scan-specific finding instances.
@@ -129,4 +145,9 @@ feature ships.
 - `development-setup.md`
 - `scanner-setup.md`
 - `adr/ADR-004-finding-lifecycle-policy.md`
+- `adr/ADR-005-worker-pipeline-stages.md`
+- `adr/ADR-006-renovate-dependency-management.md`
+- `adr/ADR-007-slack-alerts-over-sentry.md`
+- `adr/ADR-008-openapi-typescript-zod.md`
 - `plans/2026-05-02-module-first-security-operations-roadmap.md`
+- `plans/2026-05-16-pre-ai-stage-hardening-plan.md`
