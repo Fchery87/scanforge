@@ -1,7 +1,15 @@
 "use client";
 
+import { type ZodType } from "zod";
+
 import { authClient } from "@/lib/auth/client";
 import { getApiAccessToken } from "@/lib/auth/api-token";
+import {
+  findingSchema,
+  organizationSchema,
+  paginated,
+  scanSchema,
+} from "@/lib/api-schemas";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -27,7 +35,7 @@ async function getAuthorizationHeader(): Promise<Record<string, string>> {
   };
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, options: RequestInit = {}, schema?: ZodType<T>): Promise<T> {
   const authHeader = await getAuthorizationHeader();
   const res = await fetch(`${API_BASE}/api/v1${path}`, {
     ...options,
@@ -41,7 +49,16 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const error = await res.json().catch(() => ({ detail: "Request failed" }));
     throw new ApiError(error.detail ?? `HTTP ${res.status}`, res.status);
   }
-  return res.json();
+  const data = (await res.json()) as T;
+  if (schema) {
+    const result = schema.safeParse(data);
+    if (!result.success) {
+      console.error("[api] schema validation failed", { path, errors: result.error.flatten() });
+      return data;
+    }
+    return result.data;
+  }
+  return data;
 }
 
 export const api = {
@@ -49,7 +66,7 @@ export const api = {
   
   organizations: {
     list: (skip = 0, limit = 20) =>
-      request<{ items: any[]; total: number }>(`/organizations?skip=${skip}&limit=${limit}`),
+      request(`/organizations?skip=${skip}&limit=${limit}`, {}, paginated(organizationSchema)),
     previewSlug: (slug: string) =>
       request<{ requested_slug: string; available_slug: string; adjusted: boolean }>(
         `/organizations/slug-preview?${new URLSearchParams({ slug }).toString()}`
@@ -129,7 +146,7 @@ export const api = {
 
   scans: {
     list: (orgId: string, projectId: string, skip = 0, limit = 20) =>
-      request<{ items: any[]; total: number }>(`/organizations/${orgId}/projects/${projectId}/scans?skip=${skip}&limit=${limit}`),
+      request(`/organizations/${orgId}/projects/${projectId}/scans?skip=${skip}&limit=${limit}`, {}, paginated(scanSchema)),
     create: (orgId: string, projectId: string, data: { repository_id: string; trigger_type: string; branch_name?: string; scan_type?: string }) =>
       request<any>(`/organizations/${orgId}/projects/${projectId}/scans`, { method: "POST", body: JSON.stringify(data) }),
     get: (orgId: string, projectId: string, scanId: string) =>
@@ -148,8 +165,10 @@ export const api = {
   findings: {
     list: (orgId: string, projectId: string, params: Record<string, string> = {}) => {
       const qs = new URLSearchParams(params).toString();
-      return request<{ items: any[]; total: number }>(
-        `/organizations/${orgId}/projects/${projectId}/findings${qs ? "?" + qs : ""}`
+      return request(
+        `/organizations/${orgId}/projects/${projectId}/findings${qs ? "?" + qs : ""}`,
+        {},
+        paginated(findingSchema),
       );
     },
     get: (orgId: string, projectId: string, findingId: string) =>

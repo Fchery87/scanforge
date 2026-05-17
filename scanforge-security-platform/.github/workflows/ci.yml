@@ -50,6 +50,11 @@ jobs:
         run: python -m pytest
         env:
           DATABASE_URL: sqlite+aiosqlite:///./test.db
+      - name: Verify openapi.json is up-to-date
+        run: python scripts/emit_openapi.py
+        env:
+          DATABASE_URL: postgresql+asyncpg://dummy:dummy@localhost/dummy
+      - run: git diff --exit-code openapi.json
       - name: Audit dependencies (pip-audit)
         run: pip-audit --require-hashes --strict || true
 
@@ -97,6 +102,9 @@ jobs:
         run: npm test
       - name: Audit dependencies (npm audit)
         run: npm audit --audit-level=high || true
+      - name: Verify api-types.ts is up-to-date
+        run: npm run gen:types
+      - run: git diff --exit-code lib/api-types.ts
       - name: Build
         run: npm run build
 
