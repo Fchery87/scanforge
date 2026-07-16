@@ -5,10 +5,22 @@ import { type ZodType } from "zod";
 import { authClient } from "@/lib/auth/client";
 import { getApiAccessToken } from "@/lib/auth/api-token";
 import {
+  auditLogSchema,
+  exportSchema,
   findingSchema,
+  findingStatsSchema,
+  githubIntegrationSchema,
+  memberSchema,
+  notificationSchema,
   organizationSchema,
   paginated,
+  projectSchema,
+  repositorySchema,
+  scanDetailSchema,
+  scanScheduleSchema,
   scanSchema,
+  scorecardSchema,
+  suppressionRuleSchema,
 } from "@/lib/api-schemas";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
@@ -63,7 +75,7 @@ async function request<T>(path: string, options: RequestInit = {}, schema?: ZodT
 
 export const api = {
   health: () => request<{ status: string }>("/health"),
-  
+
   organizations: {
     list: (skip = 0, limit = 20) =>
       request(`/organizations?skip=${skip}&limit=${limit}`, {}, paginated(organizationSchema)),
@@ -72,14 +84,14 @@ export const api = {
         `/organizations/slug-preview?${new URLSearchParams({ slug }).toString()}`
       ),
     create: (data: { name: string; slug: string }) =>
-      request<any>("/organizations", { method: "POST", body: JSON.stringify(data) }),
-    get: (id: string) => request<any>(`/organizations/${id}`),
+      request("/organizations", { method: "POST", body: JSON.stringify(data) }, organizationSchema),
+    get: (id: string) => request(`/organizations/${id}`, {}, organizationSchema),
     update: (id: string, data: { name?: string; slug?: string }) =>
-      request<any>(`/organizations/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+      request(`/organizations/${id}`, { method: "PATCH", body: JSON.stringify(data) }, organizationSchema),
     stats: (orgId: string) =>
       request<any>(`/organizations/${orgId}/stats`),
     delete: (orgId: string) =>
-      request<any>(`/organizations/${orgId}`, { method: "DELETE" }),
+      request<void>(`/organizations/${orgId}`, { method: "DELETE" }),
   },
 
   github: {
@@ -88,42 +100,44 @@ export const api = {
     getOAuthAuthorizeUrl: (orgId: string) =>
       request<{ url: string }>(`/organizations/${orgId}/github/oauth/authorize`),
     oauthCallback: (code: string, state: string) =>
-      request<any>("/github/oauth/callback", {
+      request(`/github/oauth/callback`, {
         method: "POST",
         body: JSON.stringify({ code, state }),
-      }),
+      }, githubIntegrationSchema),
     installCallback: (installationId: string, state: string) =>
-      request<any>("/github/install/callback", {
+      request(`/github/install/callback`, {
         method: "POST",
         body: JSON.stringify({ installation_id: installationId, state }),
-      }),
+      }, githubIntegrationSchema),
     connect: (orgId: string, data: { installation_id: string; state: string; account_login?: string; account_type?: string }) =>
-      request<any>(`/organizations/${orgId}/github/connect`, {
+      request(`/organizations/${orgId}/github/connect`, {
         method: "POST",
         body: JSON.stringify(data),
-      }),
+      }, githubIntegrationSchema),
     getIntegration: (orgId: string) =>
-      request<any>(`/organizations/${orgId}/github/integration`),
+      request(`/organizations/${orgId}/github/integration`, {}, githubIntegrationSchema),
     listRepositories: (orgId: string) =>
-      request<{ items: any[]; total: number }>(`/organizations/${orgId}/github/repositories`),
+      request<{ items: Array<{ id: string; full_name: string }>; total: number }>(
+        `/organizations/${orgId}/github/repositories`
+      ),
     disconnect: (orgId: string) =>
       request<void>(`/organizations/${orgId}/github/integration`, { method: "DELETE" }),
   },
 
   projects: {
     list: (orgId: string, skip = 0, limit = 20) =>
-      request<{ items: any[]; total: number }>(`/organizations/${orgId}/projects?skip=${skip}&limit=${limit}`),
+      request(`/organizations/${orgId}/projects?skip=${skip}&limit=${limit}`, {}, paginated(projectSchema)),
     create: (orgId: string, data: { name: string; slug: string; description?: string }) =>
-      request<any>(`/organizations/${orgId}/projects`, { method: "POST", body: JSON.stringify({ ...data, organization_id: orgId }) }),
+      request(`/organizations/${orgId}/projects`, { method: "POST", body: JSON.stringify({ ...data, organization_id: orgId }) }, projectSchema),
     get: (orgId: string, projectId: string) =>
-      request<any>(`/organizations/${orgId}/projects/${projectId}`),
+      request(`/organizations/${orgId}/projects/${projectId}`, {}, projectSchema),
   },
 
   repositories: {
     list: (orgId: string, projectId: string) =>
-      request<{ items: any[]; total: number }>(`/organizations/${orgId}/projects/${projectId}/repositories`),
+      request(`/organizations/${orgId}/projects/${projectId}/repositories`, {}, paginated(repositorySchema)),
     get: (orgId: string, projectId: string, repoId: string) =>
-      request<any>(`/organizations/${orgId}/projects/${projectId}/repositories/${repoId}`),
+      request(`/organizations/${orgId}/projects/${projectId}/repositories/${repoId}`, {}, repositorySchema),
     create: (orgId: string, projectId: string, data: {
       provider: string;
       external_repo_id?: string;
@@ -134,10 +148,10 @@ export const api = {
       clone_url?: string;
       html_url?: string;
     }) =>
-      request<any>(`/organizations/${orgId}/projects/${projectId}/repositories`, {
+      request(`/organizations/${orgId}/projects/${projectId}/repositories`, {
         method: "POST",
         body: JSON.stringify(data),
-      }),
+      }, repositorySchema),
     remove: (orgId: string, projectId: string, repoId: string) =>
       request<void>(`/organizations/${orgId}/projects/${projectId}/repositories/${repoId}`, {
         method: "DELETE",
@@ -148,18 +162,18 @@ export const api = {
     list: (orgId: string, projectId: string, skip = 0, limit = 20) =>
       request(`/organizations/${orgId}/projects/${projectId}/scans?skip=${skip}&limit=${limit}`, {}, paginated(scanSchema)),
     create: (orgId: string, projectId: string, data: { repository_id: string; trigger_type: string; branch_name?: string; scan_type?: string }) =>
-      request<any>(`/organizations/${orgId}/projects/${projectId}/scans`, { method: "POST", body: JSON.stringify(data) }),
+      request(`/organizations/${orgId}/projects/${projectId}/scans`, { method: "POST", body: JSON.stringify(data) }, scanSchema),
     get: (orgId: string, projectId: string, scanId: string) =>
-      request<any>(`/organizations/${orgId}/projects/${projectId}/scans/${scanId}`),
+      request(`/organizations/${orgId}/projects/${projectId}/scans/${scanId}`, {}, scanDetailSchema),
     cancel: (orgId: string, projectId: string, scanId: string, reason?: string) =>
-      request<any>(`/organizations/${orgId}/projects/${projectId}/scans/${scanId}/cancel`, {
+      request(`/organizations/${orgId}/projects/${projectId}/scans/${scanId}/cancel`, {
         method: "POST",
         body: JSON.stringify({ reason }),
-      }),
+      }, scanSchema),
     delete: (orgId: string, projectId: string, scanId: string) =>
-      request<any>(`/organizations/${orgId}/projects/${projectId}/scans/${scanId}`, {
+      request(`/organizations/${orgId}/projects/${projectId}/scans/${scanId}`, {
         method: "DELETE",
-      }),
+      }, scanSchema),
   },
 
   findings: {
@@ -175,48 +189,50 @@ export const api = {
       request<any>(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}`),
     stats: (orgId: string, projectId: string, params: Record<string, string> = {}) => {
       const qs = new URLSearchParams(params).toString();
-      return request<any>(
-        `/organizations/${orgId}/projects/${projectId}/findings/stats${qs ? "?" + qs : ""}`
+      return request(
+        `/organizations/${orgId}/projects/${projectId}/findings/stats${qs ? "?" + qs : ""}`,
+        {},
+        findingStatsSchema,
       );
     },
     suppress: (orgId: string, projectId: string, findingId: string, reason: string) =>
-      request<any>(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/suppress`, {
+      request(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/suppress`, {
         method: "POST",
         body: JSON.stringify({ reason }),
-      }),
+      }, findingSchema),
     resolve: (orgId: string, projectId: string, findingId: string, fixedVersion?: string) =>
-      request<any>(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/resolve`, {
+      request(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/resolve`, {
         method: "POST",
         body: JSON.stringify({ fixed_version: fixedVersion }),
-      }),
+      }, findingSchema),
     reopen: (orgId: string, projectId: string, findingId: string) =>
-      request<any>(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/reopen`, {
+      request(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/reopen`, {
         method: "POST",
-      }),
+      }, findingSchema),
     acceptRisk: (orgId: string, projectId: string, findingId: string, reason: string) =>
-      request<any>(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/accept-risk`, {
+      request(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/accept-risk`, {
         method: "POST",
         body: JSON.stringify({ reason }),
-      }),
+      }, findingSchema),
     markDuplicate: (orgId: string, projectId: string, findingId: string, reason: string) =>
-      request<any>(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/mark-duplicate`, {
+      request(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/mark-duplicate`, {
         method: "POST",
         body: JSON.stringify({ reason }),
-      }),
+      }, findingSchema),
     updateTriage: (
       orgId: string,
       projectId: string,
       findingId: string,
       data: { assignee_user_id?: string | null; due_date?: string | null }
     ) =>
-      request<any>(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/triage`, {
+      request(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/triage`, {
         method: "PATCH",
         body: JSON.stringify(data),
-      }),
+      }, findingSchema),
     events: (orgId: string, projectId: string, findingId: string) =>
-      request<any[]>(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/events`),
+      request(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/events`, {}, paginated(findingSchema)),
     bulk: (orgId: string, projectId: string, data: { finding_ids: string[]; action: string; reason: string }) =>
-      request<any>(`/organizations/${orgId}/projects/${projectId}/findings/bulk`, {
+      request<void>(`/organizations/${orgId}/projects/${projectId}/findings/bulk`, {
         method: "POST",
         body: JSON.stringify(data),
       }),
@@ -226,27 +242,31 @@ export const api = {
 
   exports: {
     list: (orgId: string, projectId: string) =>
-      request<{ items: any[]; total: number }>(`/organizations/${orgId}/projects/${projectId}/exports`),
+      request(`/organizations/${orgId}/projects/${projectId}/exports`, {}, paginated(exportSchema)),
     create: (orgId: string, projectId: string, data: { export_type: string; format: string; title?: string; filters?: Record<string, string> }) =>
-      request<any>(`/organizations/${orgId}/projects/${projectId}/exports`, {
+      request(`/organizations/${orgId}/projects/${projectId}/exports`, {
         method: "POST",
         body: JSON.stringify(data),
-      }),
+      }, exportSchema),
   },
 
   auditLogs: {
     listOrg: (orgId: string, skip = 0, limit = 50) =>
-      request<{ items: any[]; total: number }>(`/organizations/${orgId}/audit-logs?skip=${skip}&limit=${limit}`),
+      request(`/organizations/${orgId}/audit-logs?skip=${skip}&limit=${limit}`, {}, paginated(auditLogSchema)),
     listProject: (orgId: string, projectId: string, skip = 0, limit = 50) =>
-      request<{ items: any[]; total: number }>(
-        `/organizations/${orgId}/projects/${projectId}/audit-logs?skip=${skip}&limit=${limit}`
+      request(
+        `/organizations/${orgId}/projects/${projectId}/audit-logs?skip=${skip}&limit=${limit}`,
+        {},
+        paginated(auditLogSchema),
       ),
   },
 
   notifications: {
     list: (skip = 0, limit = 20, unreadOnly = false) =>
-      request<{ items: any[]; total: number }>(
-        `/notifications?skip=${skip}&limit=${limit}&unreadOnly=${unreadOnly}`
+      request(
+        `/notifications?skip=${skip}&limit=${limit}&unreadOnly=${unreadOnly}`,
+        {},
+        paginated(notificationSchema),
       ),
     unreadCount: () => request<{ unread_count: number }>("/notifications/unread-count"),
     markRead: (ids: string[]) =>
@@ -259,70 +279,70 @@ export const api = {
 
   scorecard: {
     get: (orgId: string, projectId: string) =>
-      request<any>(`/organizations/${orgId}/projects/${projectId}/scorecard`),
+      request(`/organizations/${orgId}/projects/${projectId}/scorecard`, {}, scorecardSchema),
   },
 
   schedules: {
     list: (orgId: string, projectId: string, repoId: string) =>
-      request<any>(`/organizations/${orgId}/projects/${projectId}/repositories/${repoId}/schedules`),
+      request(`/organizations/${orgId}/projects/${projectId}/repositories/${repoId}/schedules`, {}, paginated(scanScheduleSchema)),
     create: (orgId: string, projectId: string, repoId: string, data: {
       repository_id: string; schedule_type: string; cron_expression?: string; scan_type?: string;
     }) =>
-      request<any>(`/organizations/${orgId}/projects/${projectId}/repositories/${repoId}/schedules`, {
+      request(`/organizations/${orgId}/projects/${projectId}/repositories/${repoId}/schedules`, {
         method: "POST",
         body: JSON.stringify(data),
-      }),
+      }, scanScheduleSchema),
     update: (orgId: string, projectId: string, repoId: string, scheduleId: string, data: any) =>
-      request<any>(`/organizations/${orgId}/projects/${projectId}/repositories/${repoId}/schedules/${scheduleId}`, {
+      request(`/organizations/${orgId}/projects/${projectId}/repositories/${repoId}/schedules/${scheduleId}`, {
         method: "PATCH",
         body: JSON.stringify(data),
-      }),
+      }, scanScheduleSchema),
     remove: (orgId: string, projectId: string, repoId: string, scheduleId: string) =>
-      request<any>(`/organizations/${orgId}/projects/${projectId}/repositories/${repoId}/schedules/${scheduleId}`, {
+      request<void>(`/organizations/${orgId}/projects/${projectId}/repositories/${repoId}/schedules/${scheduleId}`, {
         method: "DELETE",
       }),
   },
 
   suppressionRules: {
     list: (orgId: string) =>
-      request<any>(`/organizations/${orgId}/suppression-rules`),
-    create: (orgId: string, data: any) =>
-      request<any>(`/organizations/${orgId}/suppression-rules`, {
+      request(`/organizations/${orgId}/suppression-rules`, {}, paginated(suppressionRuleSchema)),
+    create: (orgId: string, data: { reason: string; pattern?: string } & Record<string, unknown>) =>
+      request(`/organizations/${orgId}/suppression-rules`, {
         method: "POST",
         body: JSON.stringify(data),
-      }),
-    update: (orgId: string, ruleId: string, data: any) =>
-      request<any>(`/organizations/${orgId}/suppression-rules/${ruleId}`, {
+      }, suppressionRuleSchema),
+    update: (orgId: string, ruleId: string, data: Record<string, unknown>) =>
+      request(`/organizations/${orgId}/suppression-rules/${ruleId}`, {
         method: "PATCH",
         body: JSON.stringify(data),
-      }),
+      }, suppressionRuleSchema),
     remove: (orgId: string, ruleId: string) =>
-      request<any>(`/organizations/${orgId}/suppression-rules/${ruleId}`, {
+      request<void>(`/organizations/${orgId}/suppression-rules/${ruleId}`, {
         method: "DELETE",
       }),
   },
 
   members: {
     list: (orgId: string, skip = 0, limit = 50) =>
-      request<any>(`/organizations/${orgId}/members?skip=${skip}&limit=${limit}`),
+      request(`/organizations/${orgId}/members?skip=${skip}&limit=${limit}`, {}, paginated(memberSchema)),
     invite: (orgId: string, data: { email: string; role: string }) =>
-      request<any>(`/organizations/${orgId}/members`, {
+      request(`/organizations/${orgId}/members`, {
         method: "POST",
         body: JSON.stringify(data),
-      }),
+      }, memberSchema),
     updateRole: (orgId: string, userId: string, role: string) =>
-      request<any>(`/organizations/${orgId}/members/${userId}`, {
+      request(`/organizations/${orgId}/members/${userId}`, {
         method: "PATCH",
         body: JSON.stringify({ role }),
-      }),
+      }, memberSchema),
     remove: (orgId: string, userId: string) =>
-      request<any>(`/organizations/${orgId}/members/${userId}`, {
+      request<void>(`/organizations/${orgId}/members/${userId}`, {
         method: "DELETE",
       }),
   },
 
   users: {
-    me: () => request<any>("/users/me"),
+    me: () => request(`/users/me`, {}, organizationSchema),
   },
 };
 
