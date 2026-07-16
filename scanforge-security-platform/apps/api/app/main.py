@@ -29,6 +29,7 @@ app.add_middleware(
     burst=20,
     redis_url=settings.UPSTASH_REDIS_REST_URL,
     redis_token=settings.UPSTASH_REDIS_REST_TOKEN,
+    trusted_proxies=settings.trusted_proxy_ips_set,
 )
 app.add_middleware(
     CORSMiddleware,

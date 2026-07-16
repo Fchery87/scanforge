@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from sqlalchemy import Enum, ForeignKey, Integer, String, Text
+from datetime import datetime
+
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -25,6 +27,7 @@ class Scan(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     requested_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     error_message: Mapped[str | None] = mapped_column(Text)
     summary_json: Mapped[dict | None] = mapped_column(JSONB)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     scanner_runs: Mapped[list[ScannerRun]] = relationship("ScannerRun", back_populates="scan", lazy="noload")
 
 class ScannerRun(Base, UUIDPrimaryKeyMixin, TimestampMixin):

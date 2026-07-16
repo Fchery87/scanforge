@@ -1,3 +1,7 @@
+"""Worker entry point — polls the scan queue and orchestrates scan execution."""
+
+from __future__ import annotations
+
 import asyncio
 import os
 import signal
@@ -68,24 +72,25 @@ class Worker:
             if job is None:
                 return
 
-            print(f"[worker] Processing job {job.job_id} ({job.job_type})")
+            _log.info("processing job", extra={"job_id": job.job_id, "job_type": job.job_type})
 
             success = await orchestrator.process_job(job)
 
             if success:
-                print(f"[worker] Job {job.job_id} completed successfully")
+                _log.info("job completed successfully", extra={"job_id": job.job_id})
             else:
-                # The orchestrator owns retry and DLQ decisions so failed jobs are
-                # not duplicated in the queue by the outer worker loop.
                 retry_count = await queue.get_retry_count(job.job_id)
-                print(
-                    f"[worker] Job {job.job_id} failed in orchestrator "
-                    f"(retry_count={retry_count}/{orchestrator.MAX_RETRIES})"
+                _log.info(
+                    "job failed in orchestrator",
+                    extra={
+                        "job_id": job.job_id,
+                        "retry_count": retry_count,
+                        "max_retries": orchestrator.MAX_RETRIES,
+                    },
                 )
 
         except Exception as e:
-            print(f"[worker] Error processing job: {e}")
-            print(traceback.format_exc())
+            _log.error("error processing job", extra={"error": str(e), "traceback": traceback.format_exc()})
 
     async def run(self):
         queue, r2, api_base = self._get_clients()
@@ -101,14 +106,16 @@ class Worker:
             )
         )
 
-        print(f"[worker] Starting worker with concurrency={self.concurrency}")
+        _log.info("starting worker", extra={"concurrency": self.concurrency})
 
         try:
             queue_len = await queue.get_queue_length()
-            print(f"[worker] Queue length: {queue_len}")
+            _log.info("queue length", extra={"length": queue_len})
         except Exception as e:
-            print(f"[worker] WARNING: Could not connect to Redis queue: {e}")
-            print("[worker] Check UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN in .env")
+            _log.warning(
+                "could not connect to Redis queue — check UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN",
+                extra={"error": str(e)},
+            )
 
         self._running = True
         tasks: list[asyncio.Task] = []
@@ -132,7 +139,10 @@ class Worker:
                 try:
                     ql = await queue.get_queue_length()
                     active = len([t for t in tasks if not t.done()])
-                    print(f"[worker] status: queue={ql} active={active} workers={self.concurrency}")
+                    _log.info(
+                        "worker status",
+                        extra={"queue_length": ql, "active_tasks": active, "workers": self.concurrency},
+                    )
                 except Exception:
                     pass
                 await asyncio.sleep(30)
@@ -142,15 +152,18 @@ class Worker:
         try:
             await asyncio.gather(*loops)
         except asyncio.CancelledError:
-            print("[worker] Shutdown signal received")
+            _log.info("shutdown signal received")
         finally:
             self._running = False
-            print(f"[worker] Waiting for {len(tasks)} active tasks to complete...")
+            _log.info(
+                "waiting for active tasks to complete",
+                extra={"active_tasks": len(tasks), "timeout": self.shutdown_timeout},
+            )
             await asyncio.wait_for(
                 asyncio.gather(*tasks, return_exceptions=True),
                 timeout=self.shutdown_timeout,
             )
-            print("[worker] Shutdown complete")
+            _log.info("shutdown complete")
 
 
 def main():
@@ -166,7 +179,7 @@ def main():
     try:
         loop.run_until_complete(worker.run())
     except KeyboardInterrupt:
-        print("[worker] Interrupted")
+        _log.info("interrupted")
     finally:
         loop.close()
 

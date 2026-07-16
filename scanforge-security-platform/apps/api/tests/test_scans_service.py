@@ -22,7 +22,7 @@ async def test_delete_scan_allows_non_completed_statuses():
     deleted = await service.delete(scan_id, user_id)
 
     assert deleted is scan
-    db.delete.assert_awaited_once_with(scan)
+    assert scan.deleted_at is not None
     db.commit.assert_awaited_once()
 
 

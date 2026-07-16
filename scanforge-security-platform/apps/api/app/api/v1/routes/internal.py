@@ -4,14 +4,13 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import exists, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.enums import ScanStatus
-from app.db.models import Finding, OrganizationIntegration, Project, Repository, Scan, ScanSchedule
+from app.db.models import OrganizationIntegration, Project, Repository, Scan
 from app.db.models.scan import ScannerRun
 from app.db.session import get_db
-from app.middleware.auth import UserContext, get_current_user
 from app.middleware.service_auth import require_service_auth
 from app.schemas.canonical_findings import CanonicalFindingCandidate
 from app.schemas.notifications import NotificationCreate
@@ -19,7 +18,6 @@ from app.schemas.scans import ScanStatusUpdate
 from app.services.findings import FindingService
 from app.services.github import GitHubService
 from app.services.notifications import NotificationService
-from app.services.onboarding import build_onboarding_checklist
 from app.services.scan_lifecycle import ScanLifecycleService
 from app.services.scan_schedules import ScanScheduleService
 
@@ -239,69 +237,6 @@ async def get_scan_execution_context(
         "commit_sha": scan.commit_sha,
         "user_id": str(scan.requested_by_user_id) if scan.requested_by_user_id else None,
     }
-
-
-@router.get("/onboarding")
-async def get_onboarding_checklist(
-    org_id: str | None = None,
-    current_user: UserContext = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    has_github = False
-    if org_id:
-        github_result = await db.execute(select(exists().where(OrganizationIntegration.organization_id == org_id)))
-        has_github = github_result.scalar()
-
-    has_projects = False
-    has_repositories = False
-    has_scans = False
-    has_findings = False
-    has_schedules = False
-
-    if org_id:
-        project_result = await db.execute(select(exists().where(Project.organization_id == org_id)))
-        has_projects = project_result.scalar()
-
-        repo_result = await db.execute(
-            select(
-                exists().where(Repository.project_id.in_(select(Project.id).where(Project.organization_id == org_id)))
-            )
-        )
-        has_repositories = repo_result.scalar()
-
-        scan_result = await db.execute(
-            select(exists().where(Scan.project_id.in_(select(Project.id).where(Project.organization_id == org_id))))
-        )
-        has_scans = scan_result.scalar()
-
-        finding_result = await db.execute(
-            select(exists().where(Finding.project_id.in_(select(Project.id).where(Project.organization_id == org_id))))
-        )
-        has_findings = finding_result.scalar()
-
-        schedule_result = await db.execute(
-            select(
-                exists().where(
-                    ScanSchedule.repository_id.in_(
-                        select(Repository.id).where(
-                            Repository.project_id.in_(select(Project.id).where(Project.organization_id == org_id))
-                        )
-                    )
-                )
-            )
-        )
-        has_schedules = schedule_result.scalar()
-
-    return build_onboarding_checklist(
-        user_id=current_user.user_id,
-        org_id=org_id,
-        has_github=has_github,
-        has_projects=has_projects,
-        has_repositories=has_repositories,
-        has_scans=has_scans,
-        has_findings=has_findings,
-        has_schedules=has_schedules,
-    )
 
 
 @router.post("/scan-schedules/run-due")

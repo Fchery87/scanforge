@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     APP_URL: str = "http://localhost:8000"
 
     CORS_ORIGINS: str = "http://localhost:3000"
+    TRUSTED_PROXY_IPS: str = ""
 
     NEON_AUTH_ISSUER: str = ""
     NEON_AUTH_AUDIENCE: str = ""
@@ -74,6 +75,11 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
+
+    @property
+    def trusted_proxy_ips_set(self) -> set[str] | None:
+        ips = [ip.strip() for ip in self.TRUSTED_PROXY_IPS.split(",") if ip.strip()]
+        return set(ips) if ips else None
 
 
 @lru_cache

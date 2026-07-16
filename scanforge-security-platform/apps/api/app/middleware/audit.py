@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 from collections.abc import Callable
 from uuid import UUID
 
@@ -19,6 +20,8 @@ AUDITED_PATHS = [
     "/findings",
     "/exports",
     "/members",
+    "/suppression-rules",
+    "/schedules",
 ]
 
 
@@ -69,7 +72,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
 
         response = await call_next(request)
 
-        if audit_context.user_id and response.status_code < 400:
+        if audit_context.user_id:
             try:
                 action = self._extract_action(request.method, path)
                 target = self._extract_target(path)
@@ -91,7 +94,8 @@ class AuditMiddleware(BaseHTTPMiddleware):
                         },
                     )
             except Exception:
-                pass
+                logger = logging.getLogger(__name__)
+                logger.warning("audit write failed", exc_info=True)
 
         return response
 

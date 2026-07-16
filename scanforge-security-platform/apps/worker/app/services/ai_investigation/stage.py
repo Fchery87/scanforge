@@ -31,7 +31,7 @@ def _make_provider() -> AIProvider:
 
 class AIInvestigationStage:
     def __init__(self, redis_url: str | None = None, redis_token: str | None = None) -> None:
-        self._enabled = os.environ.get("AI_ENABLED", "true").lower() == "true"
+        self._enabled = os.environ.get("AI_ENABLED", "false").lower() == "true"
         self._max_findings = int(os.environ.get("AI_MAX_FINDINGS_PER_SCAN", "50"))
         self._provider: AIProvider | None = None
         url = redis_url or os.environ.get("UPSTASH_REDIS_REST_URL", "")

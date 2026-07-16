@@ -1,3 +1,7 @@
+"""Weekly maintenance tasks — runs on a cron schedule via Render."""
+
+from __future__ import annotations
+
 import argparse
 import asyncio
 import os
@@ -21,24 +25,27 @@ def _load_env(current_file: str | Path | None = None):
 _load_env()
 
 from app.clients.queue import QueueClient  # noqa: E402
+from app.core.logging import get_logger  # noqa: E402
+
+_log = get_logger(__name__)
 
 
 async def run_cleanup(purge_scan_queue: bool = False):
-    print("[maintenance] Starting weekly maintenance tasks")
-    print("[maintenance] Task 1: Expire old exports")
-    print("[maintenance] Task 2: Recalculate project scores")
-    print("[maintenance] Task 3: Prune stale notification events")
-    print("[maintenance] Task 4: Verify scan artifact integrity")
+    _log.info("starting weekly maintenance tasks")
+
+    queue = QueueClient(
+        redis_url=os.environ.get("UPSTASH_REDIS_REST_URL", ""),
+        redis_token=os.environ.get("UPSTASH_REDIS_REST_TOKEN", ""),
+    )
+
+    reclaimed = await queue.reclaim_stale_jobs()
+    _log.info("reclaimed stale scan jobs", extra={"reclaimed": reclaimed})
 
     if purge_scan_queue:
-        queue = QueueClient(
-            redis_url=os.environ.get("UPSTASH_REDIS_REST_URL", ""),
-            redis_token=os.environ.get("UPSTASH_REDIS_REST_TOKEN", ""),
-        )
         deleted_keys = await queue.clear_scan_queues()
-        print(f"[maintenance] Purged scan queues (deleted_keys={deleted_keys})")
+        _log.info("purged scan queues", extra={"deleted_keys": deleted_keys})
 
-    print("[maintenance] Weekly maintenance complete")
+    _log.info("weekly maintenance complete")
 
 
 if __name__ == "__main__":

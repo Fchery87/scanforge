@@ -49,7 +49,6 @@ async def get_current_user(
             sub=payload.get("sub", ""),
             email=payload.get("email"),
             name=payload.get("name"),
-            role=payload.get("role", "viewer"),
             org_id=payload.get("org_id"),
         )
     except AuthenticationError as e:
@@ -73,7 +72,6 @@ async def get_optional_user(
             sub=payload.get("sub", ""),
             email=payload.get("email"),
             name=payload.get("name"),
-            role=payload.get("role", "viewer"),
             org_id=payload.get("org_id"),
         )
     except AuthenticationError:

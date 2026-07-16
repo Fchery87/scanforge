@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -57,6 +58,7 @@ class ScanService:
             .options(selectinload(Scan.scanner_runs))
             .where(
                 Scan.id == scan_id,
+                Scan.deleted_at.is_(None),
                 OrganizationMember.user_id == user_id,
             )
         )
@@ -80,6 +82,7 @@ class ScanService:
             .join(OrganizationMember, OrganizationMember.organization_id == Organization.id)
             .where(
                 Scan.repository_id == repo_id,
+                Scan.deleted_at.is_(None),
                 OrganizationMember.user_id == user_id,
             )
         )
@@ -112,6 +115,7 @@ class ScanService:
             .join(OrganizationMember, OrganizationMember.organization_id == Organization.id)
             .where(
                 Scan.project_id == project_id,
+                Scan.deleted_at.is_(None),
                 OrganizationMember.user_id == user_id,
             )
         )
@@ -188,8 +192,9 @@ class ScanService:
         ):
             raise ValueError("Only queued, failed, or canceled scans can be deleted; completed scans are retained")
 
-        await self.db.delete(scan)
+        scan.deleted_at = datetime.now(UTC)
         await self.db.commit()
+        await self.db.refresh(scan)
         return scan
 
     async def create_scanner_run(

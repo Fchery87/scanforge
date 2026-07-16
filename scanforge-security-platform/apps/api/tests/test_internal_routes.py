@@ -39,7 +39,6 @@ async def test_internal_endpoints_require_service_auth():
         endpoints = [
             ("POST", "/api/v1/internal/notifications"),
             ("PATCH", "/api/v1/internal/scans/00000000-0000-0000-0000-000000000000/status"),
-            ("GET", "/api/v1/internal/onboarding"),
         ]
         for method, path in endpoints:
             response = await client.request(method, path, json={})

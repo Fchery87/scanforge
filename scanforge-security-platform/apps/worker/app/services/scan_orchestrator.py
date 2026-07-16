@@ -101,6 +101,7 @@ class ScanOrchestrator:
                 summary=self._build_completion_summary(context, job_type=job.job_type, duration_seconds=duration),
             )
             await self._persistence.send_notifications(context, self._notifier)
+            await self.queue.ack(context.job_id)
 
             _log.info(
                 "scan job completed",
@@ -129,6 +130,7 @@ class ScanOrchestrator:
             )
 
             if retry_count >= self.MAX_RETRIES:
+                await self.queue.release(job.job_id)
                 await self.queue.enqueue_to_dlq(job)
                 await self._update_scan_status(context, "failed", error=f"Max retries exceeded: {safe_error}")
                 await self._persistence.send_failure_notification(context, self._notifier, retry_count)
@@ -139,6 +141,7 @@ class ScanOrchestrator:
                 return False
 
             await asyncio.sleep(min(retry_count * 30, 300))
+            await self.queue.release(job.job_id)
             await self.queue.requeue(job)
             return False
 

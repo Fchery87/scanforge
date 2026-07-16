@@ -85,7 +85,8 @@ async def test_stage_skips_secrets_scan_type():
 
 
 @pytest.mark.asyncio
-async def test_stage_annotates_findings():
+async def test_stage_annotates_findings(monkeypatch):
+    monkeypatch.setenv("AI_ENABLED", "true")
     stage = AIInvestigationStage()
     provider = FakeProvider()
     stage._provider = provider
@@ -102,6 +103,7 @@ async def test_stage_annotates_findings():
 
 @pytest.mark.asyncio
 async def test_stage_sorts_by_severity_and_respects_cap(monkeypatch):
+    monkeypatch.setenv("AI_ENABLED", "true")
     monkeypatch.setenv("AI_MAX_FINDINGS_PER_SCAN", "2")
     stage = AIInvestigationStage()
     provider = FakeProvider()
@@ -124,7 +126,8 @@ async def test_stage_sorts_by_severity_and_respects_cap(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_stage_non_blocking_on_provider_error():
+async def test_stage_non_blocking_on_provider_error(monkeypatch):
+    monkeypatch.setenv("AI_ENABLED", "true")
     stage = AIInvestigationStage()
     stage._provider = FailingProvider()
     stage._cache = None
@@ -150,6 +153,7 @@ async def test_stage_empty_findings_no_calls():
 
 @pytest.mark.asyncio
 async def test_stage_uses_cache_hit(monkeypatch):
+    monkeypatch.setenv("AI_ENABLED", "true")
     stage = AIInvestigationStage()
     provider = FakeProvider()
     stage._provider = provider

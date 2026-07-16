@@ -1,8 +1,10 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models import Finding
 from app.db.session import get_db
 from app.middleware.auth import UserContext, get_current_user
 from app.schemas.common import PaginatedResponse, PaginationParams
@@ -265,6 +267,18 @@ async def bulk_finding_action(
 ):
     await _get_project_in_org_or_404(db, project_id, org_id, current_user.user_id)
     await _require_finding_mutation_role(db, org_id, current_user.user_id)
+
+    if data.finding_ids:
+        result = await db.execute(
+            select(Finding).where(Finding.id.in_(data.finding_ids), Finding.project_id == project_id)
+        )
+        authorized_ids = {str(row.id) for row in result.scalars()}
+        unauthorized = {str(fid) for fid in data.finding_ids if str(fid) not in authorized_ids}
+        if unauthorized:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Some findings do not belong to this project: {', '.join(unauthorized)}",
+            )
 
     service = FindingService(db)
 

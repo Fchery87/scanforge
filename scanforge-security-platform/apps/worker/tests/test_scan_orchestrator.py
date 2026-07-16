@@ -23,6 +23,12 @@ class DummyQueue:
     async def enqueue_to_dlq(self, *_args, **_kwargs):
         return None
 
+    async def ack(self, *_args, **_kwargs):
+        return None
+
+    async def release(self, *_args, **_kwargs):
+        return None
+
 
 class DummyR2:
     def upload_raw_output(self, scan_id: str, scanner_name: str, output_data: dict) -> str:
