@@ -80,4 +80,5 @@ localstack_data/
 # ─── Misc ──────────────────────────────────────────────────────────
 .vercel/
 .turbo/
+.worktrees/
 turbo.json
