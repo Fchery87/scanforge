@@ -14,3 +14,4 @@ These files are intentionally shorter and less historical than the main document
 - `SCANNER_PIPELINE.md`: current worker-side scan execution model
 - `RBAC.md`: roles and permission summary
 - `TASKS.md`: implementation task tracking if still in use
+- `SECURE_PRIVATE_BETA.md`: approved scope, architecture, release gates, and success measures for the three-organization private beta

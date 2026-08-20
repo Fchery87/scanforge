@@ -24,6 +24,26 @@ The scan lifecycle is the central product flow for ScanForge's architecture prog
 
 ScanForge should prioritize scan lifecycle reliability, queue contract stability, scanner coverage invariants, and validation gates before expanding into AI remediation, MCP, or broader integrations. Advanced automation depends on trustworthy scan and finding state.
 
+### Dedicated worker
+
+A worker host assigned to one organization for the secure private beta.
+
+The dedicated worker consumes only that organization's queue, uses an organization-scoped service identity, and runs one scan at a time. It separates one customer's source code, credentials, temporary files, queue state, and capacity from every other beta customer.
+
+The dedicated worker is an organization boundary. It does not replace scan containment.
+
+### Scan containment
+
+The disposable execution boundary around scanner commands for one scan.
+
+The worker coordinator clones the approved repository and handles authenticated API calls. Scanner commands run in a restricted container that has no credentials, no outbound network, a read-only source mount, a separate output directory, and explicit compute and runtime limits.
+
+### Worker identity
+
+An organization-scoped service principal used by a dedicated worker when it calls internal API routes.
+
+The API derives organization access from the verified worker identity. Request data cannot broaden that access. Operators can rotate or disable a worker identity without changing user authentication or another organization's worker.
+
 ### Scan execution contract
 
 The record of what a scan was expected to execute, what actually ran, what failed, and whether the result is complete enough to update finding workflow states.
