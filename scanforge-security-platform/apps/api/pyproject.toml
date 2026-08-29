@@ -65,9 +65,13 @@ select = [
 "app/db/models/*.py" = ["E501", "TC003", "PLC0415"]
 "app/db/mixins.py" = ["E501"]
 "app/schemas/findings.py" = ["S105"]
+"app/schemas/scan_completion.py" = ["TC001", "TC003"]
+    "app/services/scan_completion.py" = ["TC002", "TC003"]
+"tests/test_scan_completion.py" = ["S101"]
 
 [tool.mypy]
 python_version = "3.11"
+explicit_package_bases = true
 plugins = ["pydantic.mypy"]
 ignore_missing_imports = true
 

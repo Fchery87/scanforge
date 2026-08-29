@@ -16,6 +16,7 @@ from app.db.models.scan import Scan, ScannerRun
 from app.db.models.scan_schedule import ScanSchedule
 from app.db.models.user import User
 from app.db.models.webhook_delivery import WebhookDelivery
+from app.db.models.worker_identity import WorkerIdentity
 
 __all__ = [
     "AuditLog",
@@ -39,4 +40,5 @@ __all__ = [
     "SuppressionRule",
     "User",
     "WebhookDelivery",
+    "WorkerIdentity",
 ]

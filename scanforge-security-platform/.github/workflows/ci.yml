@@ -24,10 +24,28 @@ jobs:
           filters: |
             api:
               - 'apps/api/**'
+              - 'packages/contracts/**'
+              - 'infra/**'
+              - 'spec/**'
+              - 'docs/adr/**'
+              - 'render.yaml'
+              - 'Makefile'
+              - 'docker-compose.yml'
             worker:
               - 'apps/worker/**'
+              - 'packages/contracts/**'
+              - 'infra/**'
+              - 'spec/**'
+              - 'docs/adr/**'
+              - 'render.yaml'
+              - 'Makefile'
+              - 'docker-compose.yml'
             web:
               - 'apps/web/**'
+              - 'packages/contracts/**'
+              - 'spec/**'
+              - 'docs/adr/**'
+              - 'Makefile'
 
   api:
     needs: changes

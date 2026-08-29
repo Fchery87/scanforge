@@ -7,15 +7,15 @@ import httpx
 async def trigger_due_scan_schedules(
     *,
     api_base_url: str | None = None,
-    internal_api_key: str | None = None,
+    scheduler_api_key: str | None = None,
 ) -> dict:
     base_url = (api_base_url or os.environ.get("API_BASE_URL") or "http://localhost:8000").rstrip("/")
-    service_key = internal_api_key or os.environ.get("INTERNAL_API_KEY", "")
+    credential = scheduler_api_key or os.environ.get("SCHEDULER_API_KEY", "")
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"{base_url}/api/v1/internal/scan-schedules/run-due",
-            headers={"X-Service-Key": service_key},
+            headers={"X-Scheduler-Key": credential},
             timeout=60.0,
         )
         response.raise_for_status()

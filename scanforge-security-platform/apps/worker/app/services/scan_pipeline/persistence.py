@@ -14,45 +14,38 @@ _log = get_logger(__name__)
 
 
 class PersistenceStage:
-    def __init__(self, api_base_url: str, internal_api_key: str) -> None:
+    def __init__(self, api_base_url: str, worker_credential: str) -> None:
         self.api_base_url = api_base_url
-        self.internal_api_key = internal_api_key
+        self.worker_credential = worker_credential
 
     @property
     def _headers(self) -> dict[str, str]:
-        return {"X-Service-Key": self.internal_api_key}
+        return {"X-Worker-Credential": self.worker_credential}
 
-    async def persist_findings(self, context: ScanContext) -> None:
-        if not context.findings:
-            return
+    async def complete_scan(self, context: ScanContext) -> None:
         async with httpx.AsyncClient() as client:
-            try:
-                resp = await client.post(
-                    f"{self.api_base_url}/api/v1/internal/scans/{context.scan_id}/findings",
-                    json={"findings": context.findings},
-                    headers=self._headers,
-                    timeout=60.0,
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                _log.info(
-                    "findings persisted",
-                    extra={"scan_id": context.scan_id, "count": data.get("count", len(context.findings))},
-                )
-            except httpx.HTTPStatusError as exc:
-                _log.error(
-                    "failed to persist findings",
-                    extra={
-                        "scan_id": context.scan_id,
-                        "error": f"HTTP {exc.response.status_code}: {exc.response.text[:200]}",
-                    },
-                )
-            except Exception as exc:
-                _log.error(
-                    "failed to persist findings",
-                    extra={"scan_id": context.scan_id, "error": str(exc)},
-                )
-
+            response = await client.post(
+                f"{self.api_base_url}/api/v1/internal/scans/{context.scan_id}/complete",
+                json={
+                    "findings": context.findings,
+                    "scanner_runs": [
+                        {
+                            "scanner_name": name,
+                            "scanner_version": result.version,
+                            "status": "completed" if result.success else "failed",
+                            "duration_ms": result.duration_ms,
+                            "exit_code": result.exit_code,
+                            "error_message": result.error,
+                        }
+                        for name, result in context.scanner_results.items()
+                    ],
+                    "summary_json": context.summary_json,
+                    "artifact_uris": context.artifact_uris,
+                },
+                headers=self._headers,
+                timeout=60.0,
+            )
+            response.raise_for_status()
     async def send_notifications(
         self,
         context: ScanContext,

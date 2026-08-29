@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy import Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -13,8 +15,8 @@ class ScanSchedule(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     schedule_type: Mapped[str] = mapped_column(String(50), nullable=False)
     cron_expression: Mapped[str | None] = mapped_column(String(100))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    last_run_at: Mapped[str | None] = mapped_column(DateTime(timezone=True))
-    next_run_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), index=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     scan_type: Mapped[str] = mapped_column(String(50), nullable=False)
     created_by_user_id: Mapped[str | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL")

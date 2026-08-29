@@ -31,14 +31,14 @@ async def test_trigger_due_scan_schedules_calls_internal_api(monkeypatch):
 
     result = await scheduler.trigger_due_scan_schedules(
         api_base_url="http://api.local/",
-        internal_api_key="secret",
+        scheduler_api_key="secret",
     )
 
     assert result == {"found": 2, "queued": 1, "failed": 1}
     assert requests == [
         {
             "url": "http://api.local/api/v1/internal/scan-schedules/run-due",
-            "headers": {"X-Service-Key": "secret"},
+            "headers": {"X-Scheduler-Key": "secret"},
             "timeout": 60.0,
         }
     ]

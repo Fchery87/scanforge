@@ -24,9 +24,10 @@ def _safe_error_message(message: str | None) -> str:
 
 
 class NotificationDispatcher:
-    def __init__(self, api_base_url: str, internal_api_key: str = ""):
+    def __init__(self, api_base_url: str, worker_credential: str = "", **_legacy: str):
         self.api_base_url = api_base_url
-        self.internal_api_key = internal_api_key
+        self.worker_credential = worker_credential or _legacy.get("internal_api_key", "")
+        self.internal_api_key = self.worker_credential
 
     async def send_scan_completed(
         self,
@@ -134,7 +135,7 @@ class NotificationDispatcher:
                 await client.post(
                     f"{self.api_base_url}/api/v1/internal/notifications",
                     json=payload,
-                    headers={"X-Service-Key": self.internal_api_key},
+                    headers={"X-Worker-Credential": self.worker_credential},
                     timeout=15.0,
                 )
         except Exception as e:

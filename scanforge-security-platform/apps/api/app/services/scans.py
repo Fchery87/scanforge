@@ -147,6 +147,11 @@ class ScanService:
         if not scan:
             return None
 
+        if scan.status in (ScanStatusEnum.CANCELED, ScanStatusEnum.COMPLETED):
+            raise ValueError("Terminal scans cannot change status")
+        if status == ScanStatusEnum.COMPLETED:
+            raise ValueError("Only the atomic completion operation may complete a scan")
+
         scan.status = status
         if error_message:
             scan.error_message = error_message

@@ -1,119 +1,111 @@
-"""Queue client — Upstash Redis REST API backed with at-least-once semantics.
-
-Jobs are BRPOP'd from the ready queue, then persisted with a visibility deadline
-so a crash mid-processing can be reclaimed. Successful completion acks the job.
-"""
-
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 
 import httpx
 
 from app.contracts.queue import QueueJob
 
-SCAN_TIMEOUT = 1800
-VISIBILITY_GRACE = 300
-PROCESSING_SET = "queue:scans:processing"
-
 
 class QueueClient:
-    SCAN_QUEUE = "queue:scans"
-    DLQ = "queue:scans:dlq"
-    PROCESSING_SET = "queue:scans:processing"
+    GROUP = "scanforge-workers"
+    SCAN_TIMEOUT = 1800
 
-    def __init__(self, redis_url: str, redis_token: str):
+    def __init__(self, redis_url: str, redis_token: str, organization_id: str = "dev", consumer_name: str = "dev"):
+        if not organization_id or not consumer_name:
+            raise ValueError("organization_id and consumer_name are required")
         self.redis_url = redis_url
         self.redis_token = redis_token
-        self._headers = {
-            "Authorization": f"Bearer {redis_token}",
-            "Content-Type": "application/json",
-        }
+        self.organization_id = organization_id
+        self.consumer_name = consumer_name
+        self.stream = f"queue:scans:{organization_id}"
+        self.dlq = f"{self.stream}:dlq"
+        self._headers = {"Authorization": f"Bearer {redis_token}", "Content-Type": "application/json"}
 
     async def _command(self, *args: str | int | float) -> dict:
-        """Send a Redis command as a JSON array to the Upstash REST API."""
         async with httpx.AsyncClient() as client:
-            response = await client.post(
-                self.redis_url,
-                headers=self._headers,
-                json=list(args),
-                timeout=30.0,
-            )
+            response = await client.post(self.redis_url, headers=self._headers, json=list(args), timeout=30.0)
             response.raise_for_status()
             return response.json()
 
-    async def enqueue(self, job_type: str, payload: dict, delay_seconds: int = 0) -> str:
-        job = QueueJob.create(job_type, payload)
-        job_json = job.model_dump_json()
-
-        if delay_seconds > 0:
-            score = datetime.utcnow().timestamp() + delay_seconds
-            await self._command("ZADD", self.SCAN_QUEUE, score, job_json)
-        else:
-            await self._command("LPUSH", self.SCAN_QUEUE, job_json)
-
-        return job.job_id
-
-    async def requeue(self, job: QueueJob, delay_seconds: int = 0) -> None:
-        job_json = job.model_dump_json()
-
-        if delay_seconds > 0:
-            score = datetime.utcnow().timestamp() + delay_seconds
-            await self._command("ZADD", self.SCAN_QUEUE, score, job_json)
-        else:
-            await self._command("LPUSH", self.SCAN_QUEUE, job_json)
+    async def ensure_group(self) -> None:
+        try:
+            await self._command("XGROUP", "CREATE", self.stream, self.GROUP, "0", "MKSTREAM")
+        except httpx.HTTPStatusError as exc:
+            if "BUSYGROUP" not in exc.response.text:
+                raise
 
     async def dequeue(self, timeout_seconds: int = 5) -> QueueJob | None:
-        try:
-            result = await self._command("BRPOP", self.SCAN_QUEUE, timeout_seconds)
+        reclaimed = await self.reclaim_stale_jobs()
+        if reclaimed:
+            return reclaimed[0]
+        await self.ensure_group()
+        result = await self._command(
+            "XREADGROUP", "GROUP", self.GROUP, self.consumer_name,
+            "COUNT", 1, "BLOCK", timeout_seconds * 1000, "STREAMS", self.stream, ">",
+        )
+        rows = result.get("result") or []
+        if not rows or not rows[0][1]:
+            return None
+        stream_id, fields = rows[0][1][0]
+        values = dict(zip(fields[::2], fields[1::2], strict=True))
+        job = QueueJob.model_validate_json(values["job"])
+        job.stream_id = stream_id
+        return job
 
-            if result and result.get("result"):
-                _, value = result["result"]
-                job = QueueJob.model_validate_json(value)
+    async def ack(self, job_id: str, stream_id: str | None = None) -> None:
+        if not stream_id:
+            raise ValueError(f"stream id required to acknowledge job {job_id}")
+        await self._command("XACK", self.stream, self.GROUP, stream_id)
+        await self._command("XDEL", self.stream, stream_id)
 
-                deadline = int(datetime.utcnow().timestamp()) + SCAN_TIMEOUT + VISIBILITY_GRACE
-                payload_ttl = SCAN_TIMEOUT + VISIBILITY_GRACE + 3600
-
-                await self._command("SETEX", f"job:{job.job_id}:payload", payload_ttl, value)
-                await self._command("ZADD", PROCESSING_SET, deadline, job.job_id)
-
-                return job
-        except httpx.HTTPStatusError:
-            pass
-        return None
-
-    async def ack(self, job_id: str) -> None:
-        """Mark a job as successfully completed and remove it from processing tracking."""
-        try:
-            await self._command("ZREM", PROCESSING_SET, job_id)
-            await self._command("DEL", f"job:{job_id}:payload")
-        except httpx.HTTPError:
-            pass
-
-    async def release(self, job_id: str) -> None:
-        """Remove processing tracking for a failed job that is being requeued or DLQ'd."""
-        try:
-            await self._command("ZREM", PROCESSING_SET, job_id)
-            await self._command("DEL", f"job:{job_id}:payload")
-        except httpx.HTTPError:
-            pass
+    async def reclaim_stale_jobs(self, min_idle_ms: int = 300_000) -> list[QueueJob]:
+        await self.ensure_group()
+        pending = await self._command("XPENDING", self.stream, self.GROUP)
+        if not pending.get("result"):
+            return []
+        result = await self._command(
+            "XAUTOCLAIM", self.stream, self.GROUP, self.consumer_name, min_idle_ms, "0-0", "COUNT", 10
+        )
+        claimed = (result.get("result") or ["0-0", []])[1]
+        jobs: list[QueueJob] = []
+        for stream_id, fields in claimed:
+            values = dict(zip(fields[::2], fields[1::2], strict=True))
+            job = QueueJob.model_validate_json(values["job"])
+            job.stream_id = stream_id
+            jobs.append(job)
+        return jobs
 
     async def enqueue_to_dlq(self, job: QueueJob) -> None:
-        job_json = job.model_dump_json()
-        await self._command("LPUSH", self.DLQ, job_json)
+        await self._command("XADD", self.dlq, "*", "job", job.model_dump_json())
+
+    async def transfer_to_dlq(self, job: QueueJob) -> None:
+        """Durably append to the DLQ before removing the pending source entry."""
+        await self.enqueue_to_dlq(job)
+        await self.ack(job.job_id, job.stream_id)
+
+    async def release(self, _job_id: str) -> None:
+        """Keep the stream entry pending so XAUTOCLAIM can recover it."""
+
+    async def requeue(self, _job: QueueJob, delay_seconds: int = 0) -> None:
+        if delay_seconds:
+            raise NotImplementedError("Delayed stream retries are not supported")
+        # Leaving the entry pending is the durable retry mechanism.
+
+    async def clear_scan_queues(self) -> int:
+        result = await self._command("DEL", self.stream, self.dlq)
+        return int(result.get("result", 0))
+
+    async def get_queue_length(self) -> int:
+        result = await self._command("XLEN", self.stream)
+        return int(result.get("result", 0))
 
     async def get_job_status(self, job_id: str) -> dict | None:
         result = await self._command("GET", f"job:{job_id}:status")
-        if result and result.get("result"):
-            return json.loads(result["result"])
-        return None
+        return json.loads(result["result"]) if result.get("result") else None
 
     async def update_job_status(self, job_id: str, stage: str, metadata: dict | None = None) -> None:
-        status_data = {
-            "stage": stage,
-            "updated_at": datetime.utcnow().isoformat(),
-            **(metadata or {}),
-        }
-        await self._command("SETEX", f"job:{job_id}:status", 86400, json.dumps(status_data))
+        data = {"stage": stage, "updated_at": datetime.now(UTC).isoformat(), **(metadata or {})}
+        await self._command("SETEX", f"job:{job_id}:status", 86400, json.dumps(data))
 
     async def increment_retry(self, job_id: str) -> int:
         result = await self._command("INCR", f"job:{job_id}:retries")
@@ -122,33 +114,3 @@ class QueueClient:
     async def get_retry_count(self, job_id: str) -> int:
         result = await self._command("GET", f"job:{job_id}:retries")
         return int(result.get("result") or 0)
-
-    async def get_queue_length(self) -> int:
-        result = await self._command("LLEN", self.SCAN_QUEUE)
-        return int(result.get("result", 0))
-
-    async def reclaim_stale_jobs(self) -> int:
-        """Re-enqueue jobs whose visibility deadline has expired.
-
-        Returns the number of jobs reclaimed.
-        """
-        now = int(datetime.utcnow().timestamp())
-        result = await self._command("ZRANGEBYSCORE", PROCESSING_SET, "-inf", now)
-        stale_job_ids = result.get("result")
-        if not stale_job_ids:
-            return 0
-
-        reclaimed = 0
-        for job_id in stale_job_ids:
-            payload_result = await self._command("GET", f"job:{job_id}:payload")
-            payload = payload_result.get("result") if payload_result else None
-            if payload:
-                await self._command("LPUSH", self.SCAN_QUEUE, payload)
-                reclaimed += 1
-            await self._command("ZREM", PROCESSING_SET, job_id)
-            await self._command("DEL", f"job:{job_id}:payload")
-        return reclaimed
-
-    async def clear_scan_queues(self) -> int:
-        result = await self._command("DEL", self.SCAN_QUEUE, self.DLQ, PROCESSING_SET)
-        return int(result.get("result", 0))

@@ -1,10 +1,12 @@
 import logging
 from dataclasses import dataclass
+from typing import cast
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.queue import QueueClient
+from app.contracts.queue import ScanJobType
 from app.core.config import settings
 from app.core.error_messages import GENERIC_QUEUE_ERROR
 from app.schemas.scans import ScanCreate
@@ -34,7 +36,7 @@ class ScanLifecycleService:
             redis_token=settings.UPSTASH_REDIS_REST_TOKEN,
         )
 
-    async def create_manual_scan(self, *, org_id: UUID, data, user_id: UUID):
+    async def create_manual_scan(self, *, org_id: UUID, data, user_id: UUID | None):
         outcome = await self._create_and_enqueue_scan(org_id=org_id, data=data, user_id=user_id)
         return outcome.scan
 
@@ -46,7 +48,7 @@ class ScanLifecycleService:
         )
         scan, _, project = await self.scan_service.create(schedule.repository_id, data, user_id=None)
         return await self._enqueue_existing_scan(
-            scan, org_id=project.organization_id, scan_type=data.scan_type, user_id=None
+            scan, org_id=UUID(str(project.organization_id)), scan_type=data.scan_type, user_id=None
         )
 
     async def _create_and_enqueue_scan(self, *, org_id: UUID, data, user_id: UUID | None) -> ScanLifecycleOutcome:
@@ -64,7 +66,11 @@ class ScanLifecycleService:
         job_type = self._job_type_for_scan_type(scan_type)
 
         try:
-            job_id = await self.queue.enqueue(job_type, self._queue_payload(scan, org_id=org_id, user_id=user_id))
+            job_id = await self.queue.enqueue(
+                str(org_id),
+                cast("ScanJobType", self._job_type_for_scan_type(scan_type)),
+                self._queue_payload(scan, org_id=org_id, user_id=user_id),
+            )
             logger.info("Enqueued scan %s as job %s (%s)", scan.id, job_id, job_type)
             return ScanLifecycleOutcome(scan=scan, enqueued=True)
         except Exception:

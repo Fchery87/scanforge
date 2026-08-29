@@ -63,9 +63,11 @@ class Finding(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
 class FindingInstance(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "finding_instances"
+    __table_args__ = (UniqueConstraint("scan_id", "occurrence_fingerprint", name="uq_finding_instance_scan_occurrence"),)
     finding_id: Mapped[str] = mapped_column(ForeignKey("findings.id", ondelete="CASCADE"), nullable=False)
     scan_id: Mapped[str] = mapped_column(ForeignKey("scans.id", ondelete="CASCADE"), nullable=False)
     scanner_run_id: Mapped[str | None] = mapped_column(ForeignKey("scanner_runs.id", ondelete="SET NULL"))
+    occurrence_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     path: Mapped[str | None] = mapped_column(String(2048))
     line_start: Mapped[int | None]
     line_end: Mapped[int | None]
