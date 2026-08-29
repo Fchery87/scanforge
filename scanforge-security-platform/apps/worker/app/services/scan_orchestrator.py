@@ -33,25 +33,29 @@ class ScanOrchestrator:
         queue: QueueClient,
         r2: R2Client,
         api_base_url: str = "http://localhost:8000",
+        worker_credential: str = "",
     ):
         self.queue = queue
         self.r2 = r2
         self.api_base_url = api_base_url
-        self._internal_api_key = os.environ.get("INTERNAL_API_KEY", "")
+        self._worker_credential = worker_credential or os.environ.get("WORKER_CREDENTIAL", "")
         self._notifier: NotificationDispatcher | None = None
 
-        self._execution = ScanExecutionStage(r2, api_base_url, self._internal_api_key)
+        self._execution = ScanExecutionStage(r2, api_base_url, self._worker_credential)
         self._normalization = NormalizationStage()
         self._ai_investigation = AIInvestigationStage()
-        self._persistence = PersistenceStage(api_base_url, self._internal_api_key)
+        self._persistence = PersistenceStage(api_base_url, self._worker_credential)
 
     def set_notifier(self, notifier: NotificationDispatcher) -> None:
         self._notifier = notifier
 
+    def _auth_headers(self) -> dict[str, str]:
+        return {"X-Worker-Credential": self._worker_credential}
+
     def _redact_sensitive_text(self, value: str) -> str:
         redacted = value or ""
-        if self._internal_api_key:
-            redacted = redacted.replace(self._internal_api_key, "[REDACTED]")
+        if self._worker_credential:
+            redacted = redacted.replace(self._worker_credential, "[REDACTED]")
         return re.sub(r"Authorization: Basic\s+\S+", "Authorization: Basic [REDACTED]", redacted)
 
     async def process_job(self, job: QueueJob) -> bool:
@@ -59,20 +63,31 @@ class ScanOrchestrator:
         _log.info("scan job started", extra={"scan_id": context.scan_id, "job_id": context.job_id})
 
         try:
+            if context.authoritative_status == "canceled":
+                await self._update_status(context, "canceled")
+                await self.queue.ack(context.job_id, context.stream_id)
+                return True
+
             await self._update_status(context, "claimed")
             await self._update_scan_status(context, "running")
 
             # Stage 1 — Execution: clone, scan, upload
             await self._update_status(context, "repo_preparing")
+            if await self._stop_if_canceled(context):
+                return True
             context.repo_path = await self._execution.prepare_repository(context)
 
             if job.job_type == "scan.repo.diff":
                 context.changed_files = await self._execution.collect_changed_files(context.repo_path)
 
             await self._update_status(context, "scanners_running")
+            if await self._stop_if_canceled(context):
+                return True
             context.scanner_results = await self._execution.run_scanners(context, job.job_type)
 
             await self._update_status(context, "artifacts_uploading")
+            if await self._stop_if_canceled(context):
+                return True
             context.artifact_uris = await self._execution.upload_artifacts(context)
 
             # Stage 2 — Normalization
@@ -89,19 +104,16 @@ class ScanOrchestrator:
             await self._update_status(context, "ai_investigating")
             await self._ai_investigation.run(context, job_type=job.job_type)
 
-            # Stage 4 — Persistence: findings + notifications
-            await self._update_status(context, "persisting")
-            await self._persistence.persist_findings(context)
-
             duration = (datetime.now(UTC) - context.start_time.replace(tzinfo=UTC)).total_seconds()
-            await self._update_status(context, "done")
-            await self._update_scan_status(
-                context,
-                "completed",
-                summary=self._build_completion_summary(context, job_type=job.job_type, duration_seconds=duration),
+            context.summary_json = self._build_completion_summary(
+                context, job_type=job.job_type, duration_seconds=duration
             )
+            if await self._stop_if_canceled(context):
+                return True
+            await self._persistence.complete_scan(context)
+            await self._update_status(context, "done")
             await self._persistence.send_notifications(context, self._notifier)
-            await self.queue.ack(context.job_id)
+            await self.queue.ack(context.job_id, context.stream_id)
 
             _log.info(
                 "scan job completed",
@@ -126,13 +138,18 @@ class ScanOrchestrator:
 
             retry_count = await self.queue.increment_retry(context.job_id)
             await self._update_scan_status(
-                context, "failed", error=safe_error, summary={"retry_count": retry_count},
+                context,
+                "failed",
+                error=safe_error,
+                summary={"retry_count": retry_count},
+                best_effort=True,
             )
 
             if retry_count >= self.MAX_RETRIES:
-                await self.queue.release(job.job_id)
-                await self.queue.enqueue_to_dlq(job)
-                await self._update_scan_status(context, "failed", error=f"Max retries exceeded: {safe_error}")
+                await self.queue.transfer_to_dlq(job)
+                await self._update_scan_status(
+                    context, "failed", error=f"Max retries exceeded: {safe_error}", best_effort=True
+                )
                 await self._persistence.send_failure_notification(context, self._notifier, retry_count)
                 await send_slack_alert(
                     f"Scan `{context.scan_id}` failed after {retry_count} retries.\nError: {safe_error}",
@@ -156,7 +173,7 @@ class ScanOrchestrator:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 f"{self.api_base_url}/api/v1/internal/scans/{scan_id}/execution-context",
-                headers={"X-Service-Key": self._internal_api_key},
+                headers=self._auth_headers(),
                 timeout=30.0,
             )
             resp.raise_for_status()
@@ -169,10 +186,31 @@ class ScanOrchestrator:
             branch=data.get("branch"),
             commit_sha=data.get("commit_sha"),
             user_id=data.get("user_id"),
+            authoritative_status=data.get("status", "queued"),
             job_id=job.job_id,
+            stream_id=job.stream_id,
             expected_scanners=data.get("expected_scanners"),
             coverage_scope=data.get("coverage_scope"),
         )
+
+    async def _load_authoritative_status(self, context: ScanContext) -> str:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.api_base_url}/api/v1/internal/scans/{context.scan_id}/execution-context",
+                headers=self._auth_headers(),
+                timeout=30.0,
+            )
+            response.raise_for_status()
+            return str(response.json()["status"])
+
+    async def _stop_if_canceled(self, context: ScanContext) -> bool:
+        status_value = await self._load_authoritative_status(context)
+        context.authoritative_status = status_value
+        if status_value != "canceled":
+            return False
+        await self._update_status(context, "canceled")
+        await self.queue.ack(context.job_id, context.stream_id)
+        return True
 
     def _build_completion_summary(
         self, context: ScanContext, *, job_type: str, duration_seconds: float
@@ -218,26 +256,22 @@ class ScanOrchestrator:
         status: str,
         error: str | None = None,
         summary: dict | None = None,
+        *,
+        best_effort: bool = False,
     ) -> None:
         async with httpx.AsyncClient() as client:
             try:
                 resp = await client.patch(
                     f"{self.api_base_url}/api/v1/internal/scans/{context.scan_id}/status",
                     json={"status": status, "error_message": error, "summary_json": summary},
-                    headers={"X-Service-Key": self._internal_api_key},
+                    headers=self._auth_headers(),
                     timeout=30.0,
                 )
                 resp.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                _log.error(
-                    "failed to update scan status",
-                    extra={
-                        "scan_id": context.scan_id,
-                        "error": f"HTTP {exc.response.status_code}: {exc.response.text[:200]}",
-                    },
-                )
             except Exception as exc:
+                if not best_effort:
+                    raise
                 _log.error(
                     "failed to update scan status",
-                    extra={"scan_id": context.scan_id, "error": str(exc)},
+                    extra={"scan_id": context.scan_id, "error": self._redact_sensitive_text(str(exc))},
                 )

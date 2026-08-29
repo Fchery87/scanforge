@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -23,5 +25,5 @@ class Export(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     artifact_id: Mapped[str | None] = mapped_column(ForeignKey("scan_artifacts.id", ondelete="SET NULL"))
     row_count: Mapped[int | None] = mapped_column(Integer)
     error_message: Mapped[str | None] = mapped_column(Text)
-    completed_at: Mapped[str | None] = mapped_column(DateTime(timezone=True))
-    expires_at: Mapped[str | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

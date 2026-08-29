@@ -1,4 +1,7 @@
+import json
+from collections.abc import Sequence
 from datetime import UTC, date, datetime
+from hashlib import sha256
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_, select
@@ -164,7 +167,7 @@ class FindingService:
             if not member_exists:
                 raise ValueError("Assignee must be a member of the organization")
 
-        finding.assignee_user_id = assignee_user_id
+        finding.assignee_user_id = assignee_user_id  # type: ignore[assignment]
         finding.due_date = due_date
 
         event = FindingEvent(
@@ -188,7 +191,9 @@ class FindingService:
         scan_id: str,
         repository_id: str,
         project_id: str,
-        normalized_findings: list[dict | CanonicalFindingCandidate],
+        normalized_findings: Sequence[dict | CanonicalFindingCandidate],
+        *,
+        commit: bool = True,
     ) -> tuple[int, int]:
         new_count = 0
         updated_count = 0
@@ -248,9 +253,23 @@ class FindingService:
 
             await self.db.flush()
 
+            occurrence_fingerprint = sha256(
+                json.dumps(
+                    {
+                        "finding": fingerprint,
+                        "path": instance_data.get("path"),
+                        "line_start": instance_data.get("line_start"),
+                        "line_end": instance_data.get("line_end"),
+                        "package_name": instance_data.get("package_name"),
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode()
+            ).hexdigest()
             instance = FindingInstance(
                 finding_id=finding.id,
                 scan_id=scan_id,
+                occurrence_fingerprint=occurrence_fingerprint,
                 path=instance_data.get("path"),
                 line_start=instance_data.get("line_start"),
                 line_end=instance_data.get("line_end"),
@@ -271,7 +290,8 @@ class FindingService:
                 )
                 self.db.add(reference)
 
-        await self.db.commit()
+        if commit:
+            await self.db.commit()
         return new_count, updated_count
 
     async def _list_open_findings_for_repository(self, repository_id: str) -> list[Finding]:
@@ -290,6 +310,7 @@ class FindingService:
         scan_id: str,
         seen_fingerprints: set[str],
         scan_summary: dict | None,
+        commit: bool = True,
     ) -> int:
         updated = 0
         open_findings = await self._list_open_findings_for_repository(repository_id)
@@ -317,7 +338,7 @@ class FindingService:
             )
             updated += 1
 
-        if updated:
+        if updated and commit:
             await self.db.commit()
 
         return updated
@@ -329,7 +350,6 @@ class FindingService:
             seen_fingerprints=set((scan.summary_json or {}).get("seen_fingerprints") or []),
             scan_summary=scan.summary_json,
         )
-
     async def suppress(
         self,
         finding_id: UUID,

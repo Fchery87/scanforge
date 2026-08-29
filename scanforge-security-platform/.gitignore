@@ -77,6 +77,9 @@ redis_data/
 minio_data/
 localstack_data/
 
+# ─── Agent state ───────────────────────────────────────────────────
+.apex-code/
+
 # ─── Misc ──────────────────────────────────────────────────────────
 .vercel/
 .turbo/

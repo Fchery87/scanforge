@@ -37,7 +37,7 @@ async def test_notification_dispatcher_posts_to_internal_notifications_endpoint_
 
     client.post.assert_awaited_once()
     _, kwargs = client.post.await_args
-    assert kwargs["headers"] == {"X-Service-Key": "service-key"}
+    assert kwargs["headers"] == {"X-Worker-Credential": "service-key"}
     assert kwargs["json"]["notification_type"] == "scan_completed"
     assert kwargs["json"]["link"] == "/dashboard/org-1/projects/project-1/scans/scan-1"
     assert kwargs["json"]["target_type"] == "scan"

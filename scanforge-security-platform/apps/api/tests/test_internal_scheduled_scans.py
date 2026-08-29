@@ -6,6 +6,7 @@ import pytest
 
 from app.api.v1.routes import internal
 from app.schemas.scans import ScanStatusUpdate
+from app.services.worker_identities import WorkerPrincipal
 
 
 @pytest.mark.asyncio
@@ -67,10 +68,16 @@ async def test_get_scan_execution_context_loads_authoritative_scan_context():
         branch_name="main",
         commit_sha="deadbeef",
         requested_by_user_id=user_id,
+        status=internal.ScanStatus.RUNNING,
     )
     project = SimpleNamespace(id=project_id, organization_id=org_id)
+    principal = WorkerPrincipal(uuid4(), org_id, frozenset({"scans:read"}))
+    result_row = SimpleNamespace(scalar_one_or_none=lambda: scan)
 
     class Db:
+        async def execute(self, _query):
+            return result_row
+
         async def get(self, model, key):
             if model is internal.Scan and key == str(scan_id):
                 return scan
@@ -78,7 +85,7 @@ async def test_get_scan_execution_context_loads_authoritative_scan_context():
                 return project
             return None
 
-    result = await internal.get_scan_execution_context(scan_id=scan_id, db=Db())
+    result = await internal.get_scan_execution_context(scan_id=scan_id, principal=principal, db=Db())
 
     assert result == {
         "scan_id": str(scan_id),
@@ -95,16 +102,22 @@ async def test_get_scan_execution_context_loads_authoritative_scan_context():
         "branch": "main",
         "commit_sha": "deadbeef",
         "user_id": str(user_id),
+        "status": "running",
     }
 
 
 @pytest.mark.asyncio
-async def test_completed_scan_status_marks_absent_findings_not_observed(monkeypatch):
+async def test_completed_scan_status_requires_atomic_completion_endpoint(monkeypatch):
     scan_id = uuid4()
     scan = SimpleNamespace(id=scan_id, repository_id="repo-1", status="running", summary_json=None, error_message=None)
     lifecycle = SimpleNamespace(mark_not_observed_for_completed_scan=AsyncMock(return_value=2))
+    principal = WorkerPrincipal(uuid4(), uuid4(), frozenset({"scans:write"}))
+    result_row = SimpleNamespace(scalar_one_or_none=lambda: scan)
 
     class Db:
+        async def execute(self, _query):
+            return result_row
+
         async def get(self, model, key):
             if model is internal.Scan and key == str(scan_id):
                 return scan
@@ -119,12 +132,13 @@ async def test_completed_scan_status_marks_absent_findings_not_observed(monkeypa
     monkeypatch.setattr(internal, "FindingService", lambda _db: lifecycle)
 
     summary = {"scanner_health": {"completed": ["trivy"]}}
-    result = await internal.update_scan_status_internal(
-        scan_id=scan_id,
-        data=ScanStatusUpdate(status="completed", summary_json=summary),
-        db=Db(),
-    )
+    with pytest.raises(internal.HTTPException) as exc:
+        await internal.update_scan_status_internal(
+            scan_id=scan_id,
+            data=ScanStatusUpdate(status="completed", summary_json=summary),
+            principal=principal,
+            db=Db(),
+        )
 
-    assert result is scan
-    assert scan.summary_json == summary
-    lifecycle.mark_not_observed_for_completed_scan.assert_awaited_once_with(scan)
+    assert exc.value.status_code == 409
+    lifecycle.mark_not_observed_for_completed_scan.assert_not_awaited()

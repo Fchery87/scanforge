@@ -56,7 +56,17 @@ class Worker:
         r2_public = os.environ.get("R2_PUBLIC_BASE_URL", "")
         api_base = os.environ.get("API_BASE_URL", "http://localhost:8000")
 
-        queue = QueueClient(redis_url=redis_url, redis_token=redis_token)
+        organization_id = os.environ.get("WORKER_ORGANIZATION_ID", "")
+        consumer_name = os.environ.get("WORKER_CONSUMER_NAME", "")
+        if not organization_id or not consumer_name:
+            raise RuntimeError("WORKER_ORGANIZATION_ID and WORKER_CONSUMER_NAME are required")
+
+        queue = QueueClient(
+            redis_url=redis_url,
+            redis_token=redis_token,
+            organization_id=organization_id,
+            consumer_name=consumer_name,
+        )
         r2 = R2Client(
             endpoint=r2_endpoint,
             bucket=r2_bucket,
@@ -94,15 +104,17 @@ class Worker:
 
     async def run(self):
         queue, r2, api_base = self._get_clients()
+        credential = os.environ.get("WORKER_CREDENTIAL", "")
         orchestrator = ScanOrchestrator(
             queue=queue,
             r2=r2,
             api_base_url=api_base,
+            worker_credential=credential,
         )
         orchestrator.set_notifier(
             NotificationDispatcher(
                 api_base_url=api_base,
-                internal_api_key=os.environ.get("INTERNAL_API_KEY", ""),
+                worker_credential=credential,
             )
         )
 

@@ -4,6 +4,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.db.enums import MemberRole
 from app.db.models import OrganizationMember, User
 from app.schemas.memberships import MemberInvite
 
@@ -78,7 +79,7 @@ class MembershipService:
         if member.role == "owner" and new_role != "owner":
             raise ValueError("Cannot change owner role")
 
-        member.role = new_role
+        member.role = MemberRole(new_role)
         await self.db.commit()
         await self.db.refresh(member)
         return member

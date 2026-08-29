@@ -91,7 +91,7 @@ async def github_webhook(
             commit_sha=payload.get("after"),
         )
 
-        scan, _, _ = await scan_service.create(str(repository_id), scan_data, user_id=None)
+        scan, _, _ = await scan_service.create(repository_id, scan_data, user_id=None)
 
         audit_service = AuditLogService(db)
         await audit_service.create(

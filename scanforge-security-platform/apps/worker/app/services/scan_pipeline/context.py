@@ -14,12 +14,15 @@ class ScanContext:
     branch: str | None
     commit_sha: str | None
     job_id: str
+    stream_id: str | None = None
     user_id: str | None = None
+    authoritative_status: str = "queued"
     repo_path: Path | None = None
     start_time: datetime = field(default_factory=lambda: datetime.now(UTC).replace(tzinfo=None))
     scanner_results: dict = field(default_factory=dict)
     findings: list = field(default_factory=list)
     artifact_uris: dict = field(default_factory=dict)
+    summary_json: dict = field(default_factory=dict)
     scanner_run_ids: dict = field(default_factory=dict)
     changed_files: list[str] | None = None
     expected_scanners: list[str] | None = None

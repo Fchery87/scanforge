@@ -23,19 +23,19 @@ SCAN_TIMEOUT = 1800
 
 
 class ScanExecutionStage:
-    def __init__(self, r2: R2Client, api_base_url: str, internal_api_key: str) -> None:
+    def __init__(self, r2: R2Client, api_base_url: str, worker_credential: str) -> None:
         self.r2 = r2
         self.api_base_url = api_base_url
-        self.internal_api_key = internal_api_key
+        self.worker_credential = worker_credential
 
     @property
     def _headers(self) -> dict[str, str]:
-        return {"X-Service-Key": self.internal_api_key}
+        return {"X-Worker-Credential": self.worker_credential}
 
     def _redact(self, value: str) -> str:
         redacted = value or ""
-        if self.internal_api_key:
-            redacted = redacted.replace(self.internal_api_key, "[REDACTED]")
+        if self.worker_credential:
+            redacted = redacted.replace(self.worker_credential, "[REDACTED]")
         return re.sub(r"Authorization: Basic\s+\S+", "Authorization: Basic [REDACTED]", redacted)
 
     async def prepare_repository(self, context: ScanContext) -> Path:
