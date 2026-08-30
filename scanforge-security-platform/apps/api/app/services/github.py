@@ -193,6 +193,24 @@ class GitHubService:
             resp.raise_for_status()
             return resp.json()["token"]
 
+    async def repository_is_accessible(
+        self,
+        installation_id: str,
+        owner_name: str,
+        repo_name: str,
+    ) -> bool:
+        token = await self._get_installation_token(installation_id)
+        async with httpx.AsyncClient(follow_redirects=False) as client:
+            response = await client.get(
+                f"https://api.github.com/repos/{owner_name}/{repo_name}",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+            )
+        return response.status_code == httpx.codes.OK
+
     async def list_repositories(self, installation_id: str, per_page: int = 100) -> list[GitHubRepoItem]:
         token = await self._get_installation_token(installation_id)
         repos: list[GitHubRepoItem] = []

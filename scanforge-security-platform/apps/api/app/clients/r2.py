@@ -39,6 +39,18 @@ class R2Client:
             )
         return self._s3
 
+    def generate_presigned_upload_url(
+        self,
+        key: str,
+        content_type: str,
+        expires_in: int = 300,
+    ) -> str:
+        return self.s3.generate_presigned_url(
+            "put_object",
+            Params={"Bucket": self.bucket, "Key": key, "ContentType": content_type},
+            ExpiresIn=expires_in,
+        )
+
     def generate_presigned_url(self, key: str, expires_in: int = 300) -> str:
         return self.s3.generate_presigned_url(
             "get_object",

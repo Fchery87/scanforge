@@ -117,7 +117,7 @@ async def test_update_triage_sets_assignee_and_due_date_and_records_event():
     )
 
     assert result is finding
-    assert finding.assignee_user_id == assignee_user_id
+    assert finding.assignee_user_id == str(assignee_user_id)
     assert finding.due_date == due_date
     event = db.add.call_args.args[0]
     assert isinstance(event, FindingEvent)

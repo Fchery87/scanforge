@@ -1,4 +1,5 @@
 import os
+import shutil
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,6 +29,47 @@ class ScannerAdapter(ABC):
     @abstractmethod
     def run(self, repo_path: Path) -> ScannerResult:
         raise NotImplementedError
+
+    def run_contained(self, repo_path: Path, runtime) -> ScannerResult:
+        """Execute this adapter inside the configured disposable runtime.
+
+        Private-beta coordinators call this method. Existing ``run`` methods
+        remain the local-development implementation and are never selected in
+        private-beta mode.
+        """
+        from tempfile import mkdtemp
+
+        from app.runtime.models import ScanRuntimeRequest
+
+        output_directory = Path(mkdtemp(prefix=f"scan_{self.name}_output_"))
+        try:
+            request = ScanRuntimeRequest(
+                executable=self.binary_name,
+                arguments=self.runtime_arguments(),
+                source_directory=repo_path,
+                output_directory=output_directory,
+                timeout_seconds=self.runtime_timeout_seconds(),
+            )
+            completed = runtime.run(request)
+            return self.parse_runtime_result(completed, output_directory)
+        finally:
+            shutil.rmtree(output_directory, ignore_errors=True)
+
+    def runtime_arguments(self) -> tuple[str, ...]:
+        return ("--version",)
+
+    def runtime_timeout_seconds(self) -> int:
+        return 600
+
+    def parse_runtime_result(self, completed, _output_directory: Path) -> ScannerResult:
+        return ScannerResult(
+            scanner_name=self.name,
+            success=completed.exit_code == 0 and not completed.timed_out,
+            raw_output={},
+            artifact_paths=[],
+            duration_ms=completed.duration_ms,
+            error=completed.stderr,
+        )
 
     def get_version(self) -> str:
         import subprocess

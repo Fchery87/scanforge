@@ -40,7 +40,7 @@ services:
       - key: CHECKOV_BINARY
         value: /usr/local/bin/checkov
 
-  # ─── Worker Service ────────────────────────────────────────────────
+  # ─── Dedicated Worker Service ─────────────────────────────────────
   - type: worker
     name: scanforge-worker
     runtime: python_3.12
@@ -48,31 +48,16 @@ services:
     plan: starter
     branch: main
     autoDeploy: true
+    # Dedicated beta hosts use infra/worker. Each host is organization-bound.
     envVars:
       - key: APP_ENV
-        value: production
-
-      # Shared — from environment groups
-      - fromGroup: shared-app
-      - fromGroup: shared-db
-      - fromGroup: storage
+        value: private-beta
+      - key: WORKER_CONCURRENCY
+        value: "1"
+      - key: AI_ENABLED
+        value: "false"
+      - fromGroup: worker-beta
       - fromGroup: queue
-
-      # Scanner binaries
-      - key: TRIVY_BINARY
-        value: /usr/local/bin/trivy
-      - key: GITLEAKS_BINARY
-        value: /usr/local/bin/gitleaks
-      - key: OSV_SCANNER_BINARY
-        value: /usr/local/bin/osv-scanner
-      - key: SYFT_BINARY
-        value: /usr/local/bin/syft
-      - key: GRYPE_BINARY
-        value: /usr/local/bin/grype
-      - key: SEMGREP_BINARY
-        value: /usr/local/bin/semgrep
-      - key: CHECKOV_BINARY
-        value: /usr/local/bin/checkov
 
   # ─── Nightly Scan Scheduler Cron ──────────────────────────────────
   - type: cron
@@ -123,13 +108,21 @@ services:
 #   NEON_AUTH_AUDIENCE=scanforge-api
 #   NEON_AUTH_JWKS_URL=https://console.neon.tech/project/.../.well-known/jwks.json
 #
-# storage
+# Storage credentials are API-only. Dedicated workers receive presigned URLs
+# and must not be provisioned with any R2 account credential.
 #   R2_ENDPOINT=https://...r2.cloudflarestorage.com
 #   R2_BUCKET=scanforge-artifacts
 #   R2_ACCESS_KEY_ID=...
 #   R2_SECRET_ACCESS_KEY=...
 #   R2_PUBLIC_BASE_URL=https://cdn.scanforge.app
 #
+  # worker-beta
+#   API_BASE_URL=https://api.scanforge.app
+#   WORKER_CREDENTIAL=...             # one organization only
+#   WORKER_ORGANIZATION_ID=...
+#   WORKER_CONSUMER_NAME=...
+#   SCANNER_IMAGE=registry.example/scanforge-scanners@sha256:<64-hex-digest>
+#   Never include DATABASE_URL, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY,
+#   WORKER_CREDENTIAL_PEPPER, or SCHEDULER_API_KEY in this group.
+#
 # queue
-#   UPSTASH_REDIS_REST_URL=https://...upstash.io
-#   UPSTASH_REDIS_REST_TOKEN=...

@@ -41,7 +41,7 @@ async def run_cleanup(purge_scan_queue: bool = False):
     )
 
     reclaimed = await queue.reclaim_stale_jobs()
-    _log.info("reclaimed stale scan jobs", extra={"reclaimed": len(reclaimed)})
+    _log.info("reclaimed stale scan jobs", extra={"reclaimed": reclaimed})
 
     if purge_scan_queue:
         deleted_keys = await queue.clear_scan_queues()

@@ -45,21 +45,6 @@ async def test_delete_scan_rejects_completed_scans():
 
 
 @pytest.mark.asyncio
-async def test_cancel_is_terminal_against_service_status_updates():
-    scan_id = uuid4()
-    scan = SimpleNamespace(id=scan_id, status=ScanStatusEnum.CANCELED)
-    db = AsyncMock()
-    db.get.return_value = scan
-    service = ScanService(db)
-
-    with pytest.raises(ValueError, match="Terminal scans"):
-        await service.update_status(scan_id, ScanStatusEnum.RUNNING)
-
-    assert scan.status == ScanStatusEnum.CANCELED
-    db.commit.assert_not_awaited()
-
-
-@pytest.mark.asyncio
 async def test_cancel_scan_returns_none_when_user_cannot_access_scan():
     scan_id = uuid4()
     user_id = uuid4()

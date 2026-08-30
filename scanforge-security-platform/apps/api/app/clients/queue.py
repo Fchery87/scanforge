@@ -1,5 +1,6 @@
 import json
 from datetime import UTC, datetime
+from uuid import UUID
 
 import httpx
 
@@ -7,61 +8,82 @@ from app.contracts.queue import QueueJob, ScanJobType
 
 
 class QueueClient:
-    GROUP = "scanforge-workers"
-    SCAN_TIMEOUT = 1800
-
     def __init__(self, redis_url: str, redis_token: str):
         self.redis_url = redis_url
         self.redis_token = redis_token
-        self._headers = {"Authorization": f"Bearer {redis_token}", "Content-Type": "application/json"}
-
-    @staticmethod
-    def stream_key(organization_id: str) -> str:
-        return f"queue:scans:{organization_id}"
-
-    @staticmethod
-    def dlq_key(organization_id: str) -> str:
-        return f"queue:scans:{organization_id}:dlq"
+        self._headers = {
+            "Authorization": f"Bearer {redis_token}",
+            "Content-Type": "application/json",
+        }
 
     async def _command(self, *args: str | int | float) -> dict:
+        """Send a Redis command as a JSON array to the Upstash REST API."""
         async with httpx.AsyncClient() as client:
-            response = await client.post(self.redis_url, headers=self._headers, json=list(args), timeout=30.0)
+            response = await client.post(
+                self.redis_url,
+                headers=self._headers,
+                json=list(args),
+                timeout=30.0,
+            )
             response.raise_for_status()
             return response.json()
 
-    async def ensure_group(self, organization_id: str) -> None:
-        stream = self.stream_key(organization_id)
-        try:
-            await self._command("XGROUP", "CREATE", stream, self.GROUP, "0", "MKSTREAM")
-        except httpx.HTTPStatusError as exc:
-            if "BUSYGROUP" not in exc.response.text:
-                raise
-
-    async def enqueue(self, organization_id: str, job_type: ScanJobType, payload: dict, delay_seconds: int = 0) -> str:
+    async def enqueue(
+        self,
+        job_type: ScanJobType,
+        payload: dict,
+        *,
+        organization_id: UUID | str,
+        delay_seconds: int = 0,
+    ) -> str:
         if delay_seconds > 0:
-            raise NotImplementedError("Delayed jobs are not implemented for scan streams")
+            raise NotImplementedError("Delayed jobs are not implemented for the scan queue")
+
         job = QueueJob.create(job_type, payload)
-        stream = self.stream_key(organization_id)
-        await self.ensure_group(organization_id)
-        dedupe_key = f"queue:scans:{organization_id}:enqueued:{job.job_id}"
-        created = await self._command("SETNX", dedupe_key, "1")
-        if int(created.get("result", 0)) == 0:
+        job_json = job.model_dump_json()
+        dedupe_key = f"queue:scans:{organization_id}:dedupe:{job.job_id}"
+        claimed = await self._command("SET", dedupe_key, "1", "NX", "EX", 86400)
+        if claimed.get("result") is None:
             return job.job_id
-        await self._command("EXPIRE", dedupe_key, 604800)
-        await self._command("XADD", stream, "*", "job", job.model_dump_json())
+
+        try:
+            await self._command(
+                "XADD",
+                self._scan_queue_key(organization_id),
+                "*",
+                "job",
+                job_json,
+                "job_id",
+                job.job_id,
+            )
+        except Exception:
+            await self._command("DEL", dedupe_key)
+            raise
+
         return job.job_id
 
-    async def get_queue_length(self, organization_id: str) -> int:
-        result = await self._command("XLEN", self.stream_key(organization_id))
-        return int(result.get("result", 0))
+    @staticmethod
+    def _scan_queue_key(organization_id: UUID | str) -> str:
+        return f"queue:scans:{organization_id}"
 
     async def get_job_status(self, job_id: str) -> dict | None:
         result = await self._command("GET", f"job:{job_id}:status")
-        return json.loads(result["result"]) if result.get("result") else None
+        if result and result.get("result"):
+            return json.loads(result["result"])
+        return None
 
-    async def update_job_status(self, job_id: str, stage: str, metadata: dict | None = None) -> None:
-        data = {"stage": stage, "updated_at": datetime.now(UTC).isoformat(), **(metadata or {})}
-        await self._command("SETEX", f"job:{job_id}:status", 86400, json.dumps(data))
+    async def update_job_status(
+        self,
+        job_id: str,
+        stage: str,
+        metadata: dict | None = None,
+    ) -> None:
+        status_data = {
+            "stage": stage,
+            "updated_at": datetime.now(UTC).isoformat(),
+            **(metadata or {}),
+        }
+        await self._command("SETEX", f"job:{job_id}:status", 86400, json.dumps(status_data))
 
     async def increment_retry(self, job_id: str) -> int:
         result = await self._command("INCR", f"job:{job_id}:retries")

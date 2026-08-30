@@ -5,6 +5,7 @@ import os
 from typing import TYPE_CHECKING
 
 from app.core.logging import get_logger
+from app.security.secret_evidence import assert_ai_disabled_for_private_beta
 from app.services.ai_investigation.annotation import AIAnnotation
 from app.services.ai_investigation.cache import AnnotationCache
 
@@ -31,6 +32,7 @@ def _make_provider() -> AIProvider:
 
 class AIInvestigationStage:
     def __init__(self, redis_url: str | None = None, redis_token: str | None = None) -> None:
+        assert_ai_disabled_for_private_beta()
         self._enabled = os.environ.get("AI_ENABLED", "false").lower() == "true"
         self._max_findings = int(os.environ.get("AI_MAX_FINDINGS_PER_SCAN", "50"))
         self._provider: AIProvider | None = None

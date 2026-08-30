@@ -36,7 +36,11 @@ async def test_scan_lifecycle_program_contract_preserves_core_seams():
     )
 
     assert created_scan is scan
-    queue.enqueue.assert_awaited_once_with(str(org_id), "scan.repo.full", {"scan_id": str(scan.id)})
+    queue.enqueue.assert_awaited_once_with(
+        "scan.repo.full",
+        {"scan_id": str(scan.id)},
+        organization_id=org_id,
+    )
 
     candidate = CanonicalFindingCandidate.model_validate(
         {

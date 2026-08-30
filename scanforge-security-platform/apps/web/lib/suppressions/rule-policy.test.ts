@@ -1,4 +1,4 @@
-import { test } from "vitest";
+import test from "node:test";
 import assert from "node:assert/strict";
 
 import { describeSuppressionScope, formatExpiryDisplay, requiresApproval, getDeleteConfirmation, getToggleMessage } from "./rule-policy.ts";

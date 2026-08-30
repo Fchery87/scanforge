@@ -1,9 +1,9 @@
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from unittest.mock import AsyncMock
 
 from app.main import app
 from app.middleware.auth import get_current_user
@@ -11,8 +11,8 @@ from app.middleware.auth import get_current_user
 
 @pytest.mark.asyncio
 async def test_repository_connect_returns_403_for_viewer_member(monkeypatch):
-    from app.api.v1.routes import repositories
     from app.api.v1 import route_auth
+    from app.api.v1.routes import repositories
 
     org_id = uuid4()
     project_id = uuid4()

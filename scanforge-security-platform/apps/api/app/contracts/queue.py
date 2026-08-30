@@ -12,7 +12,7 @@ class QueueJob(BaseModel):
     job_id: str
     payload: dict = Field(default_factory=dict)
     created_at: str
-    stream_id: str | None = Field(default=None, exclude=True)
+    stream_entry_id: str | None = Field(default=None, exclude=True)
 
     @field_validator("payload")
     @classmethod
@@ -24,17 +24,11 @@ class QueueJob(BaseModel):
 
     @classmethod
     def create(cls, job_type: ScanJobType, payload: dict) -> "QueueJob":
-        scan_id = payload.get("scan_id")
-        if not isinstance(scan_id, str) or not scan_id:
-            # Let Pydantic expose the contract violation as a ValidationError.
-            return cls(
-                job_type=job_type,
-                job_id="",
-                payload=payload,
-                created_at=datetime.now(UTC).isoformat(),
-            )
+        scan_id = payload.get("scan_id", "")
         return cls(
             job_type=job_type,
+            # A scan can be delivered more than once by Redis Streams.  The scan ID
+            # is the stable idempotency key across those deliveries.
             job_id=scan_id,
             payload=payload,
             created_at=datetime.now(UTC).isoformat(),

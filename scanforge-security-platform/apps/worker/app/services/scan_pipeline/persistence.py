@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import httpx
 
 from app.core.logging import get_logger
+from app.security.secret_evidence import sanitize_secret_finding
 from app.services.scan_pipeline.context import ScanContext
 
 if TYPE_CHECKING:
@@ -27,15 +28,16 @@ class PersistenceStage:
             response = await client.post(
                 f"{self.api_base_url}/api/v1/internal/scans/{context.scan_id}/complete",
                 json={
-                    "findings": context.findings,
+                    "findings": [sanitize_secret_finding(finding) for finding in context.findings],
                     "scanner_runs": [
                         {
                             "scanner_name": name,
                             "scanner_version": result.version,
                             "status": "completed" if result.success else "failed",
                             "duration_ms": result.duration_ms,
-                            "exit_code": result.exit_code,
-                            "error_message": result.error,
+                            "exit_code": 0 if result.success else 1,
+                            "error_message": result.error or None,
+                            "metadata_json": {},
                         }
                         for name, result in context.scanner_results.items()
                     ],
@@ -46,6 +48,7 @@ class PersistenceStage:
                 timeout=60.0,
             )
             response.raise_for_status()
+
     async def send_notifications(
         self,
         context: ScanContext,
@@ -70,14 +73,10 @@ class PersistenceStage:
                         scan_id=context.scan_id,
                         org_id=context.organization_id,
                         project_id=context.project_id,
-                        finding_title=finding.get("title", "Unknown secret"),
                     )
                     break
-        except Exception as exc:
-            _log.warning(
-                "failed to send scan notifications",
-                extra={"scan_id": context.scan_id, "error": str(exc)},
-            )
+        except Exception:
+            _log.warning("failed to send scan notifications", extra={"scan_id": context.scan_id})
 
     async def send_failure_notification(
         self,

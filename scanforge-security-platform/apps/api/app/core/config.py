@@ -53,7 +53,6 @@ class Settings(BaseSettings):
     WORKER_CREDENTIAL_PEPPER: str = ""
     SCHEDULER_API_KEY: str = ""
 
-
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
     SMTP_USERNAME: str = ""

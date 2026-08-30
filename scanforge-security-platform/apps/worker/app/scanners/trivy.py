@@ -26,6 +26,38 @@ class TrivyAdapter(ScannerAdapter):
         except Exception:
             return ""
 
+    def runtime_arguments(self) -> tuple[str, ...]:
+        return (
+            "fs",
+            "--no-progress",
+            "--skip-version-check",
+            "--format",
+            "json",
+            "--output",
+            "/workspace/output/trivy-results.json",
+            "--scanners",
+            "vuln,secret,misconfig",
+            "/workspace/source",
+        )
+
+    def parse_runtime_result(self, completed, output_directory: Path) -> ScannerResult:
+        output_file = output_directory / "trivy-results.json"
+        output = {}
+        if output_file.exists():
+            try:
+                output = json.loads(output_file.read_text())
+            except json.JSONDecodeError:
+                output = {}
+        return ScannerResult(
+            scanner_name=self.name,
+            success=completed.exit_code in (0, 1) and not completed.timed_out,
+            raw_output=output,
+            artifact_paths=[output_file] if output_file.exists() else [],
+            version=self.get_version(),
+            duration_ms=completed.duration_ms,
+            error=completed.stderr,
+        )
+
     def run(self, repo_path: Path) -> ScannerResult:
         import time
 

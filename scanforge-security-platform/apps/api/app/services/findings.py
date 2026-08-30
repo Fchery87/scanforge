@@ -1,7 +1,6 @@
-import json
+import hashlib
 from collections.abc import Sequence
 from datetime import UTC, date, datetime
-from hashlib import sha256
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_, select
@@ -29,6 +28,7 @@ from app.services.finding_lifecycle import (
     validate_transition,
 )
 from app.services.risk_scoring import calculate_risk_score
+from app.services.secret_safety import sanitize_secret_mapping
 
 
 class FindingService:
@@ -167,7 +167,7 @@ class FindingService:
             if not member_exists:
                 raise ValueError("Assignee must be a member of the organization")
 
-        finding.assignee_user_id = assignee_user_id  # type: ignore[assignment]
+        finding.assignee_user_id = str(assignee_user_id) if assignee_user_id else None
         finding.due_date = due_date
 
         event = FindingEvent(
@@ -207,6 +207,8 @@ class FindingService:
                 else CanonicalFindingCandidate.model_validate(finding_input)
             )
             fingerprint = candidate.canonical_fingerprint
+            candidate_data = sanitize_secret_mapping(candidate.model_dump())
+            candidate = CanonicalFindingCandidate.model_validate(candidate_data)
             instance_data = candidate.instance.model_dump() if candidate.instance else {}
             references_data = [reference.model_dump() for reference in candidate.references]
 
@@ -253,35 +255,50 @@ class FindingService:
 
             await self.db.flush()
 
-            occurrence_fingerprint = sha256(
-                json.dumps(
-                    {
-                        "finding": fingerprint,
-                        "path": instance_data.get("path"),
-                        "line_start": instance_data.get("line_start"),
-                        "line_end": instance_data.get("line_end"),
-                        "package_name": instance_data.get("package_name"),
-                    },
-                    sort_keys=True,
-                    separators=(",", ":"),
+            occurrence_fingerprint = hashlib.sha256(
+                "|".join(
+                    [
+                        fingerprint,
+                        str(instance_data.get("path") or ""),
+                        str(instance_data.get("line_start") or ""),
+                        str(instance_data.get("line_end") or ""),
+                        str(instance_data.get("package_name") or ""),
+                        str(instance_data.get("installed_version") or ""),
+                    ]
                 ).encode()
             ).hexdigest()
-            instance = FindingInstance(
-                finding_id=finding.id,
-                scan_id=scan_id,
-                occurrence_fingerprint=occurrence_fingerprint,
-                path=instance_data.get("path"),
-                line_start=instance_data.get("line_start"),
-                line_end=instance_data.get("line_end"),
-                package_name=instance_data.get("package_name"),
-                installed_version=instance_data.get("installed_version"),
-                fixed_version=instance_data.get("fixed_version"),
-                evidence_json=instance_data,
-                ai_annotation=instance_data.get("ai_annotation"),
+            existing_instance = await self.db.scalar(
+                select(FindingInstance.id).where(
+                    FindingInstance.scan_id == scan_id,
+                    FindingInstance.occurrence_fingerprint == occurrence_fingerprint,
+                )
             )
-            self.db.add(instance)
+            if existing_instance is None:
+                instance = FindingInstance(
+                    finding_id=finding.id,
+                    scan_id=scan_id,
+                    occurrence_fingerprint=occurrence_fingerprint,
+                    path=instance_data.get("path"),
+                    line_start=instance_data.get("line_start"),
+                    line_end=instance_data.get("line_end"),
+                    package_name=instance_data.get("package_name"),
+                    installed_version=instance_data.get("installed_version"),
+                    fixed_version=instance_data.get("fixed_version"),
+                    evidence_json=instance_data,
+                    ai_annotation=instance_data.get("ai_annotation"),
+                )
+                self.db.add(instance)
 
             for ref_data in references_data or []:
+                existing_reference = await self.db.scalar(
+                    select(FindingReference.id).where(
+                        FindingReference.finding_id == finding.id,
+                        FindingReference.reference_type == ref_data.get("type", "unknown"),
+                        FindingReference.reference_value == ref_data.get("value", ""),
+                    )
+                )
+                if existing_reference is not None:
+                    continue
                 reference = FindingReference(
                     finding_id=finding.id,
                     reference_type=ref_data.get("type", "unknown"),
@@ -292,6 +309,8 @@ class FindingService:
 
         if commit:
             await self.db.commit()
+        else:
+            await self.db.flush()
         return new_count, updated_count
 
     async def _list_open_findings_for_repository(self, repository_id: str) -> list[Finding]:
@@ -338,8 +357,11 @@ class FindingService:
             )
             updated += 1
 
-        if updated and commit:
-            await self.db.commit()
+        if updated:
+            if commit:
+                await self.db.commit()
+            else:
+                await self.db.flush()
 
         return updated
 
@@ -350,6 +372,7 @@ class FindingService:
             seen_fingerprints=set((scan.summary_json or {}).get("seen_fingerprints") or []),
             scan_summary=scan.summary_json,
         )
+
     async def suppress(
         self,
         finding_id: UUID,

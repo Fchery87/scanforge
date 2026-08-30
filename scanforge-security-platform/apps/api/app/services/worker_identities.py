@@ -1,89 +1,89 @@
 import hashlib
 import hmac
 import secrets
-from dataclasses import dataclass
+from collections.abc import Iterable
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
-from app.db.models import WorkerIdentity
-
-
-@dataclass(frozen=True)
-class WorkerPrincipal:
-    worker_id: UUID
-    organization_id: UUID
-    capabilities: frozenset[str]
-
-
-def hash_worker_credential(credential: str, pepper: str) -> str:
-    return hmac.new(pepper.encode(), credential.encode(), hashlib.sha256).hexdigest()
-
-
-def generate_worker_credential() -> str:
-    return secrets.token_urlsafe(32)
+from app.db.models.worker_identity import WorkerIdentity
 
 
 class WorkerIdentityService:
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, pepper: str):
         self.db = db
+        self.pepper = pepper
 
-    async def create(
+    def hash_credential(self, credential: str) -> str:
+        return hmac.new(self.pepper.encode(), credential.encode(), hashlib.sha256).hexdigest()
+
+    @staticmethod
+    def generate_credential() -> str:
+        return secrets.token_urlsafe(32)
+
+    def create_identity(
         self,
+        *,
         organization_id: UUID,
         name: str,
-        capabilities: set[str],
+        capabilities: Iterable[str],
+        credential: str | None = None,
     ) -> tuple[WorkerIdentity, str]:
-        credential = generate_worker_credential()
+        plaintext_credential = credential or self.generate_credential()
         identity = WorkerIdentity(
-            organization_id=str(organization_id),
+            id=uuid4(),
+            organization_id=organization_id,
             name=name,
-            credential_hash=hash_worker_credential(credential, settings.WORKER_CREDENTIAL_PEPPER),
-            capabilities_json=sorted(capabilities),
+            credential_hash=self.hash_credential(plaintext_credential),
+            capabilities_json=sorted(set(capabilities)),
         )
         self.db.add(identity)
-        await self.db.commit()
-        await self.db.refresh(identity)
-        return identity, credential
+        return identity, plaintext_credential
 
-    async def rotate(self, worker_id: UUID) -> tuple[WorkerIdentity, str] | None:
-        identity = await self.db.get(WorkerIdentity, worker_id)
-        if not identity or identity.disabled_at is not None:
+    async def authenticate(self, credential: str | None) -> WorkerIdentity | None:
+        if not credential:
             return None
-        credential = generate_worker_credential()
-        identity.credential_hash = hash_worker_credential(credential, settings.WORKER_CREDENTIAL_PEPPER)
-        await self.db.commit()
-        await self.db.refresh(identity)
-        return identity, credential
 
-    async def disable(self, worker_id: UUID) -> bool:
-        identity = await self.db.get(WorkerIdentity, worker_id)
-        if not identity:
-            return False
-        identity.disabled_at = datetime.now(UTC)
-        await self.db.commit()
-        return True
-
-    async def authenticate(self, credential: str | None) -> WorkerPrincipal | None:
-        if not credential or not settings.WORKER_CREDENTIAL_PEPPER:
-            return None
-        digest = hash_worker_credential(credential, settings.WORKER_CREDENTIAL_PEPPER)
+        credential_hash = self.hash_credential(credential)
         result = await self.db.execute(
-            select(WorkerIdentity).where(
-                WorkerIdentity.credential_hash == digest,
-                WorkerIdentity.disabled_at.is_(None),
-            )
+            select(WorkerIdentity).where(WorkerIdentity.credential_hash == credential_hash)
         )
         identity = result.scalar_one_or_none()
-        if not identity:
+        if identity is None or identity.disabled_at is not None:
+            return None
+        if not hmac.compare_digest(identity.credential_hash, credential_hash):
             return None
         identity.last_seen_at = datetime.now(UTC)
         await self.db.commit()
-        return WorkerPrincipal(
-            worker_id=identity.id,
-            organization_id=UUID(str(identity.organization_id)),
-            capabilities=frozenset(identity.capabilities_json),
+        return identity
+
+    async def get_identity(self, worker_id: UUID) -> WorkerIdentity | None:
+        return await self.db.get(WorkerIdentity, str(worker_id))
+
+    async def disable_identity(self, worker_id: UUID) -> WorkerIdentity | None:
+        identity = await self.get_identity(worker_id)
+        if identity is None:
+            return None
+        if identity.disabled_at is None:
+            identity.disabled_at = datetime.now(UTC)
+            await self.db.commit()
+        return identity
+
+    async def rotate_identity(self, worker_id: UUID) -> tuple[WorkerIdentity, str]:
+        identity = await self.get_identity(worker_id)
+        if identity is None:
+            raise ValueError("Worker identity was not found")
+        if identity.disabled_at is not None:
+            raise ValueError("Disabled worker identities cannot be rotated")
+
+        identity.disabled_at = datetime.now(UTC)
+        await self.db.flush()
+        replacement, credential = self.create_identity(
+            organization_id=identity.organization_id,
+            name=identity.name,
+            capabilities=identity.capabilities_json,
         )
+        await self.db.commit()
+        return replacement, credential

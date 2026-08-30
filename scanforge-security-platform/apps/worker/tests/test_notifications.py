@@ -1,6 +1,6 @@
+import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
-import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 

@@ -7,22 +7,27 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.clients.r2 import R2Client
+from app.core.config import settings
 from app.db.enums import ScanStatus
-from app.db.models import OrganizationIntegration, OrganizationMember, Project, Repository, Scan
+from app.db.models import OrganizationIntegration, Project, Repository, Scan
 from app.db.models.scan import ScannerRun
 from app.db.session import get_db
-from app.middleware.service_auth import require_scheduler_auth, require_service_auth
+from app.middleware.service_auth import (
+    WorkerPrincipal,
+    require_scheduler_auth,
+    require_service_auth,
+)
 from app.schemas.canonical_findings import CanonicalFindingCandidate
 from app.schemas.notifications import NotificationCreate
 from app.schemas.scan_completion import ScanCompletionRequest
-from app.schemas.scans import ScanProgressUpdate
+from app.schemas.scans import ScanStatusUpdate
 from app.services.findings import FindingService
 from app.services.github import GitHubService
 from app.services.notifications import NotificationService
 from app.services.scan_completion import ScanCompletionConflict, ScanCompletionService
 from app.services.scan_lifecycle import ScanLifecycleService
 from app.services.scan_schedules import ScanScheduleService
-from app.services.worker_identities import WorkerPrincipal
 
 logger = logging.getLogger(__name__)
 
@@ -37,42 +42,99 @@ router = APIRouter(prefix="/internal", tags=["internal"])
 
 
 def require_capability(capability: str):
-    async def dependency(principal: WorkerPrincipal = Depends(require_service_auth)) -> WorkerPrincipal:
+    async def dependency(
+        principal: WorkerPrincipal = Depends(require_service_auth),
+    ) -> WorkerPrincipal:
         if capability not in principal.capabilities:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Worker capability required")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Worker capability required",
+            )
         return principal
 
     return dependency
 
 
-async def require_scan_access(scan_id: UUID, principal: WorkerPrincipal, db: AsyncSession) -> Scan:
+async def require_scan_access(
+    scan_id: UUID,
+    principal: WorkerPrincipal,
+    db: AsyncSession,
+) -> tuple[Scan, Project]:
     result = await db.execute(
-        select(Scan)
+        select(Scan, Project)
         .join(Project, Project.id == Scan.project_id)
-        .where(Scan.id == scan_id, Project.organization_id == str(principal.organization_id))
+        .where(
+            Scan.id == str(scan_id),
+            Project.organization_id == str(principal.organization_id),
+        )
     )
-    scan = result.scalar_one_or_none()
-    if not scan:
+    row = result.first()
+    if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan not found")
-    return scan
+    return row.Scan, row.Project
+
+
+class ArtifactUploadRequest(BaseModel):
+    scanner_name: str
+    filename: str
+    content_type: str = "application/json"
+    size_bytes: int
+
+
+@router.post("/scans/{scan_id}/artifacts/upload-url")
+async def create_artifact_upload_url(
+    scan_id: UUID,
+    data: ArtifactUploadRequest,
+    principal: WorkerPrincipal = Depends(require_capability("artifacts:write")),
+    db: AsyncSession = Depends(get_db),
+):
+    scan, project = await require_scan_access(scan_id, principal, db)
+    if data.size_bytes < 0 or data.size_bytes > 50 * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Artifact too large")
+    if not _valid_artifact_component(data.scanner_name) or not _valid_artifact_component(data.filename):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid artifact path")
+    if data.content_type not in {
+        "application/json",
+        "application/sarif+json",
+        "application/vnd.cyclonedx+json",
+        "text/plain",
+    }:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported artifact type")
+
+    key = (
+        f"scan-artifacts/{project.organization_id}/{scan.id}/"
+        f"{data.scanner_name}/{data.filename}"
+    )
+    client = R2Client(
+        endpoint=settings.R2_ENDPOINT,
+        bucket=settings.R2_BUCKET,
+        access_key_id=settings.R2_ACCESS_KEY_ID,
+        secret_access_key=settings.R2_SECRET_ACCESS_KEY,
+    )
+    return {
+        "key": key,
+        "upload_url": client.generate_presigned_upload_url(key, data.content_type),
+    }
+
+
+def _valid_artifact_component(value: str) -> bool:
+    return (
+        bool(value)
+        and value not in {".", ".."}
+        and "/" not in value
+        and "\\" not in value
+        and "\x00" not in value
+    )
 
 
 @router.post("/notifications")
 async def create_notification(
     data: NotificationCreate,
-    principal: WorkerPrincipal = Depends(require_capability("notifications:write")),
+    _principal: WorkerPrincipal = Depends(require_capability("notifications:write")),
     db: AsyncSession = Depends(get_db),
 ):
     if not data.user_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="user_id required")
-    member = await db.scalar(
-        select(OrganizationMember).where(
-            OrganizationMember.organization_id == str(principal.organization_id),
-            OrganizationMember.user_id == str(data.user_id),
-        )
-    )
-    if not member:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     service = NotificationService(db)
     return await service.create(
@@ -92,33 +154,34 @@ async def complete_scan(
     principal: WorkerPrincipal = Depends(require_capability("scans:write")),
     db: AsyncSession = Depends(get_db),
 ):
+    await require_scan_access(scan_id, principal, db)
     try:
-        await require_scan_access(scan_id, principal, db)
-        return await ScanCompletionService(db).complete(scan_id, principal.organization_id, data)
+        return await ScanCompletionService(db).complete(
+            scan_id,
+            principal.organization_id,
+            data,
+        )
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ScanCompletionConflict as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
+
 @router.patch("/scans/{scan_id}/status")
 async def update_scan_status_internal(
     scan_id: UUID,
-    data: ScanProgressUpdate,
+    data: ScanStatusUpdate,
     principal: WorkerPrincipal = Depends(require_capability("scans:write")),
     db: AsyncSession = Depends(get_db),
 ):
-    scan = await require_scan_access(scan_id, principal, db)
-
+    scan, _project = await require_scan_access(scan_id, principal, db)
     if scan.status in (ScanStatus.CANCELED, ScanStatus.COMPLETED):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Terminal scan state cannot be overwritten")
     if data.status == ScanStatus.COMPLETED.value:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Use the atomic completion endpoint")
 
-    status_value = data.status or ""
-    if status_value not in {ScanStatus.RUNNING.value, ScanStatus.FAILED.value}:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Invalid progress status")
-
-    scan.status = ScanStatus(status_value)
+    if data.status:
+        scan.status = ScanStatus(data.status)
     if data.error_message is not None:
         scan.error_message = data.error_message
     if data.summary_json is not None:
@@ -171,15 +234,10 @@ async def update_scanner_run(
     principal: WorkerPrincipal = Depends(require_capability("scans:write")),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(ScannerRun)
-        .join(Scan, Scan.id == ScannerRun.scan_id)
-        .join(Project, Project.id == Scan.project_id)
-        .where(ScannerRun.id == run_id, Project.organization_id == str(principal.organization_id))
-    )
-    run = result.scalar_one_or_none()
+    run = await db.get(ScannerRun, str(run_id))
     if not run:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scanner run not found")
+    await require_scan_access(UUID(str(run.scan_id)), principal, db)
 
     if data.status is not None:
         run.status = ScanStatus(data.status)
@@ -210,21 +268,23 @@ async def persist_scan_findings(
     principal: WorkerPrincipal = Depends(require_capability("findings:write")),
     db: AsyncSession = Depends(get_db),
 ):
-    scan = await require_scan_access(scan_id, principal, db)
+    scan, _project = await require_scan_access(scan_id, principal, db)
     if not data.findings:
         return {"inserted": 0}
-
-    repo_id, proj_id = scan.repository_id, scan.project_id
 
     service = FindingService(db)
     new_count, updated_count = await service.upsert_from_scan(
         scan_id=str(scan_id),
-        repository_id=str(repo_id),
-        project_id=str(proj_id),
+        repository_id=str(scan.repository_id),
+        project_id=str(scan.project_id),
         normalized_findings=data.findings,
     )
 
     return {"inserted": new_count, "updated": updated_count}
+
+
+def _valid_github_component(value: str) -> bool:
+    return bool(value) and all(char.isalnum() or char in {"-", ".", "_"} for char in value)
 
 
 @router.get("/repositories/{repo_id}/clone-url")
@@ -238,9 +298,14 @@ async def get_repository_clone_url(
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
 
-    # Get the org's GitHub integration
+    if (
+        getattr(repo.provider, "value", repo.provider) != "github"
+        or not _valid_github_component(repo.owner_name)
+        or not _valid_github_component(repo.repo_name)
+    ):
+        raise HTTPException(status_code=404, detail="Repository not eligible for private beta scanning")
     project = await db.get(Project, str(repo.project_id))
-    if not project or project.organization_id != str(principal.organization_id):
+    if not project or str(project.organization_id) != str(principal.organization_id):
         raise HTTPException(status_code=404, detail="Repository not found")
 
     result = await db.execute(
@@ -250,11 +315,16 @@ async def get_repository_clone_url(
     if not integration:
         raise HTTPException(status_code=404, detail="No GitHub integration for this org")
 
-    # Get an installation access token
     gh = GitHubService(db)
+    if not await gh.repository_is_accessible(
+        integration.installation_id,
+        repo.owner_name,
+        repo.repo_name,
+    ):
+        raise HTTPException(status_code=404, detail="Repository is not accessible to the GitHub installation")
     token = await gh._get_installation_token(integration.installation_id)
 
-    clone_url = repo.clone_url or f"https://github.com/{repo.full_name}.git"
+    clone_url = f"https://github.com/{repo.owner_name}/{repo.repo_name}.git"
     basic_auth = base64.b64encode(f"x-access-token:{token}".encode()).decode()
 
     return {
@@ -269,11 +339,7 @@ async def get_scan_execution_context(
     principal: WorkerPrincipal = Depends(require_capability("scans:read")),
     db: AsyncSession = Depends(get_db),
 ):
-    scan = await require_scan_access(scan_id, principal, db)
-
-    project = await db.get(Project, str(scan.project_id))
-    if not project:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    scan, project = await require_scan_access(scan_id, principal, db)
 
     scan_type = getattr(scan, "scan_type", None) or "full"
 
@@ -291,12 +357,8 @@ async def get_scan_execution_context(
         },
         "branch": scan.branch_name,
         "commit_sha": scan.commit_sha,
+        "status": scan.status.value,
         "user_id": str(scan.requested_by_user_id) if scan.requested_by_user_id else None,
-        "status": (
-            scan.status.value
-            if isinstance(getattr(scan, "status", None), ScanStatus)
-            else str(getattr(scan, "status", "queued"))
-        ),
     }
 
 

@@ -1,0 +1,33 @@
+services:
+  worker:
+    build:
+      context: ../..
+      dockerfile: apps/worker/Dockerfile
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 1g
+    cpus: 1.0
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=256m
+    environment:
+      APP_ENV: private-beta
+      API_BASE_URL: ${API_BASE_URL:?set API_BASE_URL}
+      UPSTASH_REDIS_REST_URL: ${UPSTASH_REDIS_REST_URL:?set UPSTASH_REDIS_REST_URL}
+      UPSTASH_REDIS_REST_TOKEN: ${UPSTASH_REDIS_REST_TOKEN:?set UPSTASH_REDIS_REST_TOKEN}
+      WORKER_CREDENTIAL: ${WORKER_CREDENTIAL:?set WORKER_CREDENTIAL}
+      WORKER_ORGANIZATION_ID: ${WORKER_ORGANIZATION_ID:?set WORKER_ORGANIZATION_ID}
+      WORKER_CONSUMER_NAME: ${WORKER_CONSUMER_NAME:?set WORKER_CONSUMER_NAME}
+      WORKER_CONCURRENCY: "1"
+      SCANNER_IMAGE: ${SCANNER_IMAGE:?set digest-pinned SCANNER_IMAGE}
+      AI_ENABLED: "false"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; assert os.environ['WORKER_ORGANIZATION_ID']"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

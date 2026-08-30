@@ -5,6 +5,7 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
+from app.api.v1 import route_auth
 from app.api.v1.routes import (
     audit_logs,
     exports,
@@ -18,7 +19,6 @@ from app.api.v1.routes import (
     scans,
     scorecard,
 )
-from app.api.v1 import route_auth
 from app.schemas.exports import ExportCreate
 from app.schemas.findings import FindingSuppress
 from app.schemas.projects import ProjectCreate

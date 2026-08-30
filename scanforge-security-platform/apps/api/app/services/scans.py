@@ -146,11 +146,10 @@ class ScanService:
         scan = await self.db.get(Scan, scan_id)
         if not scan:
             return None
-
         if scan.status in (ScanStatusEnum.CANCELED, ScanStatusEnum.COMPLETED):
-            raise ValueError("Terminal scans cannot change status")
+            raise ValueError("Terminal scan state cannot be overwritten")
         if status == ScanStatusEnum.COMPLETED:
-            raise ValueError("Only the atomic completion operation may complete a scan")
+            raise ValueError("Use atomic completion to complete a scan")
 
         scan.status = status
         if error_message:

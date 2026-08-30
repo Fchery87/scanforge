@@ -61,12 +61,14 @@ async function request<T>(path: string, options: RequestInit = {}, schema?: ZodT
     const error = await res.json().catch(() => ({ detail: "Request failed" }));
     throw new ApiError(error.detail ?? `HTTP ${res.status}`, res.status);
   }
+  if (res.status === 204) {
+    return undefined as T;
+  }
   const data = (await res.json()) as T;
   if (schema) {
     const result = schema.safeParse(data);
     if (!result.success) {
-      console.error("[api] schema validation failed", { path, errors: result.error.flatten() });
-      return data;
+      throw new ApiError(`Invalid response contract for ${path}`, 502);
     }
     return result.data;
   }
@@ -248,6 +250,8 @@ export const api = {
         method: "POST",
         body: JSON.stringify(data),
       }, exportSchema),
+    download: (orgId: string, projectId: string, exportId: string) =>
+      request<{ download_url: string }>(`/organizations/${orgId}/projects/${projectId}/exports/${exportId}`),
   },
 
   auditLogs: {

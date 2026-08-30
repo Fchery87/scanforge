@@ -1,7 +1,8 @@
 from datetime import datetime
+from urllib.parse import urlparse
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class RepositoryProvider(str):
@@ -19,6 +20,16 @@ class RepositoryConnect(BaseModel):
     full_name: str = Field(..., min_length=1, max_length=255)
     default_branch: str | None = Field(None, max_length=255)
     clone_url: str | None = Field(None, max_length=1024)
+
+    @field_validator("clone_url")
+    @classmethod
+    def github_clone_origin_only(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        parsed = urlparse(value)
+        if parsed.scheme != "https" or parsed.hostname != "github.com" or parsed.username or parsed.password:
+            raise ValueError("clone_url must use the canonical https://github.com origin")
+        return value
     html_url: str | None = Field(None, max_length=1024)
     installation_id: str | None = None
     provider_account_id: str | None = None

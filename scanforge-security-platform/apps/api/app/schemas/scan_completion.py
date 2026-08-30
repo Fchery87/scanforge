@@ -1,3 +1,4 @@
+# ruff: noqa: TC001, TC003
 from __future__ import annotations
 
 from typing import Any
@@ -23,7 +24,7 @@ class ScanCompletionRequest(BaseModel):
     findings: list[CanonicalFindingCandidate] = Field(default_factory=list)
     scanner_runs: list[ScannerRunCompletion] = Field(default_factory=list)
     summary_json: dict[str, Any] = Field(default_factory=dict)
-    artifact_uris: dict[str, str] = Field(default_factory=dict)
+    artifact_uris: dict[str, Any] = Field(default_factory=dict)
 
 
 class ScanCompletionResponse(BaseModel):

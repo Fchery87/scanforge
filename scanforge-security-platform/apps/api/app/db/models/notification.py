@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -23,7 +21,7 @@ class Notification(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     is_read: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, index=True
     )
-    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    read_at: Mapped[str | None] = mapped_column(DateTime(timezone=True))
     target_type: Mapped[str | None] = mapped_column(String(100))
     target_id: Mapped[str | None] = mapped_column(String(64))
     metadata_json: Mapped[dict | None] = mapped_column(JSONB)

@@ -80,12 +80,6 @@ class ScanCancel(BaseModel):
     reason: str | None = None
 
 
-class ScanProgressUpdate(BaseModel):
-    status: str = Field(pattern="^(running|failed)$")
-    error_message: str | None = None
-    summary_json: dict | None = None
-
-
 class ScanStatusUpdate(BaseModel):
     status: str | None = None
     error_message: str | None = None

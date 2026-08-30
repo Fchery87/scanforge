@@ -1,7 +1,7 @@
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
-from datetime import datetime, UTC
 
 import pytest
 

@@ -25,7 +25,7 @@ class RecordingQueue:
     async def enqueue(self, job_type: str, payload: dict):
         self.enqueue_calls.append((job_type, payload))
 
-    async def transfer_to_dlq(self, job):
+    async def enqueue_to_dlq(self, job):
         self.dlq_calls += 1
 
 

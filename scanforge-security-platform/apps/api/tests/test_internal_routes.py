@@ -1,8 +1,8 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.main import app
 from app.api.v1.routes.internal import UpdateScannerRunRequest
+from app.main import app
 
 
 @pytest.mark.asyncio
@@ -18,13 +18,14 @@ async def test_internal_notifications_rejected_without_api_key():
 
 
 @pytest.mark.asyncio
-async def test_internal_notifications_rejected_with_wrong_api_key():
+async def test_internal_notifications_rejected_with_wrong_api_key(monkeypatch):
+    monkeypatch.setattr("app.middleware.service_auth.settings.WORKER_CREDENTIAL_PEPPER", "")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
             "/api/v1/internal/notifications",
             json={"user_id": "test", "notification_type": "info", "title": "Test", "body": "Test"},
-            headers={"X-Service-Key": "wrong-key"},
+            headers={"X-Worker-Credential": "wrong-key"},
         )
     # 503 if key not configured, 401 if configured but wrong
     assert response.status_code in (401, 503)

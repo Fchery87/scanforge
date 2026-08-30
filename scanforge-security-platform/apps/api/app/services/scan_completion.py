@@ -1,3 +1,4 @@
+# ruff: noqa: TC002, TC003
 from __future__ import annotations
 
 from uuid import UUID
@@ -29,7 +30,10 @@ class ScanCompletionService:
             result = await self.db.execute(
                 select(Scan)
                 .join(Project, Project.id == Scan.project_id)
-                .where(Scan.id == str(scan_id), Project.organization_id == str(organization_id))
+                .where(
+                    Scan.id == str(scan_id),
+                    Project.organization_id == str(organization_id),
+                )
                 .with_for_update()
             )
             scan = result.scalar_one_or_none()
@@ -47,12 +51,17 @@ class ScanCompletionService:
                     "replayed": True,
                 }
 
-            existing_runs = await self.db.execute(select(ScannerRun).where(ScannerRun.scan_id == str(scan_id)))
+            existing_runs = await self.db.execute(
+                select(ScannerRun).where(ScannerRun.scan_id == str(scan_id))
+            )
             runs_by_name = {run.scanner_name: run for run in existing_runs.scalars()}
             for run_data in data.scanner_runs:
                 run = runs_by_name.get(run_data.scanner_name)
                 if run is None:
-                    run = ScannerRun(scan_id=str(scan_id), scanner_name=run_data.scanner_name)
+                    run = ScannerRun(
+                        scan_id=str(scan_id),
+                        scanner_name=run_data.scanner_name,
+                    )
                     self.db.add(run)
                 run.scanner_version = run_data.scanner_version
                 run.status = ScanStatus(run_data.status)
@@ -63,7 +72,6 @@ class ScanCompletionService:
                 run.metadata_json = run_data.metadata_json
 
             await self.db.flush()
-
             finding_service = FindingService(self.db)
             inserted, updated = await finding_service.upsert_from_scan(
                 scan_id=str(scan_id),

@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 import os
 import re
+import shutil
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import mkdtemp
+from urllib.parse import urlparse
 
 import httpx
 
@@ -15,6 +18,7 @@ from app.clients.r2 import R2Client
 from app.core.logging import get_logger
 from app.scanners.base import ScannerResult
 from app.scanners.registry import SCANNER_REGISTRY, scanners_for_scan_type
+from app.security.secret_evidence import safe_artifact_key, sanitize_trivy_output
 from app.services.scan_pipeline.context import ScanContext
 
 _log = get_logger(__name__)
@@ -23,10 +27,19 @@ SCAN_TIMEOUT = 1800
 
 
 class ScanExecutionStage:
-    def __init__(self, r2: R2Client, api_base_url: str, worker_credential: str) -> None:
+    def __init__(
+        self,
+        r2: R2Client,
+        api_base_url: str,
+        worker_credential: str,
+        runtime=None,
+    ) -> None:
+        from app.runtime.base import build_scan_runtime
+
         self.r2 = r2
         self.api_base_url = api_base_url
         self.worker_credential = worker_credential
+        self.runtime = runtime or build_scan_runtime()
 
     @property
     def _headers(self) -> dict[str, str]:
@@ -41,6 +54,9 @@ class ScanExecutionStage:
     async def prepare_repository(self, context: ScanContext) -> Path:
         repo_dir = Path(mkdtemp(prefix="scan_repo_"))
         clone_url, auth_header = await self._get_clone_url(context)
+        parsed_url = urlparse(clone_url)
+        if parsed_url.scheme != "https" or parsed_url.hostname != "github.com":
+            raise RuntimeError("clone target must be the verified github.com origin")
         git_env = copy.deepcopy(os.environ)
         git_env.update(
             {
@@ -53,7 +69,7 @@ class ScanExecutionStage:
             result = await asyncio.to_thread(
                 subprocess.run,
                 [
-                    "git", "clone", "--depth", "1", "--single-branch",
+                    "git", "-c", "http.followRedirects=false", "clone", "--depth", "1", "--single-branch", "--no-recurse-submodules",
                     *(["--branch", context.branch] if context.branch else []),
                     clone_url, str(repo_dir),
                 ],
@@ -66,6 +82,12 @@ class ScanExecutionStage:
                 raise RuntimeError(f"git clone failed: {self._redact(result.stderr).strip()}")
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError("git clone timed out after 5 minutes") from exc
+        except Exception:
+            shutil.rmtree(repo_dir, ignore_errors=True)
+            raise
+        finally:
+            auth_header = ""
+            git_env.pop("GIT_CONFIG_VALUE_0", None)
         return repo_dir
 
     async def collect_changed_files(self, repo_path: Path) -> list[str]:
@@ -110,8 +132,13 @@ class ScanExecutionStage:
                 extra={"scan_id": context.scan_id, "scanner": scanner_name, "job_id": context.job_id},
             )
             try:
+                def scanner_run():
+                    if os.environ.get("APP_ENV", "development").lower() == "private-beta":
+                        return scanner.run_contained(context.repo_path, self.runtime)
+                    return scanner.run(context.repo_path)
+
                 result = await asyncio.wait_for(
-                    asyncio.to_thread(scanner.run, context.repo_path),
+                    asyncio.to_thread(scanner_run),
                     timeout=SCAN_TIMEOUT,
                 )
                 duration_ms = int((datetime.now(UTC) - start).total_seconds() * 1000)
@@ -174,32 +201,55 @@ class ScanExecutionStage:
     async def upload_artifacts(self, context: ScanContext) -> dict:
         uris: dict = {"scanner_runs": {}}
         for scanner_name, result in context.scanner_results.items():
+            if scanner_name == "gitleaks":
+                # Raw Gitleaks records contain matched values and never cross
+                # the coordinator boundary. Only normalized findings persist.
+                result.raw_output = {}
+                result.artifact_paths = []
+            elif scanner_name == "trivy":
+                sanitized_output = sanitize_trivy_output(result.raw_output)
+                result.raw_output = sanitized_output
+                for artifact_path in result.artifact_paths:
+                    artifact_path.write_text(
+                        json.dumps(sanitized_output, separators=(",", ":"))
+                    )
             if not result.success:
                 continue
             run_uploads: dict = {}
-            if result.raw_output:
+            if result.raw_output and scanner_name != "gitleaks":
                 try:
-                    uri = self.r2.upload_raw_output(
-                        scan_id=context.scan_id, scanner_name=scanner_name, output_data=result.raw_output,
+                    uri = await self.r2.upload_raw_output(
+                        scan_id=context.scan_id,
+                        organization_id=context.organization_id,
+                        scanner_name=scanner_name,
+                        output_data=(
+                            sanitize_trivy_output(result.raw_output)
+                            if scanner_name == "trivy" else result.raw_output
+                        ),
                     )
                     uris[f"{scanner_name}_raw"] = uri
                     run_uploads["raw_output_uri"] = uri
-                except Exception as exc:
+                except Exception:
                     _log.warning(
                         "artifact upload failed",
-                        extra={"scan_id": context.scan_id, "scanner": scanner_name, "error": str(exc)},
+                        extra={"scan_id": context.scan_id, "scanner": scanner_name},
                     )
             if result.artifact_paths:
                 for artifact_path in result.artifact_paths:
                     try:
-                        key = f"scans/{context.scan_id}/{scanner_name}/{artifact_path.name}"
-                        meta = self.r2.upload_file(artifact_path, key)
+                        key = safe_artifact_key(
+                            context.organization_id,
+                            context.scan_id,
+                            scanner_name,
+                            artifact_path.name,
+                        )
+                        meta = await self.r2.upload_file(artifact_path, key)
                         uris[f"{scanner_name}_{artifact_path.name}"] = meta["storage_uri"]
                         run_uploads["artifact_uri"] = meta["storage_uri"]
-                    except Exception as exc:
+                    except Exception:
                         _log.warning(
                             "artifact file upload failed",
-                            extra={"scan_id": context.scan_id, "scanner": scanner_name, "error": str(exc)},
+                            extra={"scan_id": context.scan_id, "scanner": scanner_name},
                         )
             if run_uploads:
                 uris["scanner_runs"][scanner_name] = run_uploads
@@ -234,10 +284,10 @@ class ScanExecutionStage:
                 )
                 resp.raise_for_status()
                 return resp.json()["id"]
-            except Exception as exc:
+            except Exception:
                 _log.warning(
                     "failed to create scanner run",
-                    extra={"scan_id": context.scan_id, "scanner": scanner_name, "error": str(exc)},
+                    extra={"scan_id": context.scan_id, "scanner": scanner_name},
                 )
                 return None
 
@@ -251,8 +301,5 @@ class ScanExecutionStage:
                     timeout=30.0,
                 )
                 resp.raise_for_status()
-            except Exception as exc:
-                _log.warning(
-                    "failed to update scanner run",
-                    extra={"error": str(exc)},
-                )
+            except Exception:
+                _log.warning("failed to update scanner run")

@@ -1,6 +1,5 @@
 import logging
 from dataclasses import dataclass
-from typing import cast
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -67,9 +66,9 @@ class ScanLifecycleService:
 
         try:
             job_id = await self.queue.enqueue(
-                str(org_id),
-                cast("ScanJobType", self._job_type_for_scan_type(scan_type)),
+                job_type,
                 self._queue_payload(scan, org_id=org_id, user_id=user_id),
+                organization_id=org_id,
             )
             logger.info("Enqueued scan %s as job %s (%s)", scan.id, job_id, job_type)
             return ScanLifecycleOutcome(scan=scan, enqueued=True)
@@ -81,13 +80,14 @@ class ScanLifecycleService:
             await self.db.refresh(scan)
             return ScanLifecycleOutcome(scan=scan, enqueued=False)
 
-    def _job_type_for_scan_type(self, scan_type: str) -> str:
-        return {
+    def _job_type_for_scan_type(self, scan_type: str) -> ScanJobType:
+        mapping: dict[str, ScanJobType] = {
             "full": "scan.repo.full",
             "diff": "scan.repo.diff",
             "dependencies": "scan.dependencies",
             "secrets": "scan.secrets",
-        }.get(scan_type, "scan.repo.full")
+        }
+        return mapping.get(scan_type, "scan.repo.full")
 
     def _queue_payload(self, scan, *, org_id: UUID, user_id: UUID | None) -> dict:  # noqa: ARG002
         return {

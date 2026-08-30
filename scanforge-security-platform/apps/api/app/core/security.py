@@ -49,6 +49,9 @@ async def decode_token(
     if jwks_client is None:
         jwks_client = get_jwks_client()
 
+    if settings.APP_ENV.lower() in {"beta", "private-beta", "production"} and not settings.NEON_AUTH_AUDIENCE:
+        raise AuthenticationError("NEON_AUTH_AUDIENCE is not configured — cannot verify tokens")
+
     signing_key = jwks_client.get_signing_key(token)
 
     try:
@@ -56,22 +59,22 @@ async def decode_token(
             token,
             signing_key.key,
             algorithms=["EdDSA", "ES256", "RS256"],
-            audience=settings.NEON_AUTH_AUDIENCE,
-            issuer=settings.NEON_AUTH_ISSUER,
+            audience=settings.NEON_AUTH_AUDIENCE or None,
+            issuer=settings.NEON_AUTH_ISSUER or None,
         )
     except jwt.InvalidAudienceError:
         if not settings.NEON_AUTH_AUDIENCE:
             raise
 
         unverified_claims = _decode_without_verification(token)
-        if "aud" in unverified_claims:
+        if "aud" in unverified_claims or settings.APP_ENV.lower() in {"beta", "private-beta", "production"}:
             raise
 
         return jwt.decode(
             token,
             signing_key.key,
             algorithms=["EdDSA", "ES256", "RS256"],
-            issuer=settings.NEON_AUTH_ISSUER,
+            issuer=settings.NEON_AUTH_ISSUER or None,
             options={"verify_aud": False},
         )
 

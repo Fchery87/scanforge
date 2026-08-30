@@ -1,5 +1,3 @@
-import base64
-import json
 import logging
 from collections.abc import Callable
 from uuid import UUID
@@ -53,26 +51,11 @@ class AuditMiddleware(BaseHTTPMiddleware):
 
         audit_context.clear()
 
-        auth_header = request.headers.get("authorization", "")
-        if auth_header.startswith("Bearer "):
-            try:
-                token = auth_header[7:]
-                parts = token.split(".")
-                if len(parts) >= 2:
-                    payload = parts[1]
-                    padding = "=" * (4 - len(payload) % 4) if len(payload) % 4 else ""
-                    decoded = base64.b64decode(payload + padding)
-                    claims = json.loads(decoded)
-                    audit_context.set(
-                        user_id=claims.get("sub"),
-                        org_id=claims.get("org_id"),
-                    )
-            except Exception:
-                pass
-
         response = await call_next(request)
 
-        if audit_context.user_id:
+        actor_user_id = getattr(request.state, "audit_user_id", None)
+        actor_org_id = getattr(request.state, "audit_org_id", None)
+        if actor_user_id:
             try:
                 action = self._extract_action(request.method, path)
                 target = self._extract_target(path)
@@ -80,11 +63,11 @@ class AuditMiddleware(BaseHTTPMiddleware):
                 async with AsyncSessionLocal() as db:
                     service = AuditLogService(db)
                     await service.create(
-                        actor_user_id=UUID(audit_context.user_id) if audit_context.user_id else None,
+                        actor_user_id=UUID(actor_user_id),
                         action=action,
                         target_type=target.get("type", "unknown"),
                         target_id=target.get("id"),
-                        organization_id=UUID(audit_context.org_id) if audit_context.org_id else None,
+                        organization_id=UUID(actor_org_id) if actor_org_id else None,
                         ip_address=request.headers.get("x-forwarded-for", "").split(",")[0].strip() or None,
                         user_agent=request.headers.get("user-agent"),
                         metadata_json={

@@ -51,7 +51,7 @@ def normalize_gitleaks_output(raw_output: dict | list, repository_id: str) -> li
             "category": "secret",
             "severity": severity,
             "title": f"Exposed secret: {secret_type}",
-            "description": result.get("Match", ""),
+            "description": "A secret was detected by the scanner.",
             "canonical_fingerprint": fingerprint,
             "primary_scanner": "gitleaks",
             "confidence_score": 0.95,
@@ -60,10 +60,6 @@ def normalize_gitleaks_output(raw_output: dict | list, repository_id: str) -> li
                 "line_start": line_start,
                 "line_end": line_end,
                 "commit": result.get("Commit"),
-                "author": result.get("Author"),
-                "email": result.get("Email"),
-                "date": result.get("Date"),
-                "match": result.get("Match"),
             },
             "references": [
                 {

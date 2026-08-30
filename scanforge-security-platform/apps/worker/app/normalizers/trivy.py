@@ -1,5 +1,7 @@
 import hashlib
 
+from app.security.secret_evidence import sanitize_trivy_output
+
 SEVERITY_MAP = {
     "CRITICAL": "critical",
     "HIGH": "high",
@@ -25,6 +27,7 @@ def compute_vulnerability_fingerprint(
 
 
 def normalize_trivy_output(raw_output: dict, repository_id: str) -> list[dict]:
+    raw_output = sanitize_trivy_output(raw_output)
     findings = []
 
     results = raw_output.get("Results", [])
@@ -91,7 +94,7 @@ def normalize_trivy_output(raw_output: dict, repository_id: str) -> list[dict]:
                 "category": "secret",
                 "severity": "high",
                 "title": f"Exposed secret: {rule_id}",
-                "description": secret.get("Match", ""),
+                "description": "A secret was detected by the scanner.",
                 "canonical_fingerprint": fingerprint,
                 "primary_scanner": "trivy",
                 "confidence_score": 0.85,

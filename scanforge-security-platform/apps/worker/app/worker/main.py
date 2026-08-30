@@ -47,19 +47,16 @@ class Worker:
         self._shutdown_event = asyncio.Event()
 
     def _get_clients(self):
+        organization_id = os.environ.get("WORKER_ORGANIZATION_ID", "").strip()
+        consumer_name = os.environ.get("WORKER_CONSUMER_NAME", "").strip()
+        worker_credential = os.environ.get("WORKER_CREDENTIAL", "").strip()
+        if not organization_id or not consumer_name or not worker_credential:
+            raise RuntimeError(
+                "WORKER_ORGANIZATION_ID, WORKER_CONSUMER_NAME, and WORKER_CREDENTIAL are required"
+            )
         redis_url = os.environ.get("UPSTASH_REDIS_REST_URL", "")
         redis_token = os.environ.get("UPSTASH_REDIS_REST_TOKEN", "")
-        r2_endpoint = os.environ.get("R2_ENDPOINT", "")
-        r2_bucket = os.environ.get("R2_BUCKET", "")
-        r2_access = os.environ.get("R2_ACCESS_KEY_ID", "")
-        r2_secret = os.environ.get("R2_SECRET_ACCESS_KEY", "")
-        r2_public = os.environ.get("R2_PUBLIC_BASE_URL", "")
         api_base = os.environ.get("API_BASE_URL", "http://localhost:8000")
-
-        organization_id = os.environ.get("WORKER_ORGANIZATION_ID", "")
-        consumer_name = os.environ.get("WORKER_CONSUMER_NAME", "")
-        if not organization_id or not consumer_name:
-            raise RuntimeError("WORKER_ORGANIZATION_ID and WORKER_CONSUMER_NAME are required")
 
         queue = QueueClient(
             redis_url=redis_url,
@@ -67,13 +64,7 @@ class Worker:
             organization_id=organization_id,
             consumer_name=consumer_name,
         )
-        r2 = R2Client(
-            endpoint=r2_endpoint,
-            bucket=r2_bucket,
-            access_key_id=r2_access,
-            secret_access_key=r2_secret,
-            public_base_url=r2_public,
-        )
+        r2 = R2Client(api_base_url=api_base, worker_credential=worker_credential)
         return queue, r2, api_base
 
     async def process_single_job(self, queue: QueueClient, orchestrator: ScanOrchestrator):
@@ -104,17 +95,16 @@ class Worker:
 
     async def run(self):
         queue, r2, api_base = self._get_clients()
-        credential = os.environ.get("WORKER_CREDENTIAL", "")
         orchestrator = ScanOrchestrator(
             queue=queue,
             r2=r2,
             api_base_url=api_base,
-            worker_credential=credential,
+            worker_credential=os.environ.get("WORKER_CREDENTIAL", ""),
         )
         orchestrator.set_notifier(
             NotificationDispatcher(
                 api_base_url=api_base,
-                worker_credential=credential,
+                worker_credential=os.environ.get("WORKER_CREDENTIAL", ""),
             )
         )
 
@@ -134,6 +124,11 @@ class Worker:
 
         async def worker_loop():
             while self._running:
+                try:
+                    await queue.promote_due_retries()
+                except Exception as exc:
+                    _log.warning("could not promote retry jobs", extra={"error": str(exc)})
+
                 active = [t for t in tasks if not t.done()]
 
                 if len(active) < self.concurrency:
@@ -179,6 +174,9 @@ class Worker:
 
 
 def main():
+    from app.runtime.base import build_scan_runtime
+
+    build_scan_runtime()
     concurrency = int(os.environ.get("WORKER_CONCURRENCY", "2"))
     worker = Worker(concurrency=concurrency)
 

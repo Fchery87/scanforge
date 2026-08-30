@@ -5,8 +5,16 @@ from uuid import uuid4
 import pytest
 
 from app.api.v1.routes import internal
+from app.middleware.service_auth import WorkerPrincipal
 from app.schemas.scans import ScanStatusUpdate
-from app.services.worker_identities import WorkerPrincipal
+
+
+def principal(org_id):
+    return WorkerPrincipal(
+        worker_id=uuid4(),
+        organization_id=org_id,
+        capabilities=frozenset({"scans:read", "scans:write"}),
+    )
 
 
 @pytest.mark.asyncio
@@ -54,7 +62,7 @@ async def test_run_due_scan_schedules_counts_lifecycle_exceptions(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_get_scan_execution_context_loads_authoritative_scan_context():
+async def test_get_scan_execution_context_loads_authoritative_scan_context(monkeypatch):
     scan_id = uuid4()
     org_id = uuid4()
     project_id = uuid4()
@@ -71,13 +79,8 @@ async def test_get_scan_execution_context_loads_authoritative_scan_context():
         status=internal.ScanStatus.RUNNING,
     )
     project = SimpleNamespace(id=project_id, organization_id=org_id)
-    principal = WorkerPrincipal(uuid4(), org_id, frozenset({"scans:read"}))
-    result_row = SimpleNamespace(scalar_one_or_none=lambda: scan)
 
     class Db:
-        async def execute(self, _query):
-            return result_row
-
         async def get(self, model, key):
             if model is internal.Scan and key == str(scan_id):
                 return scan
@@ -85,7 +88,16 @@ async def test_get_scan_execution_context_loads_authoritative_scan_context():
                 return project
             return None
 
-    result = await internal.get_scan_execution_context(scan_id=scan_id, principal=principal, db=Db())
+    monkeypatch.setattr(
+        internal,
+        "require_scan_access",
+        AsyncMock(return_value=(scan, project)),
+    )
+    result = await internal.get_scan_execution_context(
+        scan_id=scan_id,
+        principal=principal(org_id),
+        db=Db(),
+    )
 
     assert result == {
         "scan_id": str(scan_id),
@@ -101,44 +113,45 @@ async def test_get_scan_execution_context_loads_authoritative_scan_context():
         },
         "branch": "main",
         "commit_sha": "deadbeef",
+        "status": scan.status.value,
         "user_id": str(user_id),
-        "status": "running",
     }
 
 
 @pytest.mark.asyncio
-async def test_completed_scan_status_requires_atomic_completion_endpoint(monkeypatch):
+async def test_completed_status_is_rejected_by_progress_endpoint(monkeypatch):
     scan_id = uuid4()
-    scan = SimpleNamespace(id=scan_id, repository_id="repo-1", status="running", summary_json=None, error_message=None)
-    lifecycle = SimpleNamespace(mark_not_observed_for_completed_scan=AsyncMock(return_value=2))
-    principal = WorkerPrincipal(uuid4(), uuid4(), frozenset({"scans:write"}))
-    result_row = SimpleNamespace(scalar_one_or_none=lambda: scan)
+    org_id = uuid4()
+    scan = SimpleNamespace(
+        id=scan_id,
+        repository_id="repo-1",
+        status=internal.ScanStatus.RUNNING,
+        summary_json=None,
+        error_message=None,
+    )
+    project = SimpleNamespace(organization_id=org_id)
 
     class Db:
-        async def execute(self, _query):
-            return result_row
-
-        async def get(self, model, key):
-            if model is internal.Scan and key == str(scan_id):
-                return scan
-            return None
-
         async def commit(self):
             return None
 
         async def refresh(self, _scan):
             return None
 
-    monkeypatch.setattr(internal, "FindingService", lambda _db: lifecycle)
+    monkeypatch.setattr(
+        internal,
+        "require_scan_access",
+        AsyncMock(return_value=(scan, project)),
+    )
 
     summary = {"scanner_health": {"completed": ["trivy"]}}
-    with pytest.raises(internal.HTTPException) as exc:
+    with pytest.raises(internal.HTTPException) as error:
         await internal.update_scan_status_internal(
             scan_id=scan_id,
             data=ScanStatusUpdate(status="completed", summary_json=summary),
-            principal=principal,
+            principal=principal(org_id),
             db=Db(),
         )
 
-    assert exc.value.status_code == 409
-    lifecycle.mark_not_observed_for_completed_scan.assert_not_awaited()
+    assert error.value.status_code == 409
+    assert scan.status == internal.ScanStatus.RUNNING
