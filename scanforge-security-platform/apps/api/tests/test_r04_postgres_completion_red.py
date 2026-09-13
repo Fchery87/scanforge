@@ -74,6 +74,13 @@ def _downcast_postgres_uuid_columns() -> None:
                 column.type = _SQLiteUUID()
 
 
+# Deterministic regardless of mapper-configuration order: SQLAlchemy copies FK
+# target types into referencing columns at first mapper-configuration time, so
+# this downcast must run before ANY ORM use in the suite, not just before our
+# tests.  Module import (collection) always precedes every test execution.
+_downcast_postgres_uuid_columns()
+
+
 def completion_request(**overrides) -> ScanCompletionRequest:
     values = {
         "winning_attempt_id": uuid4(),
