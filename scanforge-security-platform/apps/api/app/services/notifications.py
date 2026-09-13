@@ -3,7 +3,13 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Notification
+from app.db.models import Notification, OrganizationMember
+
+
+class NotificationAuthorizationError(Exception):
+    """Caller or recipient is not a member of the target organization."""
+
+    code = "notification_org_membership_required"
 
 
 class NotificationService:
@@ -17,16 +23,38 @@ class NotificationService:
         title: str,
         body: str | None = None,
         *,
+        caller_organization_id: UUID,
+        organization_id: UUID,
         link: str | None = None,
         metadata_json: dict | None = None,
     ) -> Notification:
+        if organization_id != caller_organization_id:
+            raise NotificationAuthorizationError(
+                "Caller is not a member of the target organization"
+            )
+
+        membership = await self.db.execute(
+            select(OrganizationMember).where(
+                OrganizationMember.organization_id == str(organization_id),
+                OrganizationMember.user_id == str(user_id),
+            )
+        )
+        if not membership.scalar_one_or_none():
+            raise NotificationAuthorizationError(
+                "Recipient is not a member of the target organization"
+            )
+
+        effective_metadata = dict(metadata_json or {})
+        if link:
+            effective_metadata["link"] = link
+
         notification = Notification(
             user_id=str(user_id),
+            organization_id=str(organization_id),
             notification_type=notification_type,
             title=title,
             body=body,
-            link=link,
-            metadata_json=metadata_json,
+            metadata_json=effective_metadata or None,
         )
         self.db.add(notification)
         await self.db.commit()

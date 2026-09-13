@@ -24,7 +24,7 @@ from app.schemas.scan_completion import ScanCompletionRequest
 from app.schemas.scans import ScanStatusUpdate
 from app.services.findings import FindingService
 from app.services.github import GitHubService
-from app.services.notifications import NotificationService
+from app.services.notifications import NotificationAuthorizationError, NotificationService
 from app.services.scan_completion import ScanCompletionConflict, ScanCompletionService
 from app.services.scan_lease import LEASE_SECONDS, RENEWAL_SECONDS, LeaseConflict, ScanLeaseService
 from app.services.scan_lifecycle import ScanLifecycleService
@@ -140,21 +140,26 @@ def _valid_artifact_component(value: str) -> bool:
 @router.post("/notifications")
 async def create_notification(
     data: NotificationCreate,
-    _principal: WorkerPrincipal = Depends(require_capability("notifications:write")),
+    principal: WorkerPrincipal = Depends(require_capability("notifications:write")),
     db: AsyncSession = Depends(get_db),
 ):
     if not data.user_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="user_id required")
 
     service = NotificationService(db)
-    return await service.create(
-        user_id=data.user_id,
-        notification_type=data.notification_type,
-        title=data.title,
-        body=data.body,
-        link=data.link,
-        metadata_json=data.metadata_json,
-    )
+    try:
+        return await service.create(
+            user_id=data.user_id,
+            notification_type=data.notification_type,
+            title=data.title,
+            body=data.body,
+            caller_organization_id=principal.organization_id,
+            organization_id=principal.organization_id,
+            link=data.link,
+            metadata_json=data.metadata_json,
+        )
+    except NotificationAuthorizationError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
 
 
 @router.post("/scans/{scan_id}/complete")
