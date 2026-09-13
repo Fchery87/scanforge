@@ -41,10 +41,74 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/scans/{scan_id}/artifacts/upload-url": {
+      "post": {
+        "tags": [
+          "internal",
+          "internal"
+        ],
+        "summary": "Create Artifact Upload Url",
+        "operationId": "create_artifact_upload_url_api_v1_internal_scans__scan_id__artifacts_upload_url_post",
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Scan Id"
+            }
+          },
+          {
+            "name": "X-Worker-Credential",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Credential"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArtifactUploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Ready Api V1 Ready Get"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -62,7 +126,7 @@
         "operationId": "create_notification_api_v1_internal_notifications_post",
         "parameters": [
           {
-            "name": "x-service-key",
+            "name": "X-Worker-Credential",
             "in": "header",
             "required": false,
             "schema": {
@@ -74,7 +138,7 @@
                   "type": "null"
                 }
               ],
-              "title": "X-Service-Key"
+              "title": "X-Worker-Credential"
             }
           }
         ],
@@ -84,6 +148,74 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/NotificationCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/scans/{scan_id}/complete": {
+      "post": {
+        "tags": [
+          "internal",
+          "internal"
+        ],
+        "summary": "Complete Scan",
+        "operationId": "complete_scan_api_v1_internal_scans__scan_id__complete_post",
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Scan Id"
+            }
+          },
+          {
+            "name": "X-Worker-Credential",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Credential"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanCompletionRequest"
               }
             }
           }
@@ -130,7 +262,7 @@
             }
           },
           {
-            "name": "x-service-key",
+            "name": "X-Worker-Credential",
             "in": "header",
             "required": false,
             "schema": {
@@ -142,7 +274,7 @@
                   "type": "null"
                 }
               ],
-              "title": "X-Service-Key"
+              "title": "X-Worker-Credential"
             }
           }
         ],
@@ -198,7 +330,7 @@
             }
           },
           {
-            "name": "x-service-key",
+            "name": "X-Worker-Credential",
             "in": "header",
             "required": false,
             "schema": {
@@ -210,7 +342,7 @@
                   "type": "null"
                 }
               ],
-              "title": "X-Service-Key"
+              "title": "X-Worker-Credential"
             }
           }
         ],
@@ -266,7 +398,7 @@
             }
           },
           {
-            "name": "x-service-key",
+            "name": "X-Worker-Credential",
             "in": "header",
             "required": false,
             "schema": {
@@ -278,7 +410,7 @@
                   "type": "null"
                 }
               ],
-              "title": "X-Service-Key"
+              "title": "X-Worker-Credential"
             }
           }
         ],
@@ -334,7 +466,7 @@
             }
           },
           {
-            "name": "x-service-key",
+            "name": "X-Worker-Credential",
             "in": "header",
             "required": false,
             "schema": {
@@ -346,7 +478,7 @@
                   "type": "null"
                 }
               ],
-              "title": "X-Service-Key"
+              "title": "X-Worker-Credential"
             }
           }
         ],
@@ -403,7 +535,7 @@
             }
           },
           {
-            "name": "x-service-key",
+            "name": "X-Worker-Credential",
             "in": "header",
             "required": false,
             "schema": {
@@ -415,7 +547,7 @@
                   "type": "null"
                 }
               ],
-              "title": "X-Service-Key"
+              "title": "X-Worker-Credential"
             }
           }
         ],
@@ -461,7 +593,7 @@
             }
           },
           {
-            "name": "x-service-key",
+            "name": "X-Worker-Credential",
             "in": "header",
             "required": false,
             "schema": {
@@ -473,76 +605,7 @@
                   "type": "null"
                 }
               ],
-              "title": "X-Service-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/internal/onboarding": {
-      "get": {
-        "tags": [
-          "internal",
-          "internal"
-        ],
-        "summary": "Get Onboarding Checklist",
-        "operationId": "get_onboarding_checklist_api_v1_internal_onboarding_get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "org_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Org Id"
-            }
-          },
-          {
-            "name": "x-service-key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Service-Key"
+              "title": "X-Worker-Credential"
             }
           }
         ],
@@ -578,7 +641,7 @@
         "operationId": "run_due_scan_schedules_api_v1_internal_scan_schedules_run_due_post",
         "parameters": [
           {
-            "name": "x-service-key",
+            "name": "x-scheduler-key",
             "in": "header",
             "required": false,
             "schema": {
@@ -590,7 +653,7 @@
                   "type": "null"
                 }
               ],
-              "title": "X-Service-Key"
+              "title": "X-Scheduler-Key"
             }
           }
         ],
@@ -5047,6 +5110,34 @@
   },
   "components": {
     "schemas": {
+      "ArtifactUploadRequest": {
+        "properties": {
+          "scanner_name": {
+            "type": "string",
+            "title": "Scanner Name"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "content_type": {
+            "type": "string",
+            "title": "Content Type",
+            "default": "application/json"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "title": "Size Bytes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scanner_name",
+          "filename",
+          "size_bytes"
+        ],
+        "title": "ArtifactUploadRequest"
+      },
       "CanonicalFindingCandidate": {
         "properties": {
           "canonical_fingerprint": {
@@ -8085,6 +8176,36 @@
         "type": "object",
         "title": "ScanCancel"
       },
+      "ScanCompletionRequest": {
+        "properties": {
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/CanonicalFindingCandidate"
+            },
+            "type": "array",
+            "title": "Findings"
+          },
+          "scanner_runs": {
+            "items": {
+              "$ref": "#/components/schemas/ScannerRunCompletion"
+            },
+            "type": "array",
+            "title": "Scanner Runs"
+          },
+          "summary_json": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Summary Json"
+          },
+          "artifact_uris": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Artifact Uris"
+          }
+        },
+        "type": "object",
+        "title": "ScanCompletionRequest"
+      },
       "ScanCreate": {
         "properties": {
           "repository_id": {
@@ -8635,6 +8756,93 @@
         },
         "type": "object",
         "title": "ScanStatusUpdate"
+      },
+      "ScannerRunCompletion": {
+        "properties": {
+          "scanner_name": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Scanner Name"
+          },
+          "scanner_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scanner Version"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "exit_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "artifact_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Uri"
+          },
+          "metadata_json": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata Json"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scanner_name",
+          "status"
+        ],
+        "title": "ScannerRunCompletion"
       },
       "ScannerRunResponse": {
         "properties": {

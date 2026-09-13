@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/internal/scans/{scan_id}/artifacts/upload-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Artifact Upload Url */
+        post: operations["create_artifact_upload_url_api_v1_internal_scans__scan_id__artifacts_upload_url_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/internal/notifications": {
         parameters: {
             query?: never;
@@ -49,6 +66,23 @@ export interface paths {
         put?: never;
         /** Create Notification */
         post: operations["create_notification_api_v1_internal_notifications_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/scans/{scan_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete Scan */
+        post: operations["complete_scan_api_v1_internal_scans__scan_id__complete_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -152,23 +186,6 @@ export interface paths {
         };
         /** Get Scan Execution Context */
         get: operations["get_scan_execution_context_api_v1_internal_scans__scan_id__execution_context_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/internal/onboarding": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Onboarding Checklist */
-        get: operations["get_onboarding_checklist_api_v1_internal_onboarding_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1073,6 +1090,20 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ArtifactUploadRequest */
+        ArtifactUploadRequest: {
+            /** Scanner Name */
+            scanner_name: string;
+            /** Filename */
+            filename: string;
+            /**
+             * Content Type
+             * @default application/json
+             */
+            content_type: string;
+            /** Size Bytes */
+            size_bytes: number;
+        };
         /** CanonicalFindingCandidate */
         CanonicalFindingCandidate: {
             /** Canonical Fingerprint */
@@ -2227,6 +2258,21 @@ export interface components {
             /** Reason */
             reason?: string | null;
         };
+        /** ScanCompletionRequest */
+        ScanCompletionRequest: {
+            /** Findings */
+            findings?: components["schemas"]["CanonicalFindingCandidate"][];
+            /** Scanner Runs */
+            scanner_runs?: components["schemas"]["ScannerRunCompletion"][];
+            /** Summary Json */
+            summary_json?: {
+                [key: string]: unknown;
+            };
+            /** Artifact Uris */
+            artifact_uris?: {
+                [key: string]: unknown;
+            };
+        };
         /** ScanCreate */
         ScanCreate: {
             /**
@@ -2425,6 +2471,27 @@ export interface components {
             error_message?: string | null;
             /** Summary Json */
             summary_json?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** ScannerRunCompletion */
+        ScannerRunCompletion: {
+            /** Scanner Name */
+            scanner_name: string;
+            /** Scanner Version */
+            scanner_version?: string | null;
+            /** Status */
+            status: string;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /** Exit Code */
+            exit_code?: number | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Artifact Uri */
+            artifact_uri?: string | null;
+            /** Metadata Json */
+            metadata_json?: {
                 [key: string]: unknown;
             } | null;
         };
@@ -2689,9 +2756,44 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    create_artifact_upload_url_api_v1_internal_scans__scan_id__artifacts_upload_url_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Worker-Credential"?: string | null;
+            };
+            path: {
+                scan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArtifactUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -2700,7 +2802,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-service-key"?: string | null;
+                "X-Worker-Credential"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -2731,11 +2833,48 @@ export interface operations {
             };
         };
     };
+    complete_scan_api_v1_internal_scans__scan_id__complete_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Worker-Credential"?: string | null;
+            };
+            path: {
+                scan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScanCompletionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     update_scan_status_internal_api_v1_internal_scans__scan_id__status_patch: {
         parameters: {
             query?: never;
             header?: {
-                "x-service-key"?: string | null;
+                "X-Worker-Credential"?: string | null;
             };
             path: {
                 scan_id: string;
@@ -2772,7 +2911,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-service-key"?: string | null;
+                "X-Worker-Credential"?: string | null;
             };
             path: {
                 scan_id: string;
@@ -2809,7 +2948,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-service-key"?: string | null;
+                "X-Worker-Credential"?: string | null;
             };
             path: {
                 run_id: string;
@@ -2846,7 +2985,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-service-key"?: string | null;
+                "X-Worker-Credential"?: string | null;
             };
             path: {
                 scan_id: string;
@@ -2883,7 +3022,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-service-key"?: string | null;
+                "X-Worker-Credential"?: string | null;
             };
             path: {
                 repo_id: string;
@@ -2916,7 +3055,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-service-key"?: string | null;
+                "X-Worker-Credential"?: string | null;
             };
             path: {
                 scan_id: string;
@@ -2945,44 +3084,11 @@ export interface operations {
             };
         };
     };
-    get_onboarding_checklist_api_v1_internal_onboarding_get: {
-        parameters: {
-            query?: {
-                org_id?: string | null;
-            };
-            header?: {
-                "x-service-key"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     run_due_scan_schedules_api_v1_internal_scan_schedules_run_due_post: {
         parameters: {
             query?: never;
             header?: {
-                "x-service-key"?: string | null;
+                "x-scheduler-key"?: string | null;
             };
             path?: never;
             cookie?: never;
