@@ -81,7 +81,22 @@ def test_docker_runtime_cli_environment_is_minimal(monkeypatch, tmp_path):
 
     runtime = DockerScanRuntime(image="ghcr.io/test/scanner@sha256:" + "a" * 64)
     captured: list = []
-    _recording_run(monkeypatch, captured)
+
+    # Combined with R07: the Docker runtime spawns through the process-group
+    # containment seam (popen_scanner_process -> subprocess.Popen), so the
+    # env probe must observe that seam instead of subprocess.run.
+    class _RecordingPopen:
+        def __init__(self, cmd, *args, **kwargs):
+            captured.append(dict(kwargs.get("env") or {}))
+            import os as _os
+            self.pid = _os.getpid()
+            self.returncode = 0
+            self.args = cmd
+
+        def communicate(self, timeout=None):
+            return ("", "")
+
+    monkeypatch.setattr("app.runtime.docker.popen_scanner_process", _RecordingPopen)
     request = ScanRuntimeRequest(
         executable="trivy",
         arguments=("fs", "."),
