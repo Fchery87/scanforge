@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 from app.scanners.base import ScannerAdapter, ScannerResult
+from app.security.proc_env import build_contained_env
 
 
 class GitleaksAdapter(ScannerAdapter):
@@ -62,6 +63,7 @@ class GitleaksAdapter(ScannerAdapter):
                 capture_output=True,
                 text=True,
                 timeout=300,
+                env=build_contained_env(),
             )
             output: list | dict = []
             if report_path.exists() and report_path.stat().st_size:

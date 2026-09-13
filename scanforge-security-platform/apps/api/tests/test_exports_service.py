@@ -1,10 +1,15 @@
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
 
+
 from app.services.exports import ExportAuthorizationError, ExportService
+from app.api.v1.routes.exports import _serialize_export
+from app.schemas.exports import ExportResponse
+from app.services.exports import ExportService
 
 
 @pytest.mark.asyncio
@@ -96,8 +101,6 @@ async def test_create_export_allows_member_of_target_org():
     assert captured["export"].requested_by_user_id == str(user_id)
 def test_export_response_contract_excludes_secret_bearing_columns():
     """R08: findings export surface must never grow internal secret-bearing columns."""
-    from app.schemas.exports import ExportResponse
-
     forbidden_markers = (
         "secret", "token", "credential", "webhook", "signature", "matched", "plaintext", "raw_value",
     )
@@ -108,11 +111,6 @@ def test_export_response_contract_excludes_secret_bearing_columns():
 
 def test_export_download_payload_nulls_internal_storage_uri():
     """R08: serialized exports must not expose internal storage keys."""
-    from datetime import UTC, datetime
-    from uuid import uuid4
-
-    from app.api.v1.routes.exports import _serialize_export
-
     export = SimpleNamespace(
         id=uuid4(),
         project_id=uuid4(),

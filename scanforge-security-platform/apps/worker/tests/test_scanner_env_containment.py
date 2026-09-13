@@ -45,15 +45,15 @@ def _seed_forbidden_env(monkeypatch) -> None:
 
 def _recording_run(monkeypatch, captured: list, stdout: str = "", returncode: int = 0):
     def fake_run(cmd, *args, **kwargs):
-        captured.append(kwargs.get("env"))
+        captured.append(dict(kwargs.get("env") or {}))
         return subprocess.CompletedProcess(cmd, returncode, stdout=stdout, stderr="")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
 
 
-def _assert_env_contained(env, label: str) -> None:
+def _assert_env_contained(env, label: str, required_extra: frozenset = frozenset()) -> None:
     assert env is not None, f"{label} must pass an explicit env dict"
-    extra = set(env) - ALLOWED_ENV_KEYS
+    extra = set(env) - ALLOWED_ENV_KEYS - set(required_extra)
     assert not extra, f"{label} environment leaks non-allowlisted keys: {sorted(extra)}"
     for key in FORBIDDEN_ENV:
         assert key not in env, f"{label} environment leaks forbidden key {key}"
@@ -123,9 +123,12 @@ async def test_git_clone_environment_is_allowlisted(monkeypatch):
             shutil.rmtree(repo_dir, ignore_errors=True)
 
     env = captured[0]
-    _assert_env_contained(env, "git clone")
+    _assert_env_contained(env, "git clone", required_extra=GIT_AUTH_KEYS)
     assert env["GIT_CONFIG_VALUE_0"] == "Basic r08-auth-header"
     assert env.get("GIT_CONFIG_COUNT") == "1"
+    # the clone auth value must be scrubbed from the env dict after the run
+    import os as _os
+    assert "GIT_CONFIG_VALUE_0" not in _os.environ
 
 
 def test_scanner_version_probe_environment_is_allowlisted(monkeypatch):

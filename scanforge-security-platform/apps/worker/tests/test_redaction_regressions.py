@@ -21,7 +21,7 @@ def test_redact_payload_scrubs_credential_fields_and_known_secrets():
         "scan_id": "scan-123",
         "receipt": {
             "containers_removed": ["scanforge-scanner-trivy-x1"],
-            "temp_dirs": ["/tmp/scan_repo_abc123"],
+            "temp_dirs": ["/tmp/scan_repo_abc123"],  # noqa: S108
             "error": (
                 "clone failed: fatal: unable to access "
                 "'https://x-access-token:ghp_R08TOKENVALUE@github.com/org/repo.git/'"

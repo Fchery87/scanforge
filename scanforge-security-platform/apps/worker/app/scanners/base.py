@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from app.security.proc_env import build_contained_env
+
 
 @dataclass
 class ScannerResult:
@@ -80,6 +82,7 @@ class ScannerAdapter(ABC):
                 capture_output=True,
                 text=True,
                 timeout=10,
+                env=build_contained_env(),
             )
             return result.stdout.strip()
         except Exception:

@@ -3,6 +3,7 @@ import subprocess
 from pathlib import Path
 
 from app.scanners.base import ScannerAdapter, ScannerResult
+from app.security.proc_env import build_contained_env
 
 
 class GrypeAdapter(ScannerAdapter):
@@ -31,6 +32,7 @@ class GrypeAdapter(ScannerAdapter):
                 text=True,
                 timeout=600,
                 cwd=str(repo_path),
+                env=build_contained_env(),
             )
 
             duration_ms = int((time.time() - start) * 1000)
