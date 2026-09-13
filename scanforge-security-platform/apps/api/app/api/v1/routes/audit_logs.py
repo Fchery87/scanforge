@@ -20,6 +20,7 @@ async def list_audit_logs_org(
     action: str | None = Query(None, alias="action"),
     actor_user_id: UUID | None = Query(None, alias="actorUserId"),
     current_user: UserContext = Depends(get_current_user),
+    *,
     db: AsyncSession = Depends(get_db),
 ):
     org_service = OrganizationService(db)
@@ -57,6 +58,7 @@ async def list_audit_logs_project(
     pagination: PaginationParams = Depends(),
     action: str | None = Query(None, alias="action"),
     current_user: UserContext = Depends(get_current_user),
+    *,
     db: AsyncSession = Depends(get_db),
 ):
     await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)

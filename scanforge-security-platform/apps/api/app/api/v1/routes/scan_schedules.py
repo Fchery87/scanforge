@@ -23,6 +23,7 @@ async def create_schedule(
     repo_id: UUID,
     data: ScanScheduleCreate,
     current_user: UserContext = Depends(get_current_user),
+    *,
     db: AsyncSession = Depends(get_db),
 ):
     await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)
@@ -59,6 +60,7 @@ async def update_schedule(
     repo_id: UUID,
     schedule_id: UUID,
     data: ScanScheduleUpdate,
+    *,
     current_user: UserContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -83,6 +85,7 @@ async def delete_schedule(
     repo_id: UUID,
     schedule_id: UUID,
     current_user: UserContext = Depends(get_current_user),
+    *,
     db: AsyncSession = Depends(get_db),
 ):
     await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)

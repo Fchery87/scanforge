@@ -97,6 +97,7 @@ async def list_scans(
     pagination: PaginationParams = Depends(),
     status_filter: str | None = Query(None, alias="status"),
     current_user: UserContext = Depends(get_current_user),
+    *,
     db: AsyncSession = Depends(get_db),
 ):
     await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)
@@ -143,6 +144,7 @@ async def download_scan_artifact(
     scan_id: UUID,
     run_id: UUID,
     current_user: UserContext = Depends(get_current_user),
+    *,
     db: AsyncSession = Depends(get_db),
 ):
     await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)
@@ -166,6 +168,7 @@ async def cancel_scan(
     scan_id: UUID,
     data: ScanCancel,
     current_user: UserContext = Depends(get_current_user),
+    *,
     db: AsyncSession = Depends(get_db),
 ):
     await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)

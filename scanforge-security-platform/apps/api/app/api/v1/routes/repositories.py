@@ -56,6 +56,7 @@ async def list_repositories(
     pagination: PaginationParams = Depends(),
     is_active: bool | None = None,
     current_user: UserContext = Depends(get_current_user),
+    *,
     db: AsyncSession = Depends(get_db),
 ):
     await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)
@@ -108,6 +109,7 @@ async def update_repository(
     repo_id: UUID,
     data: RepositoryUpdate,
     current_user: UserContext = Depends(get_current_user),
+    *,
     db: AsyncSession = Depends(get_db),
 ):
     await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)

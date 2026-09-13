@@ -41,6 +41,7 @@ class FindingService:
         user_id: UUID,
         status: str,
         event_type: str | None = None,
+        *,
         reason: str | None = None,
         metadata_json: dict | None = None,
     ) -> Finding | None:
@@ -70,6 +71,7 @@ class FindingService:
         user_id: UUID,
         skip: int = 0,
         limit: int = 50,
+        *,
         severity: str | None = None,
         category: str | None = None,
         status: str | None = None,
