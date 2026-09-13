@@ -10,6 +10,12 @@ from app.db.models import Organization, OrganizationMember, Project, Repository,
 from app.schemas.scans import ScanCreate
 
 
+class ScanAuthorizationError(Exception):
+    """Caller principal is not bound to the organization that owns the scan."""
+
+    code = "scan_org_mismatch"
+
+
 class ScanService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -143,19 +149,26 @@ class ScanService:
         status: ScanStatusEnum,
         error_message: str | None = None,
         summary_json: dict | None = None,
+        *,
+        caller_organization_id: UUID,
     ) -> Scan | None:
         scan = await self.db.get(Scan, scan_id)
         if not scan:
             return None
+        project = await self.db.get(Project, scan.project_id)
+        if project is None or str(project.organization_id) != str(caller_organization_id):
+            raise ScanAuthorizationError(
+                "Worker principal is not bound to the organization that owns the scan"
+            )
         if scan.status in (ScanStatusEnum.CANCELED, ScanStatusEnum.COMPLETED):
             raise ValueError("Terminal scan state cannot be overwritten")
         if status == ScanStatusEnum.COMPLETED:
             raise ValueError("Use atomic completion to complete a scan")
 
         scan.status = status
-        if error_message:
+        if error_message is not None:
             scan.error_message = error_message
-        if summary_json:
+        if summary_json is not None:
             scan.summary_json = summary_json
 
         await self.db.commit()

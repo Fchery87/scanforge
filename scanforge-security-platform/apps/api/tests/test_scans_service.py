@@ -5,6 +5,7 @@ from uuid import uuid4
 import pytest
 
 from app.db.enums import ScanStatus as ScanStatusEnum
+from app.db.models import Project, Scan
 from app.services.scans import ScanAuthorizationError, ScanService
 
 
@@ -63,8 +64,6 @@ async def _scans_db_with_org(scan, project):
     db = AsyncMock()
 
     async def get(model, _obj_id):
-        from app.db.models import Project, Scan
-
         if model is Scan:
             return scan
         if model is Project:

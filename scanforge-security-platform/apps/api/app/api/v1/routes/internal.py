@@ -29,6 +29,7 @@ from app.services.scan_completion import ScanCompletionConflict, ScanCompletionS
 from app.services.scan_lease import LEASE_SECONDS, RENEWAL_SECONDS, LeaseConflict, ScanLeaseService
 from app.services.scan_lifecycle import ScanLifecycleService
 from app.services.scan_schedules import ScanScheduleService
+from app.services.scans import ScanAuthorizationError, ScanService
 
 logger = logging.getLogger(__name__)
 
@@ -195,16 +196,18 @@ async def update_scan_status_internal(
     if data.status == ScanStatus.COMPLETED.value:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Use the atomic completion endpoint")
 
-    if data.status:
-        scan.status = ScanStatus(data.status)
-    if data.error_message is not None:
-        scan.error_message = data.error_message
-    if data.summary_json is not None:
-        scan.summary_json = data.summary_json
-
-    await db.commit()
-    await db.refresh(scan)
-    return scan
+    try:
+        return await ScanService(db).update_status(
+            scan_id,
+            ScanStatus(data.status) if data.status else scan.status,
+            error_message=data.error_message,
+            summary_json=data.summary_json,
+            caller_organization_id=principal.organization_id,
+        )
+    except ScanAuthorizationError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 class CreateScannerRunRequest(BaseModel):
