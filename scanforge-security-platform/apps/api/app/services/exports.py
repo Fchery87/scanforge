@@ -8,6 +8,12 @@ from app.db.models import Export, OrganizationMember, Project
 from app.schemas.exports import ExportCreate
 
 
+class ExportAuthorizationError(Exception):
+    """Caller is not a member of the export target organization."""
+
+    code = "export_org_membership_required"
+
+
 class ExportService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -21,6 +27,17 @@ class ExportService:
         project = await self.db.get(Project, str(project_id))
         if not project:
             raise ValueError("Project not found")
+
+        membership = await self.db.execute(
+            select(OrganizationMember).where(
+                OrganizationMember.organization_id == project.organization_id,
+                OrganizationMember.user_id == str(user_id),
+            )
+        )
+        if not membership.scalar_one_or_none():
+            raise ExportAuthorizationError(
+                "User is not a member of the project's organization"
+            )
 
         export = Export(
             project_id=str(project_id),

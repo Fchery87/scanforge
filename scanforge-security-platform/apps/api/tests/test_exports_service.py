@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.services.exports import ExportService
+from app.services.exports import ExportAuthorizationError, ExportService
 
 
 @pytest.mark.asyncio
@@ -37,8 +37,6 @@ async def test_create_export_persists_title():
 
 @pytest.mark.asyncio
 async def test_create_export_rejects_non_member_of_target_org():
-    from app.services.exports import ExportAuthorizationError
-
     project_id = uuid4()
     user_id = uuid4()
     project = SimpleNamespace(id=project_id, organization_id=uuid4())
