@@ -42,6 +42,7 @@ from app.services.finding_lifecycle import (
     validate_transition,
 )
 from app.services.risk_scoring import calculate_risk_score
+from app.services.scans import ScanAuthorizationError
 from app.services.secret_safety import sanitize_secret_mapping
 
 
@@ -210,7 +211,15 @@ class FindingService:
         normalized_findings: Sequence[dict | CanonicalFindingCandidate],
         *,
         commit: bool = True,
+        caller_organization_id: UUID | None = None,
     ) -> tuple[int, int]:
+        if caller_organization_id is not None:
+            project = await self.db.get(Project, project_id)
+            if project is None or str(project.organization_id) != str(caller_organization_id):
+                raise ScanAuthorizationError(
+                    "Worker principal is not bound to the organization that owns the scan"
+                )
+
         new_count = 0
         updated_count = 0
         repository = await self.db.get(Repository, repository_id)

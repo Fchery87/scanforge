@@ -99,7 +99,16 @@ async def create_artifact_upload_url(
     principal: WorkerPrincipal = Depends(require_capability("artifacts:write")),
     db: AsyncSession = Depends(get_db),
 ):
-    scan, project = await require_scan_access(scan_id, principal, db)
+    try:
+        scan_project = await ScanService(db).authorize_scan_access(
+            scan_id,
+            caller_organization_id=principal.organization_id,
+        )
+    except ScanAuthorizationError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
+    if scan_project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan not found")
+    scan, project = scan_project
     if data.size_bytes < 0 or data.size_bytes > 50 * 1024 * 1024:
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Artifact too large")
     if not _valid_artifact_component(data.scanner_name) or not _valid_artifact_component(data.filename):
@@ -231,17 +240,18 @@ async def create_scanner_run(
     principal: WorkerPrincipal = Depends(require_capability("scans:write")),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_scan_access(scan_id, principal, db)
-
-    run = ScannerRun(
-        scan_id=str(scan_id),
-        scanner_name=data.scanner_name,
-        scanner_version=data.scanner_version,
-        status=ScanStatus.RUNNING,
-    )
-    db.add(run)
-    await db.commit()
-    await db.refresh(run)
+    try:
+        run = await ScanService(db).create_scanner_run(
+            scan_id,
+            data.scanner_name,
+            data.scanner_version,
+            status=ScanStatus.RUNNING,
+            caller_organization_id=principal.organization_id,
+        )
+    except ScanAuthorizationError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan not found")
     return {"id": run.id, "scanner_name": run.scanner_name, "status": run.status.value}
 
 
@@ -255,24 +265,23 @@ async def update_scanner_run(
     run = await db.get(ScannerRun, str(run_id))
     if not run:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scanner run not found")
-    await require_scan_access(UUID(str(run.scan_id)), principal, db)
 
-    if data.status is not None:
-        run.status = ScanStatus(data.status)
-    if data.duration_ms is not None:
-        run.duration_ms = data.duration_ms
-    if data.exit_code is not None:
-        run.exit_code = data.exit_code
-    if data.error_message is not None:
-        run.error_message = data.error_message
-    if data.artifact_uri is not None:
-        run.artifact_uri = data.artifact_uri
-    if data.metadata_json is not None:
-        run.metadata_json = data.metadata_json
-
-    await db.commit()
-    await db.refresh(run)
-    return {"id": run.id, "status": run.status.value}
+    try:
+        updated = await ScanService(db).update_scanner_run(
+            run_id,
+            ScanStatus(data.status) if data.status is not None else None,
+            duration_ms=data.duration_ms,
+            exit_code=data.exit_code,
+            error_message=data.error_message,
+            artifact_uri=data.artifact_uri,
+            metadata_json=data.metadata_json,
+            caller_organization_id=principal.organization_id,
+        )
+    except ScanAuthorizationError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
+    if updated is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scanner run not found")
+    return {"id": updated.id, "status": updated.status.value}
 
 
 class PersistFindingsRequest(BaseModel):
@@ -291,12 +300,16 @@ async def persist_scan_findings(
         return {"inserted": 0}
 
     service = FindingService(db)
-    new_count, updated_count = await service.upsert_from_scan(
-        scan_id=str(scan_id),
-        repository_id=str(scan.repository_id),
-        project_id=str(scan.project_id),
-        normalized_findings=data.findings,
-    )
+    try:
+        new_count, updated_count = await service.upsert_from_scan(
+            scan_id=str(scan_id),
+            repository_id=str(scan.repository_id),
+            project_id=str(scan.project_id),
+            normalized_findings=data.findings,
+            caller_organization_id=principal.organization_id,
+        )
+    except ScanAuthorizationError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
 
     return {"inserted": new_count, "updated": updated_count}
 

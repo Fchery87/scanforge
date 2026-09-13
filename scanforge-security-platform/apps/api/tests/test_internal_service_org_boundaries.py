@@ -13,6 +13,7 @@ from app.services.scans import ScanAuthorizationError, ScanService
 
 async def _org_db(mapping):
     db = AsyncMock()
+    db.add = Mock()
 
     async def get(model, _obj_id):
         if model in mapping:
