@@ -5,11 +5,9 @@ from uuid import uuid4
 
 import pytest
 
-
-from app.services.exports import ExportAuthorizationError, ExportService
 from app.api.v1.routes.exports import _serialize_export
 from app.schemas.exports import ExportResponse
-from app.services.exports import ExportService
+from app.services.exports import ExportAuthorizationError, ExportService
 
 
 @pytest.mark.asyncio

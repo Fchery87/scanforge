@@ -12,13 +12,14 @@ from __future__ import annotations
 import asyncio
 import json as jsonlib
 import logging
+import tempfile
 from pathlib import Path
 
 import httpx
 import pytest
+from app.services.lease_renewer import LeaseLostError, LeaseRenewer
 
 from app.clients.queue import QueueJob
-from app.services.lease_renewer import LeaseLostError, LeaseRenewer
 from app.services.scan_orchestrator import ScanContext, ScanOrchestrator
 
 pytestmark = pytest.mark.asyncio
@@ -240,7 +241,7 @@ async def test_lease_conflict_aborts_execution_without_failure_bookkeeping(caplo
     async def slow_repository(_context):
         await asyncio.sleep(3600)
         body_finished.append(True)
-        return Path("/tmp/unused")
+        return Path(tempfile.gettempdir()) / "lease-renewer-unused"
 
     orchestrator._execution.prepare_repository = slow_repository
 
@@ -276,7 +277,7 @@ async def test_terminal_scan_cancels_renewer_task_and_never_heartbeats():
     orchestrator._build_lease_renewer = build
 
     async def fast_repository(_context):
-        return Path("/tmp/unused")
+        return Path(tempfile.gettempdir()) / "lease-renewer-unused"
 
     orchestrator._execution.prepare_repository = fast_repository
 
