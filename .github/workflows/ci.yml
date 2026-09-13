@@ -23,11 +23,35 @@ jobs:
         with:
           filters: |
             api:
-              - 'apps/api/**'
+              - 'scanforge-security-platform/apps/api/**'
+              - 'scanforge-security-platform/packages/**'
+              - 'scanforge-security-platform/Makefile'
+              - 'scanforge-security-platform/render.yaml'
+              - 'scanforge-security-platform/docker-compose.yml'
+              - 'scanforge-security-platform/.github/**'
+              - '.github/**'
+              - 'scanforge-security-platform/spec/**'
+              - 'scanforge-security-platform/docs/adr/**'
             worker:
-              - 'apps/worker/**'
+              - 'scanforge-security-platform/apps/worker/**'
+              - 'scanforge-security-platform/packages/**'
+              - 'scanforge-security-platform/Makefile'
+              - 'scanforge-security-platform/render.yaml'
+              - 'scanforge-security-platform/docker-compose.yml'
+              - 'scanforge-security-platform/.github/**'
+              - '.github/**'
+              - 'scanforge-security-platform/spec/**'
+              - 'scanforge-security-platform/docs/adr/**'
             web:
-              - 'apps/web/**'
+              - 'scanforge-security-platform/apps/web/**'
+              - 'scanforge-security-platform/packages/**'
+              - 'scanforge-security-platform/Makefile'
+              - 'scanforge-security-platform/render.yaml'
+              - 'scanforge-security-platform/docker-compose.yml'
+              - 'scanforge-security-platform/.github/**'
+              - '.github/**'
+              - 'scanforge-security-platform/spec/**'
+              - 'scanforge-security-platform/docs/adr/**'
 
   api:
     needs: changes
@@ -35,7 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: apps/api
+        working-directory: scanforge-security-platform/apps/api
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -68,7 +92,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: apps/worker
+        working-directory: scanforge-security-platform/apps/worker
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -90,20 +114,22 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: apps/web
+        working-directory: scanforge-security-platform/apps/web
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: apps/web/package-lock.json
+          cache-dependency-path: scanforge-security-platform/apps/web/package-lock.json
       - name: Install dependencies
         run: npm ci
       - name: Lint (eslint)
         run: npm run lint
+      - name: Test (node)
+        run: npm run test:node
       - name: Test (vitest)
-        run: npm test
+        run: npm run test:vitest
       - name: Audit dependencies (npm audit)
         run: npm audit --audit-level=high
       - name: Verify api-types.ts is up-to-date
