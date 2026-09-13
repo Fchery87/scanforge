@@ -176,6 +176,25 @@ make migrate-reset        # Wipe all tables (DEV ONLY!)
 psql postgresql://scanforge:scanforge_local@localhost:5432/scanforge
 ```
 
+### Disposable PostgreSQL for test evidence (pgserver)
+
+Readiness work (R04 and later) verifies database behavior against a real disposable PostgreSQL 16 cluster
+created with [`pgserver`](https://pypi.org/project/pgserver/), not the shared dev database:
+
+```bash
+cd apps/api && pip install pgserver
+```
+
+```python
+import pgserver
+db = pgserver.get_server("/tmp/scanforge-pg16")  # throwaway PG16 data dir under /tmp
+print(db.get_uri())                              # use as DATABASE_URL for the test run
+```
+
+Procedure: point `DATABASE_URL` at the printed URI, run `make migrate`, then run the API test suite and any
+concurrency gates against that URI. Delete the `/tmp/scanforge-pg16` directory afterwards. The cluster holds
+no credentials and is safe to drop.
+
 ## Scanner Binaries
 
 Install these for local vulnerability and secret scanning:
@@ -294,6 +313,17 @@ cd apps/web && rm -rf .next && npm install && npm run dev
 make migrate-status
 # If head is behind, run:
 make migrate
+```
+
+### Alembic 0015 revision renamed (R04)
+
+Migration `0015` was renamed from `0015_finding_instance_ai_annotation` to `0015_finding_ai_annotation`
+(the old id exceeded the 32-character `alembic_version` limit on PostgreSQL). If an existing dev database
+is stamped with the old id, re-stamp it before `make migrate`:
+
+```bash
+cd apps/api && PYTHONPATH="$(cd ../.. && pwd)" .venv/bin/alembic -c alembic.ini stamp 0015_finding_ai_annotation
+cd ../.. && make migrate
 ```
 
 ## Project Structure
