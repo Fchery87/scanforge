@@ -46,7 +46,7 @@ A missing credential or unavailable runtime is `Blocked` in the evidence column,
 | --- | --- | --- | --- | --- | --- |
 | R00 | Preserve and reproduce the baseline | None | Done | d54f4e9 | `/tmp/scanforge-r00-baseline-2026-09-13.txt`; preserved before focused commit |
 | R01 | Repair web test selection | R00 | Done | d54f4e9 | Node 75 passed; Vitest 3 passed; `make test` passed; `make lint` passed |
-| R02 | Activate CI at the actual repository root | R01 | Not started | Pending | Real PR run, path-filter cases, clean build |
+| R02 | Activate CI at the actual repository root | R01 | In progress | Pending | Local YAML/path validation passed; real PR run still required |
 | R03 | Settle evidence-contract and transition policy | R02 | Not started | Pending | Decision table, fixtures, ADR disposition |
 | R04 | Enforce API-owned atomic completion | R03 | Not started | Pending | PostgreSQL rollback, replay, concurrency, cancellation tests |
 | R05 | Make disappearance and triage scope-safe | R04 | Not started | Pending | Comparable-scan matrix, transition tests, browser evidence |
