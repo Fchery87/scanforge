@@ -1,5 +1,9 @@
 # Secure Private Beta Implementation Plan
 
+> Execution tracking now lives in the [September readiness plan](2026-09-13-evidence-first-readiness-plan.md).
+> Keep this document as implementation background. Its requirements map to the new tracker in Appendix B.
+> Do not execute both plans or assume that the code snippets and expected failures below still match the working tree.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Make ScanForge safe and reliable enough to operate a three-organization private beta with dedicated workers and disposable scanner containers.

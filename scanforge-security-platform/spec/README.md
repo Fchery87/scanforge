@@ -15,3 +15,4 @@ These files are intentionally shorter and less historical than the main document
 - `RBAC.md`: roles and permission summary
 - `TASKS.md`: implementation task tracking if still in use
 - `SECURE_PRIVATE_BETA.md`: approved scope, architecture, release gates, and success measures for the three-organization private beta
+- `2026-09-13-evidence-first-readiness.md`: findings, invariants, implementation gates, market position, and post-beta direction
