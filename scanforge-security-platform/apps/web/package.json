@@ -8,10 +8,10 @@
     "build": "next build",
     "start": "next start -p 3000",
     "lint": "eslint . --max-warnings 0",
-    "test": "vitest run",
+    "test": "npm run test:node && npm run test:vitest",
     "gen:types": "openapi-typescript ../api/openapi.json -o lib/api-types.ts",
     "test:node": "node --test \"**/*.test.ts\"",
-    "test:vitest": "vitest run components/scanforge/finding-drawer.spec.tsx"
+    "test:vitest": "vitest run"
   },
   "dependencies": {
     "@neondatabase/auth": "^0.2.0-beta.1",
