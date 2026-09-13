@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import INET, JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
@@ -50,7 +51,9 @@ class _SQLiteUUID(TypeDecorator):
         def process(value):
             if value is None:
                 return None
-            return value if isinstance(value, str) else value.hex
+            # Dashed-string canonical form: matches str(uuid4()) seeds so the
+            # service-boundary db.get(Scan, UUID(...)) lookups bind correctly.
+            return str(value)
 
         return process
 
@@ -148,6 +151,37 @@ def _completion_request(attempt_id, revision) -> ScanCompletionRequest:
         scanner_runs=[ScannerRunCompletion(scanner_name="trivy", status="completed", exit_code=0)],
         summary_json={"seen_fingerprints": [], "scanner_health": {"complete": True}},
     )
+
+
+@pytest.mark.asyncio
+async def test_execution_context_rejects_foreign_org_principal_and_serves_matched(db_session):
+    """Merge follow-up: execution-context enforces the R06 service-level org
+    check.  A fabricated org-A principal on an org-B scan raises the
+    ScanAuthorizationError 403 mapping; the matched principal still receives
+    attempt identity and lease fields (R09 logic untouched)."""
+    scan, org_id = await _seed_scan(db_session)
+
+    foreign = _principal(uuid4())
+    with pytest.raises(HTTPException) as excinfo:
+        await internal.get_scan_execution_context(
+            scan_id=UUID(str(scan.id)), principal=foreign, db=db_session
+        )
+    assert excinfo.value.status_code == 403
+    # The rejected claimant never touched the lease or identity.
+    untouched = await db_session.get(Scan, str(scan.id))
+    assert untouched.current_attempt_id is None
+    assert untouched.execution_revision == 0
+
+    matched = _principal(org_id)
+    served = await internal.get_scan_execution_context(
+        scan_id=UUID(str(scan.id)), principal=matched, db=db_session
+    )
+    assert served["org_id"] == str(org_id)
+    assert served["attempt_id"]
+    assert served["execution_revision"] == 1
+    assert served["lease_owner"] == str(matched.worker_id)
+    assert served["lease_expires_at"]
+    assert served["reclaim_reason"] == "fresh_start"
 
 
 @pytest.mark.asyncio

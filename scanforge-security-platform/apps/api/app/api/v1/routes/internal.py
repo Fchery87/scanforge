@@ -370,7 +370,18 @@ async def get_scan_execution_context(
     principal: WorkerPrincipal = Depends(require_capability("scans:read")),
     db: AsyncSession = Depends(get_db),
 ):
-    scan, project = await require_scan_access(scan_id, principal, db)
+    # Service-boundary org check (merge follow-up): the R06 ScanAuthorizationError
+    # pattern applies to execution-context too, not only to mutations.
+    try:
+        scan_project = await ScanService(db).authorize_scan_access(
+            scan_id,
+            caller_organization_id=principal.organization_id,
+        )
+    except ScanAuthorizationError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
+    if scan_project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan not found")
+    scan, project = scan_project
 
     scan_type = getattr(scan, "scan_type", None) or "full"
 

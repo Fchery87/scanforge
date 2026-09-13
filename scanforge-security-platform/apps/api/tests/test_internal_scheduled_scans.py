@@ -102,9 +102,10 @@ async def test_get_scan_execution_context_loads_authoritative_scan_context(monke
         async def refresh(self, _scan):
             return None
 
+    # The route authorizes through the R06 service-boundary seam now.
     monkeypatch.setattr(
-        internal,
-        "require_scan_access",
+        internal.ScanService,
+        "authorize_scan_access",
         AsyncMock(return_value=(scan, project)),
     )
     result = await internal.get_scan_execution_context(
