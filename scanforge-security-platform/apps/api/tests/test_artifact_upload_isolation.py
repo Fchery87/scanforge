@@ -207,7 +207,9 @@ async def test_worker_cannot_mint_upload_url_for_other_organization_scan(db_sess
     with pytest.raises(HTTPException) as excinfo:
         await create_artifact_upload_url(uuid.UUID(scan_id), request, foreign_principal, session)
 
-    assert excinfo.value.status_code == 404
+    # Combined with R06: service-boundary org mismatch maps to 403
+    # (ScanAuthorizationError), replacing the pre-R06 404 not-found shape.
+    assert excinfo.value.status_code == 403
 
 
 @pytest.mark.asyncio
