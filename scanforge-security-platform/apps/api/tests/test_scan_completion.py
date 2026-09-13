@@ -12,6 +12,8 @@ from app.services.scan_completion import ScanCompletionConflict, ScanCompletionS
 
 def completion_request() -> ScanCompletionRequest:
     return ScanCompletionRequest(
+        winning_attempt_id=uuid4(),
+        execution_revision=1,
         findings=[],
         scanner_runs=[ScannerRunCompletion(scanner_name="trivy", status="completed", exit_code=0)],
         summary_json={
@@ -44,7 +46,7 @@ async def test_commit_failure_rolls_back_and_leaves_scan_incomplete(monkeypatch)
         summary_json=None,
     )
     db = AsyncMock()
-    db.execute.side_effect = [result(scan), result(None)]
+    db.execute.side_effect = [result(scan), result(None), result(None)]
     db.add = Mock()
     db.commit.side_effect = RuntimeError("commit failed")
     findings = SimpleNamespace(
@@ -70,7 +72,7 @@ async def test_duplicate_completion_is_a_noop():
         summary_json={},
     )
     db = AsyncMock()
-    db.execute.return_value = result(scan)
+    db.execute.side_effect = [result(scan), result(None)]
 
     response = await ScanCompletionService(db).complete(uuid4(), uuid4(), completion_request())
 
@@ -109,7 +111,7 @@ async def test_scanner_health_findings_and_lifecycle_commit_before_completed(mon
         summary_json=None,
     )
     db = AsyncMock()
-    db.execute.side_effect = [result(scan), result(None)]
+    db.execute.side_effect = [result(scan), result(None), result(None)]
     db.add = Mock()
     findings = SimpleNamespace(
         upsert_from_scan=AsyncMock(return_value=(1, 0)),

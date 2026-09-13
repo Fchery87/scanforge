@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -45,3 +45,19 @@ class ScannerRun(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     artifact_uri: Mapped[str | None] = mapped_column(String(2048))
     metadata_json: Mapped[dict | None] = mapped_column(JSONB)
     scan: Mapped[Scan] = relationship("Scan", back_populates="scanner_runs", lazy="noload")
+
+
+class ScanCompletionReceipt(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "scan_completion_receipts"
+    scan_id: Mapped[str] = mapped_column(
+        ForeignKey("scans.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
+    )
+    winning_attempt_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    execution_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    evidence_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    terminal_status: Mapped[str] = mapped_column(String(50), nullable=False)
+    inserted_findings: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_findings: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    scanner_runs_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    scanner_runs_complete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    response_json: Mapped[dict | None] = mapped_column(JSONB)
