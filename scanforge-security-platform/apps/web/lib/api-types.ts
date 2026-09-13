@@ -2260,6 +2260,13 @@ export interface components {
         };
         /** ScanCompletionRequest */
         ScanCompletionRequest: {
+            /**
+             * Winning Attempt Id
+             * Format: uuid
+             */
+            winning_attempt_id: string;
+            /** Execution Revision */
+            execution_revision: number;
             /** Findings */
             findings?: components["schemas"]["CanonicalFindingCandidate"][];
             /** Scanner Runs */
