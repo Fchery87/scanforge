@@ -46,8 +46,8 @@ A missing credential or unavailable runtime is `Blocked` in the evidence column,
 | --- | --- | --- | --- | --- | --- |
 | R00 | Preserve and reproduce the baseline | None | Done | d54f4e9 | `/tmp/scanforge-r00-baseline-2026-09-13.txt`; preserved before focused commit |
 | R01 | Repair web test selection | R00 | Done | d54f4e9 | Node 75 passed; Vitest 3 passed; `make test` passed; `make lint` passed |
-| R02 | Activate CI at the actual repository root | R01 | In progress | Pending | Local YAML/path validation passed; real PR run still required |
-| R03 | Settle evidence-contract and transition policy | R02 | Not started | Pending | Decision table, fixtures, ADR disposition |
+| R02 | Activate CI at the actual repository root | R01 | Done | 09347dc | Hosted PR 19 run 34767606718 passed required, API, worker, web, and changes at head `09347dc3d0599f37ea46d96eb67974bf1d2b77a5`; SBOM skipped on stacked PR |
+| R03 | Settle evidence-contract and transition policy | R02 | In progress | 0d7b50b | Proposed draft exists; ref identity, cancellation, replay, transition precedence, thresholds, and compatibility limits remain open |
 | R04 | Enforce API-owned atomic completion | R03 | Not started | Pending | PostgreSQL rollback, replay, concurrency, cancellation tests |
 | R05 | Make disappearance and triage scope-safe | R04 | Not started | Pending | Comparable-scan matrix, transition tests, browser evidence |
 | R06 | Close user and worker authorization gaps | R02 | Not started | Pending | Two-organization route and service tests, audit evidence |
