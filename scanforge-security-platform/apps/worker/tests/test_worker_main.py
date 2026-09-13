@@ -1,6 +1,6 @@
 import pytest
 
-from app.clients.queue import QueueJob
+from app.clients.queue import QueueJob, QueuePollStatus
 from app.worker.main import Worker
 
 
@@ -13,10 +13,14 @@ class RecordingQueue:
         self.dlq_calls = 0
 
     async def dequeue(self, timeout_seconds: int = 5):
+        job, _status = await self.dequeue_with_status(timeout_seconds)
+        return job
+
+    async def dequeue_with_status(self, timeout_seconds: int = 5):
         self.dequeue_calls += 1
         if self.dequeue_calls == 1:
-            return self.job
-        return None
+            return self.job, QueuePollStatus.DELIVERED
+        return None, QueuePollStatus.EMPTY
 
     async def get_retry_count(self, job_id: str) -> int:
         self.get_retry_count_calls += 1
