@@ -27,6 +27,8 @@ class Scan(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     requested_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     error_message: Mapped[str | None] = mapped_column(Text)
     summary_json: Mapped[dict | None] = mapped_column(JSONB)
+    current_attempt_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    execution_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     scanner_runs: Mapped[list[ScannerRun]] = relationship("ScannerRun", back_populates="scan", lazy="noload")
 

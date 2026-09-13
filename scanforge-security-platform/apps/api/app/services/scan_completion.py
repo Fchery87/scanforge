@@ -81,6 +81,17 @@ class ScanCompletionService:
             if receipt is not None:
                 return self._replay_response(receipt, data, digest)
 
+            issued_attempt_id = getattr(scan, "current_attempt_id", None)
+            if issued_attempt_id is not None and (
+                issued_attempt_id != str(data.winning_attempt_id)
+                or getattr(scan, "execution_revision", None) != data.execution_revision
+            ):
+                # The scan row holds the latest server-issued identity; anything
+                # else lost the race before a receipt could exist.
+                raise CompletionSuperseded(
+                    "Completion was superseded by another attempt or execution revision"
+                )
+
             if scan.status == ScanStatus.COMPLETED:
                 # Legacy completed scan without a server-owned receipt.
                 return {
