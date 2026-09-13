@@ -25,12 +25,25 @@ from app.schemas.scan_completion import ScanCompletionRequest, ScannerRunComplet
 
 
 class _SQLiteUUID(TypeDecorator):
-    """Accepts both str and UUID binds for PostgreSQL UUID columns on SQLite."""
+    """Accepts both str and UUID binds for PostgreSQL UUID columns on SQLite.
+
+    The downcast applies to SQLite only.  Under PostgreSQL the column keeps
+    native uuid param typing, so asyncpg sends uuid (not CHAR) and the real
+    row-lock gate runs against production semantics.
+    """
 
     impl = CHAR
     cache_ok = True
 
-    def bind_processor(self, _dialect):
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(PGUUID(as_uuid=True))
+        return dialect.type_descriptor(CHAR())
+
+    def bind_processor(self, dialect):
+        if dialect.name == "postgresql":
+            return None  # asyncpg coerces str/UUID natively for uuid params
+
         def process(value):
             if value is None:
                 return None

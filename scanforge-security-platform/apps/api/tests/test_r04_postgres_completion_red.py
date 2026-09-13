@@ -4,6 +4,7 @@ SQLite cases below exercise the runnable paths of the boundary.  The
 PostgreSQL cases stay skipped unless ``R04_POSTGRES_URL`` is set: real
 row-lock serialization is the hard release gate and must not be weakened.
 """
+import asyncio
 import os
 from uuid import uuid4
 
@@ -31,10 +32,6 @@ from app.services.scan_completion import (
 )
 from app.services.scans import ScanService
 
-POSTGRES_INFRA_REASON = (
-    "PostgreSQL disposable-cluster infrastructure unavailable: initdb and pg_ctl "
-    "are not installed (pg_config alone cannot start an isolated server)"
-)
 
 
 @compiles(PGUUID, "sqlite")
@@ -53,12 +50,25 @@ def _pg_inet_sqlite(type_, compiler, **kw):  # noqa: ARG001
 
 
 class _SQLiteUUID(TypeDecorator):
-    """Accepts both str and UUID binds for PostgreSQL UUID columns on SQLite."""
+    """Accepts both str and UUID binds for PostgreSQL UUID columns on SQLite.
+
+    The downcast applies to SQLite only.  Under PostgreSQL the column keeps
+    native uuid param typing, so asyncpg sends uuid (not CHAR) and the real
+    row-lock gate runs against production semantics.
+    """
 
     impl = CHAR
     cache_ok = True
 
-    def bind_processor(self, _dialect):
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(PGUUID(as_uuid=True))
+        return dialect.type_descriptor(CHAR())
+
+    def bind_processor(self, dialect):
+        if dialect.name == "postgresql":
+            return None  # asyncpg coerces str/UUID natively for uuid params
+
         def process(value):
             if value is None:
                 return None
@@ -118,7 +128,7 @@ async def db_session():
     await engine.dispose()
 
 
-async def _seed_scan(session) -> Scan:
+async def _seed_scan(session, *, repo_suffix: str = "") -> Scan:
     user_id = uuid4()
     org_id, project_id, repo_id, scan_id = (uuid4() for _ in range(4))
     user = User(
@@ -139,8 +149,8 @@ async def _seed_scan(session) -> Scan:
         project_id=str(project_id),
         provider="github",
         owner_name="o",
-        repo_name="r",
-        full_name="o/r",
+        repo_name=f"r{repo_suffix}",
+        full_name=f"o/r{repo_suffix}",
     )
     scan = Scan(
         id=str(scan_id),
@@ -150,7 +160,19 @@ async def _seed_scan(session) -> Scan:
         scan_type="full",
         status=ScanStatus.RUNNING,
     )
-    session.add_all([user, org, project, repo, scan])
+    # Real PostgreSQL enforces bare-FK insert order while SQLAlchemy only
+    # orders flush output along relationship() edges, so seed parents
+    # explicitly in dependency order.
+    session.add(user)
+    await session.flush()
+    session.add(org)
+    await session.flush()
+    session.add(project)
+    await session.flush()
+    session.add(repo)
+    await session.flush()
+    session.add(scan)
+    await session.flush()
     await session.commit()
     return scan, org_id
 
@@ -344,17 +366,113 @@ def test_r04_service_import_and_fixture_path_probe():
         engine.sync_engine.dispose()
 
 
-@pytest.mark.asyncio
-async def test_changed_valid_replay_is_conflict_postgres_gate():
-    """Hard release gate: real row-lock serialization needs PostgreSQL."""
-    if not os.getenv("R04_POSTGRES_URL"):
+@pytest.fixture
+async def postgres_sessionmaker():
+    """Sessions against the disposable PostgreSQL cluster behind R04_POSTGRES_URL.
+
+    The schema is the one created by ``alembic upgrade head`` on that cluster,
+    not ``Base.metadata.create_all``, so the gate exercises the real DDL.
+    """
+    url = os.getenv("R04_POSTGRES_URL")
+    if not url:
         pytest.skip("set R04_POSTGRES_URL to a disposable PostgreSQL database")
-    pytest.skip(POSTGRES_INFRA_REASON)
+    engine = create_async_engine(url, pool_size=8, max_overflow=0)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as conn:
+        for table in reversed(Base.metadata.sorted_tables):
+            await conn.execute(table.delete())
+    try:
+        yield maker
+    finally:
+        await engine.dispose()
 
 
 @pytest.mark.asyncio
-async def test_completion_and_cancellation_single_terminal_winner_postgres_gate():
-    """Hard release gate: concurrent completion/cancellation on the Scan row lock."""
-    if not os.getenv("R04_POSTGRES_URL"):
-        pytest.skip("set R04_POSTGRES_URL to a disposable PostgreSQL database")
-    pytest.skip(POSTGRES_INFRA_REASON)
+async def test_changed_valid_replay_is_conflict_postgres_gate(postgres_sessionmaker):
+    """Hard release gate: replay conflict under real PostgreSQL row locks."""
+    maker = postgres_sessionmaker
+    async with maker() as session:
+        scan, org_id = await _seed_scan(session)
+        scan_id = str(scan.id)
+        data = completion_request()
+        first = await ScanCompletionService(session).complete(scan_id, org_id, data)
+        assert first["replayed"] is False
+
+    async with maker() as session:
+        changed = completion_request(
+            winning_attempt_id=data.winning_attempt_id,
+            execution_revision=1,
+            summary_json={
+                "seen_fingerprints": [],
+                "scanner_health": {
+                    "expected": ["trivy"],
+                    "completed": ["trivy"],
+                    "failed": [],
+                    "missing": [],
+                    "complete": True,
+                },
+                "extra": "changed",
+            },
+        )
+        with pytest.raises(CompletionPayloadConflict) as excinfo:
+            await ScanCompletionService(session).complete(scan_id, org_id, changed)
+        assert excinfo.value.code == "completion_payload_conflict"
+
+    async with maker() as session:
+        assert await _count(session, ScannerRun) == 1
+        assert await _count(session, ScanCompletionReceipt) == 1
+        refreshed = await session.get(Scan, scan_id)
+        assert "extra" not in (refreshed.summary_json or {})
+
+
+@pytest.mark.asyncio
+async def test_completion_and_cancellation_single_terminal_winner_postgres_gate(postgres_sessionmaker):
+    """Hard release gate: concurrent completion/cancellation on the Scan row lock.
+
+    Both operations are issued concurrently on separate connections, so
+    PostgreSQL must serialize them on the Scan row and exactly one terminal
+    outcome may win -- every race, not just a lucky ordering.
+    """
+    maker = postgres_sessionmaker
+    for _race in range(8):
+        async with maker() as session:
+            scan, org_id = await _seed_scan(session, repo_suffix=str(_race))
+            scan_id = str(scan.id)
+        data = completion_request()
+        outcomes: dict = {}
+
+        async def _attempt_completion():
+            async with maker() as session:
+                try:
+                    outcomes["completion"] = await ScanCompletionService(session).complete(
+                        scan_id, org_id, data
+                    )
+                except ScanCompletionConflict as exc:
+                    outcomes["completion"] = exc
+
+        async def _attempt_cancellation():
+            async with maker() as session:
+                try:
+                    await ScanService(session).cancel(scan_id)
+                    outcomes["cancellation"] = "canceled"
+                except ValueError as exc:
+                    outcomes["cancellation"] = exc
+
+        await asyncio.gather(_attempt_completion(), _attempt_cancellation())
+
+        async with maker() as session:
+            refreshed = await session.get(Scan, scan_id)
+            receipts = (
+                await session.execute(
+                    select(ScanCompletionReceipt).where(ScanCompletionReceipt.scan_id == scan_id)
+                )
+            ).scalars().all()
+            assert refreshed.status in (ScanStatus.COMPLETED, ScanStatus.CANCELED)
+            if refreshed.status == ScanStatus.COMPLETED:
+                assert len(receipts) == 1
+                assert outcomes["completion"]["replayed"] is False
+                assert isinstance(outcomes["cancellation"], ValueError)
+            else:
+                assert len(receipts) == 0
+                assert outcomes["cancellation"] == "canceled"
+                assert isinstance(outcomes["completion"], ScanCompletionConflict)
