@@ -631,6 +631,75 @@
         }
       }
     },
+    "/api/v1/internal/scans/{scan_id}/heartbeat": {
+      "post": {
+        "tags": [
+          "internal",
+          "internal"
+        ],
+        "summary": "Renew Scan Lease",
+        "description": "Renew the execution lease for the current attempt (R09).\n\nCandidate timings (R03 D1): 120 s lease, renewal every 30 s.  A stale\nattempt and an expired lease are both 409; an expired lease cannot be\nrenewed, so the worker must stop and reclaim instead.",
+        "operationId": "renew_scan_lease_api_v1_internal_scans__scan_id__heartbeat_post",
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Scan Id"
+            }
+          },
+          {
+            "name": "X-Worker-Credential",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Credential"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeartbeatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/scan-schedules/run-due": {
       "post": {
         "tags": [
@@ -6666,6 +6735,24 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "HeartbeatRequest": {
+        "properties": {
+          "attempt_id": {
+            "type": "string",
+            "title": "Attempt Id"
+          },
+          "execution_revision": {
+            "type": "integer",
+            "title": "Execution Revision"
+          }
+        },
+        "type": "object",
+        "required": [
+          "attempt_id",
+          "execution_revision"
+        ],
+        "title": "HeartbeatRequest"
       },
       "MemberInvite": {
         "properties": {

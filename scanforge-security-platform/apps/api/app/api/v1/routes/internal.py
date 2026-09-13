@@ -1,6 +1,6 @@
 import base64
 import logging
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -26,6 +26,7 @@ from app.services.findings import FindingService
 from app.services.github import GitHubService
 from app.services.notifications import NotificationService
 from app.services.scan_completion import ScanCompletionConflict, ScanCompletionService
+from app.services.scan_lease import LEASE_SECONDS, RENEWAL_SECONDS, LeaseConflict, ScanLeaseService
 from app.services.scan_lifecycle import ScanLifecycleService
 from app.services.scan_schedules import ScanScheduleService
 
@@ -83,6 +84,11 @@ class ArtifactUploadRequest(BaseModel):
     filename: str
     content_type: str = "application/json"
     size_bytes: int
+
+
+class HeartbeatRequest(BaseModel):
+    attempt_id: str
+    execution_revision: int
 
 
 @router.post("/scans/{scan_id}/artifacts/upload-url")
@@ -352,14 +358,31 @@ async def get_scan_execution_context(
     # latest fetch carries an identity that can complete the scan.  Smallest sane
     # rule for terminal scans: the stored identity is returned frozen and never
     # bumped (attempt_id stays null when a scan ended before any attempt was issued).
-    locked_scan = (
-        await db.execute(select(Scan).where(Scan.id == str(scan.id)).with_for_update())
-    ).scalar_one()
-    if locked_scan.status not in TERMINAL_SCAN_STATUSES:
-        locked_scan.current_attempt_id = str(uuid4())
-        locked_scan.execution_revision = (locked_scan.execution_revision or 0) + 1
-        await db.commit()
-        await db.refresh(locked_scan)
+    lease_owner = str(principal.worker_id)
+    if scan.status not in TERMINAL_SCAN_STATUSES:
+        # R09: attempt identity is granted together with a 120 s execution
+        # lease.  A live lease rejects a duplicate claimant (409 lease_active);
+        # an expired lease is reclaimed with a dead-worker visibility event.
+        try:
+            locked_scan, reclaim_reason = await ScanLeaseService(db).acquire(
+                str(scan.id),
+                terminal_statuses=TERMINAL_SCAN_STATUSES,
+                worker_owner=lease_owner,
+            )
+        except LeaseConflict as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": exc.reason,
+                    "current_owner": exc.current_owner,
+                    "remaining_seconds": exc.remaining_seconds,
+                },
+            ) from exc
+    else:
+        locked_scan = (
+            await db.execute(select(Scan).where(Scan.id == str(scan.id)).with_for_update())
+        ).scalar_one()
+        reclaim_reason = "terminal"
 
     return {
         "scan_id": str(scan.id),
@@ -379,6 +402,50 @@ async def get_scan_execution_context(
         "user_id": str(scan.requested_by_user_id) if scan.requested_by_user_id else None,
         "attempt_id": locked_scan.current_attempt_id,
         "execution_revision": locked_scan.execution_revision,
+        "lease_owner": locked_scan.lease_owner,
+        "lease_expires_at": locked_scan.lease_expires_at.isoformat() if locked_scan.lease_expires_at else None,
+        "reclaim_reason": reclaim_reason,
+    }
+
+
+@router.post("/scans/{scan_id}/heartbeat")
+async def renew_scan_lease(
+    scan_id: UUID,
+    data: HeartbeatRequest,
+    principal: WorkerPrincipal = Depends(require_capability("scans:write")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Renew the execution lease for the current attempt (R09).
+
+    Candidate timings (R03 D1): 120 s lease, renewal every 30 s.  A stale
+    attempt and an expired lease are both 409; an expired lease cannot be
+    renewed, so the worker must stop and reclaim instead.
+    """
+    await require_scan_access(scan_id, principal, db)
+    try:
+        scan = await ScanLeaseService(db).renew(
+            str(scan_id),
+            attempt_id=data.attempt_id,
+            execution_revision=data.execution_revision,
+            worker_owner=str(principal.worker_id),
+        )
+    except LeaseConflict as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": exc.reason,
+                "current_owner": exc.current_owner,
+                "remaining_seconds": exc.remaining_seconds,
+            },
+        ) from exc
+    return {
+        "scan_id": str(scan.id),
+        "attempt_id": scan.current_attempt_id,
+        "execution_revision": scan.execution_revision,
+        "lease_expires_at": scan.lease_expires_at.isoformat() if scan.lease_expires_at else None,
+        "last_heartbeat_at": scan.last_heartbeat_at.isoformat() if scan.last_heartbeat_at else None,
+        "lease_seconds": LEASE_SECONDS,
+        "renewal_seconds": RENEWAL_SECONDS,
     }
 
 

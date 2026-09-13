@@ -2,11 +2,22 @@
 
 import json
 from datetime import UTC, datetime
+from enum import StrEnum
 
 import httpx
 from pydantic import ValidationError
 
 from app.contracts.queue import QueueJob
+
+
+class QueuePollStatus(StrEnum):
+    """R09: queue outcomes must be distinguishable, never folded into "empty"."""
+
+    DELIVERED = "delivered"
+    EMPTY = "empty"
+    UNAVAILABLE = "unavailable"
+    UNAUTHORIZED = "unauthorized"
+    RATE_LIMITED = "rate_limited"
 
 
 class QueueClient:
@@ -57,6 +68,7 @@ return entry_id
             "Authorization": f"Bearer {redis_token}",
             "Content-Type": "application/json",
         }
+        self._consecutive_failures = 0
 
     async def _command(self, *args: str | int | float) -> dict:
         """Send one Redis command as a JSON array to the Upstash REST API."""
@@ -86,13 +98,23 @@ return entry_id
             return
 
     async def dequeue(self, timeout_seconds: int = 5) -> QueueJob | None:
-        """Reclaim a stale pending delivery before reading a new stream message."""
+        job, _status = await self.dequeue_with_status(timeout_seconds)
+        return job
+
+    async def dequeue_with_status(self, timeout_seconds: int = 5) -> tuple[QueueJob | None, QueuePollStatus]:
+        """Reclaim a stale pending delivery before reading a new stream message.
+
+        Never reports an outage as an empty poll: callers receive an explicit
+        QueuePollStatus so unavailable, unauthorized, and rate-limited states
+        are observable and can drive bounded backoff and recovery logging.
+        """
         try:
             await self._ensure_consumer_group()
             await self._command("XPENDING", self.scan_queue, self.CONSUMER_GROUP)
             reclaimed = await self._reclaim_one_pending_job()
             if reclaimed is not None:
-                return reclaimed
+                self._note_success()
+                return reclaimed, QueuePollStatus.DELIVERED
 
             result = await self._command(
                 "XREADGROUP",
@@ -107,9 +129,35 @@ return entry_id
                 self.scan_queue,
                 ">",
             )
-            return await self._job_from_read_result(result.get("result"))
+            job = await self._job_from_read_result(result.get("result"))
+            self._note_success()
+            return job, (QueuePollStatus.DELIVERED if job else QueuePollStatus.EMPTY)
+        except httpx.HTTPStatusError as exc:
+            status_code = exc.response.status_code
+            if status_code in (401, 403):
+                self._note_failure()
+                return None, QueuePollStatus.UNAUTHORIZED
+            if status_code == 429:
+                self._note_failure()
+                return None, QueuePollStatus.RATE_LIMITED
+            self._note_failure()
+            return None, QueuePollStatus.UNAVAILABLE
         except httpx.HTTPError:
-            return None
+            self._note_failure()
+            return None, QueuePollStatus.UNAVAILABLE
+
+    def _note_success(self) -> None:
+        self._consecutive_failures = 0
+
+    def _note_failure(self) -> None:
+        self._consecutive_failures += 1
+
+    @property
+    def backoff_seconds(self) -> float:
+        """Bounded exponential backoff: 1 s doubling, capped at 30 s."""
+        if self._consecutive_failures == 0:
+            return 0.0
+        return float(min(2 ** (self._consecutive_failures - 1), 30))
 
     async def _reclaim_one_pending_job(self) -> QueueJob | None:
         result = await self._command(

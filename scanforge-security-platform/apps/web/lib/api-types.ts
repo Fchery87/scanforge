@@ -194,6 +194,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/internal/scans/{scan_id}/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Renew Scan Lease
+         * @description Renew the execution lease for the current attempt (R09).
+         *
+         *     Candidate timings (R03 D1): 120 s lease, renewal every 30 s.  A stale
+         *     attempt and an expired lease are both 409; an expired lease cannot be
+         *     renewed, so the worker must stop and reclaim instead.
+         */
+        post: operations["renew_scan_lease_api_v1_internal_scans__scan_id__heartbeat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/internal/scan-schedules/run-due": {
         parameters: {
             query?: never;
@@ -1641,6 +1665,13 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** HeartbeatRequest */
+        HeartbeatRequest: {
+            /** Attempt Id */
+            attempt_id: string;
+            /** Execution Revision */
+            execution_revision: number;
+        };
         /** MemberInvite */
         MemberInvite: {
             /**
@@ -3070,6 +3101,43 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    renew_scan_lease_api_v1_internal_scans__scan_id__heartbeat_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Worker-Credential"?: string | null;
+            };
+            path: {
+                scan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HeartbeatRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
