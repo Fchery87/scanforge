@@ -208,6 +208,10 @@ async def _findings_db(project, repository):
             return repository
         if model is Project:
             return project
+        if model is Scan:
+            # R05 combined: upsert_from_scan loads the scan row for the
+            # presence/absence branch series; this fixture has no scan row.
+            return SimpleNamespace(id=_obj_id, branch_name=None)
         raise AssertionError(f"unexpected model {model}")
 
     db.get = AsyncMock(side_effect=get)
