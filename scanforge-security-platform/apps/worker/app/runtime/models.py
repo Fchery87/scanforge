@@ -27,6 +27,7 @@ class ScanRuntimeResult:
     stderr: str
     duration_ms: int
     timed_out: bool = False
+    container_name: str = ""
 
 
 class ScanRuntime(Protocol):

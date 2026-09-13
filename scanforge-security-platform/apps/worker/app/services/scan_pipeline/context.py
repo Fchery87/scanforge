@@ -33,3 +33,4 @@ class ScanContext:
     error_message: str | None = None
     ai_annotated_count: int = 0
     ai_skipped_count: int = 0
+    cleanup_receipt: dict | None = None

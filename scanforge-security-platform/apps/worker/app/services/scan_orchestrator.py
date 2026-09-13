@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -180,8 +181,43 @@ class ScanOrchestrator:
             return False
 
         finally:
-            if context.repo_path and context.repo_path.exists():
-                shutil.rmtree(context.repo_path, ignore_errors=True)
+            self._cleanup_workspace(context)
+
+    def _cleanup_workspace(self, context: ScanContext) -> dict:
+        """Remove the scan workspace and emit a verifiable cleanup receipt.
+
+        The receipt records exactly what was removed and whether anything
+        remains, so operators can verify no source or output workspace
+        survives a finished, failed, or canceled scan.
+        """
+        started = time.monotonic()
+        receipt: dict = {
+            "scan_id": context.scan_id,
+            "workspace": str(context.repo_path) if context.repo_path else None,
+            "removed": False,
+            "residual": None,
+        }
+        if context.repo_path and context.repo_path.exists():
+            shutil.rmtree(context.repo_path, ignore_errors=True)
+            if not context.repo_path.exists():
+                receipt["removed"] = True
+            else:
+                receipt["residual"] = str(context.repo_path)
+        else:
+            receipt["removed"] = True
+        receipt["duration_ms"] = int((time.monotonic() - started) * 1000)
+        context.cleanup_receipt = receipt
+        _log.info(
+            "workspace cleanup receipt",
+            extra={
+                "scan_id": receipt["scan_id"],
+                "workspace": receipt["workspace"],
+                "removed": receipt["removed"],
+                "residual": receipt["residual"],
+                "duration_ms": receipt["duration_ms"],
+            },
+        )
+        return receipt
 
     async def _load_scan_context(self, job: QueueJob) -> ScanContext:
         scan_id = job.payload.get("scan_id")
