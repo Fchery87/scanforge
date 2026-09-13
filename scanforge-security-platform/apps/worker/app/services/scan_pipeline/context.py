@@ -15,6 +15,8 @@ class ScanContext:
     commit_sha: str | None
     job_id: str
     user_id: str | None = None
+    attempt_id: str | None = None
+    execution_revision: int | None = None
     repo_path: Path | None = None
     start_time: datetime = field(default_factory=lambda: datetime.now(UTC).replace(tzinfo=None))
     scanner_results: dict = field(default_factory=dict)

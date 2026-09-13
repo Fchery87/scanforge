@@ -28,6 +28,8 @@ class PersistenceStage:
             response = await client.post(
                 f"{self.api_base_url}/api/v1/internal/scans/{context.scan_id}/complete",
                 json={
+                    "winning_attempt_id": context.attempt_id,
+                    "execution_revision": context.execution_revision,
                     "findings": [sanitize_secret_finding(finding) for finding in context.findings],
                     "scanner_runs": [
                         {

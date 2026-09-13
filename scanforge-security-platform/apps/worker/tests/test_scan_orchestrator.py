@@ -272,3 +272,142 @@ async def test_load_scan_context_rejects_payload_without_scan_id():
 
     with pytest.raises(ValidationError, match="scan_id"):
         QueueJob(job_type="scan.repo.full", job_id="job-1", payload={}, created_at="now")
+
+
+@pytest.mark.asyncio
+async def test_load_scan_context_stores_server_issued_attempt_identity(monkeypatch):
+    orchestrator = ScanOrchestrator(queue=DummyQueue(), r2=DummyR2(), api_base_url="http://api.local")
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "scan_id": "scan-1",
+                "org_id": "org-1",
+                "repository_id": "repo-1",
+                "project_id": "project-1",
+                "scan_type": "full",
+                "expected_scanners": ["trivy"],
+                "coverage_scope": {},
+                "branch": "main",
+                "commit_sha": "deadbeef",
+                "status": "running",
+                "user_id": None,
+                "attempt_id": "attempt-abc",
+                "execution_revision": 3,
+            }
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def get(self, url, headers, timeout):
+            return Response()
+
+    monkeypatch.setattr("app.services.scan_orchestrator.httpx.AsyncClient", Client)
+
+    from app.clients.queue import QueueJob
+
+    context = await orchestrator._load_scan_context(
+        QueueJob(job_type="scan.repo.full", job_id="job-1", payload={"scan_id": "scan-1"}, created_at="now")
+    )
+
+    assert context.attempt_id == "attempt-abc"
+    assert context.execution_revision == 3
+
+
+@pytest.mark.asyncio
+async def test_is_canceled_adopts_latest_issued_identity(monkeypatch):
+    orchestrator = ScanOrchestrator(queue=DummyQueue(), r2=DummyR2(), api_base_url="http://api.local")
+    context = ScanContext(
+        scan_id="scan-1",
+        organization_id="org-1",
+        repository_id="repo-1",
+        project_id="project-1",
+        branch=None,
+        commit_sha=None,
+        job_id="job-1",
+        attempt_id="stale-attempt",
+        execution_revision=1,
+    )
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "status": "running",
+                "attempt_id": "fresh-attempt",
+                "execution_revision": 2,
+            }
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def get(self, url, headers, timeout):
+            return Response()
+
+    monkeypatch.setattr("app.services.scan_orchestrator.httpx.AsyncClient", Client)
+
+    canceled = await orchestrator._is_canceled(context)
+
+    assert canceled is False
+    assert context.attempt_id == "fresh-attempt"
+    assert context.execution_revision == 2
+
+
+@pytest.mark.asyncio
+async def test_complete_scan_payload_echoes_attempt_identity():
+    from app.services.scan_pipeline.persistence import PersistenceStage
+
+    stage = PersistenceStage("http://api.local", "cred")
+    captured = {}
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def post(self, url, json, headers, timeout):
+            captured["url"] = url
+            captured["payload"] = json
+            return Response()
+
+    import app.services.scan_pipeline.persistence as persistence_module
+
+    original_client = persistence_module.httpx.AsyncClient
+    persistence_module.httpx.AsyncClient = Client
+    try:
+        context = ScanContext(
+            scan_id="scan-1",
+            organization_id="org-1",
+            repository_id="repo-1",
+            project_id="project-1",
+            branch=None,
+            commit_sha=None,
+            job_id="job-1",
+            attempt_id="attempt-abc",
+            execution_revision=3,
+        )
+        await stage.complete_scan(context)
+    finally:
+        persistence_module.httpx.AsyncClient = original_client
+
+    assert captured["payload"]["winning_attempt_id"] == "attempt-abc"
+    assert captured["payload"]["execution_revision"] == 3
