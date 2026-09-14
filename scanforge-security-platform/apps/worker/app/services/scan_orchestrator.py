@@ -65,7 +65,14 @@ class ScanOrchestrator:
                 timeout=30.0,
             )
             response.raise_for_status()
-            return response.json().get("status") == "canceled"
+            data = response.json()
+            # Every non-terminal fetch issues a fresh identity; the latest one
+            # is the only identity the completion payload may echo.
+            if data.get("attempt_id") is not None:
+                context.attempt_id = data["attempt_id"]
+            if data.get("execution_revision") is not None:
+                context.execution_revision = data["execution_revision"]
+            return data.get("status") == "canceled"
 
     async def _stop_if_canceled(self, context: ScanContext, job: QueueJob) -> bool:
         if not await self._is_canceled(context):
@@ -199,6 +206,8 @@ class ScanOrchestrator:
             job_id=job.job_id,
             expected_scanners=data.get("expected_scanners"),
             coverage_scope=data.get("coverage_scope"),
+            attempt_id=data.get("attempt_id"),
+            execution_revision=data.get("execution_revision"),
         )
 
     def _build_completion_summary(

@@ -77,6 +77,8 @@ async def test_get_scan_execution_context_loads_authoritative_scan_context(monke
         commit_sha="deadbeef",
         requested_by_user_id=user_id,
         status=internal.ScanStatus.RUNNING,
+        current_attempt_id=None,
+        execution_revision=0,
     )
     project = SimpleNamespace(id=project_id, organization_id=org_id)
 
@@ -86,6 +88,15 @@ async def test_get_scan_execution_context_loads_authoritative_scan_context(monke
                 return scan
             if model is internal.Project and key == str(project_id):
                 return project
+            return None
+
+        async def execute(self, _query):
+            return SimpleNamespace(scalar_one=lambda: scan)
+
+        async def commit(self):
+            return None
+
+        async def refresh(self, _scan):
             return None
 
     monkeypatch.setattr(
@@ -115,6 +126,8 @@ async def test_get_scan_execution_context_loads_authoritative_scan_context(monke
         "commit_sha": "deadbeef",
         "status": scan.status.value,
         "user_id": str(user_id),
+        "attempt_id": scan.current_attempt_id,
+        "execution_revision": scan.execution_revision,
     }
 
 

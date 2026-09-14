@@ -165,8 +165,19 @@ class ScanService:
     async def cancel(self, scan_id: UUID, reason: str | None = None, user_id: UUID | None = None) -> Scan | None:
         if user_id is not None:
             scan = await self.get_by_id(scan_id, user_id)
+            if scan is None:
+                return None
+            # Re-read under the row lock so cancellation and completion serialize
+            # on the same Scan lock and exactly one terminal winner exists.
+            locked = await self.db.execute(
+                select(Scan).where(Scan.id == scan_id).with_for_update()
+            )
+            scan = locked.scalar_one_or_none() or scan
         else:
-            scan = await self.db.get(Scan, scan_id)
+            locked = await self.db.execute(
+                select(Scan).where(Scan.id == scan_id).with_for_update()
+            )
+            scan = locked.scalar_one_or_none()
         if not scan:
             return None
 

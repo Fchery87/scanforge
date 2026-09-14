@@ -1,6 +1,6 @@
 import base64
 import logging
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -39,6 +39,10 @@ SCAN_TYPE_SCANNERS = {
 }
 
 router = APIRouter(prefix="/internal", tags=["internal"])
+
+# Scans in a terminal state own a frozen completion identity; fetching
+# execution-context for them never mints a new attempt.
+TERMINAL_SCAN_STATUSES = frozenset({ScanStatus.CANCELED, ScanStatus.COMPLETED})
 
 
 def require_capability(capability: str):
@@ -343,6 +347,20 @@ async def get_scan_execution_context(
 
     scan_type = getattr(scan, "scan_type", None) or "full"
 
+    # Server-issued attempt identity: every fetch for a non-terminal scan mints a
+    # fresh attempt id and bumps execution_revision in one transaction, so only the
+    # latest fetch carries an identity that can complete the scan.  Smallest sane
+    # rule for terminal scans: the stored identity is returned frozen and never
+    # bumped (attempt_id stays null when a scan ended before any attempt was issued).
+    locked_scan = (
+        await db.execute(select(Scan).where(Scan.id == str(scan.id)).with_for_update())
+    ).scalar_one()
+    if locked_scan.status not in TERMINAL_SCAN_STATUSES:
+        locked_scan.current_attempt_id = str(uuid4())
+        locked_scan.execution_revision = (locked_scan.execution_revision or 0) + 1
+        await db.commit()
+        await db.refresh(locked_scan)
+
     return {
         "scan_id": str(scan.id),
         "org_id": str(project.organization_id),
@@ -359,6 +377,8 @@ async def get_scan_execution_context(
         "commit_sha": scan.commit_sha,
         "status": scan.status.value,
         "user_id": str(scan.requested_by_user_id) if scan.requested_by_user_id else None,
+        "attempt_id": locked_scan.current_attempt_id,
+        "execution_revision": locked_scan.execution_revision,
     }
 
 

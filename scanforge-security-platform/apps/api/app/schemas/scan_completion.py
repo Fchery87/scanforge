@@ -21,6 +21,8 @@ class ScannerRunCompletion(BaseModel):
 
 
 class ScanCompletionRequest(BaseModel):
+    winning_attempt_id: UUID
+    execution_revision: int = Field(ge=0)
     findings: list[CanonicalFindingCandidate] = Field(default_factory=list)
     scanner_runs: list[ScannerRunCompletion] = Field(default_factory=list)
     summary_json: dict[str, Any] = Field(default_factory=dict)
@@ -33,4 +35,8 @@ class ScanCompletionResponse(BaseModel):
     inserted_findings: int
     updated_findings: int
     scanner_runs: int
+    scanner_runs_complete: bool = False
+    winning_attempt_id: UUID | None = None
+    execution_revision: int | None = None
+    evidence_digest: str | None = None
     replayed: bool = False
