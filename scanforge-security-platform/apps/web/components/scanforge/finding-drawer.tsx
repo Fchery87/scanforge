@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { X, FileText, CheckCircle, Pause } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SeverityBadge } from "@/components/scanforge/severity-badge";
@@ -18,18 +19,48 @@ interface FindingDrawerProps {
 }
 
 export function FindingDrawer({ finding, onClose, onResolve, onSuppress, className }: FindingDrawerProps) {
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const previouslyFocused = useRef<HTMLElement | null>(null);
+  const open = Boolean(finding);
+
+  // Move focus into the drawer on open and restore it to the trigger on close.
+  useEffect(() => {
+    if (!open) return;
+    previouslyFocused.current = (document.activeElement as HTMLElement) ?? null;
+    drawerRef.current?.focus();
+    return () => {
+      previouslyFocused.current?.focus();
+    };
+  }, [open]);
+
+  // Close on Escape so keyboard users are never trapped in the drawer.
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [open, onClose]);
+
   if (!finding) return null;
 
   return (
     <>
       {/* Backdrop */}
       <div
+        aria-hidden="true"
         className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm animate-fade-in"
         onClick={onClose}
       />
 
       {/* Drawer */}
       <div
+        ref={drawerRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="finding-drawer-title"
         className={cn(
           "fixed right-0 top-0 bottom-0 z-50 w-full max-w-xl bg-surface border-l border-border shadow-2xl animate-slide-in-right flex flex-col",
           className
@@ -42,11 +73,17 @@ export function FindingDrawer({ finding, onClose, onResolve, onSuppress, classNa
               <SeverityBadge severity={finding.severity} />
               <StatusBadge status={finding.status} showIcon={false} />
             </div>
-            <h2 className="text-base font-semibold font-display text-text-primary leading-snug">
+            <h2 id="finding-drawer-title" className="text-base font-semibold font-display text-text-primary leading-snug">
               {finding.title}
             </h2>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} className="flex-shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            aria-label="Close finding details"
+            className="flex-shrink-0"
+          >
             <X className="h-4 w-4" />
           </Button>
         </div>
