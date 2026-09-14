@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
 import time
@@ -14,6 +15,7 @@ from app.core.alerts import send_slack_alert
 from app.core.logging import get_logger
 from app.security.redaction import redact_sensitive_text
 from app.services.ai_investigation.stage import AIInvestigationStage
+from app.services.lease_renewer import LeaseRenewer
 from app.services.scan_pipeline.context import ScanContext
 from app.services.scan_pipeline.execution import ScanExecutionStage
 from app.services.scan_pipeline.normalization import NormalizationStage
@@ -86,6 +88,44 @@ class ScanOrchestrator:
         context = await self._load_scan_context(job)
         _log.info("scan job started", extra={"scan_id": context.scan_id, "job_id": context.job_id})
 
+        renewer = self._build_lease_renewer(context)
+        try:
+            execution = asyncio.create_task(self._execute_pipeline(job, context, renewer))
+            lease_watch = asyncio.create_task(renewer.wait_lost())
+            done, _pending = await asyncio.wait(
+                {execution, lease_watch}, return_when=asyncio.FIRST_COMPLETED
+            )
+            if execution in done:
+                # Cancel the watcher without awaiting it: yielding here would
+                # let a racing renewal fire one more heartbeat past termination.
+                lease_watch.cancel()
+                return execution.result()
+            # The lease watcher fired first: this attempt no longer owns the
+            # execution lease. Abort the scan mid-flight without failure
+            # bookkeeping so the reclaimed job stays pending for redelivery.
+            execution.cancel()
+            await asyncio.gather(execution, return_exceptions=True)
+            lost = renewer.lost
+            _log.error(
+                "scan aborted: execution lease reclaimed",
+                extra={"scan_id": context.scan_id, "reason": lost.reason if lost else "unknown"},
+            )
+            return False
+        finally:
+            await renewer.stop()
+            self._cleanup_workspace(context)
+
+    def _build_lease_renewer(self, context: ScanContext) -> LeaseRenewer:
+        """Build the heartbeat loop that keeps this attempt's lease alive."""
+        return LeaseRenewer(
+            scan_id=context.scan_id,
+            attempt_id=context.attempt_id,
+            execution_revision=context.execution_revision,
+            api_base_url=self.api_base_url,
+            worker_credential=self._worker_credential,
+        )
+
+    async def _execute_pipeline(self, job: QueueJob, context: ScanContext, renewer: LeaseRenewer) -> bool:
         try:
             await self._update_status(context, "claimed")
             await self._update_scan_status(context, "running")
@@ -94,6 +134,9 @@ class ScanOrchestrator:
 
             # Stage 1 — Execution: clone, scan, upload
             await self._update_status(context, "repo_preparing")
+            # The lease must be alive before any scanner work starts; the
+            # watcher in process_job aborts this pipeline if it is reclaimed.
+            renewer.start()
             context.repo_path = await self._execution.prepare_repository(context)
             if await self._stop_if_canceled(context, job):
                 return True
@@ -179,9 +222,6 @@ class ScanOrchestrator:
 
             await self.queue.requeue(job, delay_seconds=min(retry_count * 30, 300))
             return False
-
-        finally:
-            self._cleanup_workspace(context)
 
     def _cleanup_workspace(self, context: ScanContext) -> dict:
         """Remove the scan workspace and emit a verifiable cleanup receipt.
