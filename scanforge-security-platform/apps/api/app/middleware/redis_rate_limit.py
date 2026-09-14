@@ -102,6 +102,7 @@ class RedisRateLimitMiddleware(BaseHTTPMiddleware):
         requests_per_minute: int = 60,
         burst: int = 10,
         exclude_paths: list[str] | None = None,
+        *,
         trusted_proxies: set[str] | None = None,
         redis_url: str = "",
         redis_token: str = "",

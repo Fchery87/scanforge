@@ -32,6 +32,7 @@ def build_onboarding_checklist(
     has_github: bool,
     has_projects: bool,
     has_repositories: bool,
+    *,
     has_scans: bool,
     has_findings: bool,
     has_schedules: bool = False,

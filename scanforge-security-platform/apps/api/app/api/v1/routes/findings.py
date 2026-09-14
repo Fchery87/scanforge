@@ -49,6 +49,7 @@ async def list_findings(
     pagination: PaginationParams = Depends(),
     severity: str | None = Query(None, alias="severity"),
     category: str | None = Query(None, alias="category"),
+    *,
     status_filter: str | None = Query(None, alias="status"),
     scanner: str | None = Query(None, alias="scanner"),
     repository_id: UUID | None = Query(None, alias="repositoryId"),
@@ -119,6 +120,7 @@ async def suppress_finding(
     finding_id: UUID,
     data: FindingSuppress,
     current_user: UserContext = Depends(get_current_user),
+    *,
     db: AsyncSession = Depends(get_db),
 ):
     await _get_project_in_org_or_404(db, project_id, org_id, current_user.user_id)
@@ -139,6 +141,7 @@ async def resolve_finding(
     finding_id: UUID,
     data: FindingResolve,
     current_user: UserContext = Depends(get_current_user),
+    *,
     db: AsyncSession = Depends(get_db),
 ):
     await _get_project_in_org_or_404(db, project_id, org_id, current_user.user_id)
@@ -178,6 +181,7 @@ async def accept_risk_finding(
     finding_id: UUID,
     data: FindingSuppress,
     current_user: UserContext = Depends(get_current_user),
+    *,
     db: AsyncSession = Depends(get_db),
 ):
     await _get_project_in_org_or_404(db, project_id, org_id, current_user.user_id)
@@ -198,6 +202,7 @@ async def mark_duplicate_finding(
     finding_id: UUID,
     data: FindingSuppress,
     current_user: UserContext = Depends(get_current_user),
+    *,
     db: AsyncSession = Depends(get_db),
 ):
     await _get_project_in_org_or_404(db, project_id, org_id, current_user.user_id)
@@ -218,6 +223,7 @@ async def update_finding_triage(
     finding_id: UUID,
     data: FindingTriageUpdate,
     current_user: UserContext = Depends(get_current_user),
+    *,
     db: AsyncSession = Depends(get_db),
 ):
     await _get_project_in_org_or_404(db, project_id, org_id, current_user.user_id)

@@ -20,6 +20,7 @@ class AuditLogService:
         action: str,
         target_type: str,
         target_id: UUID | None = None,
+        *,
         organization_id: UUID | None = None,
         metadata_json: dict | None = None,
         ip_address: str | None = None,
@@ -46,6 +47,7 @@ class AuditLogService:
         user_id: UUID,
         skip: int = 0,
         limit: int = 50,
+        *,
         action: str | None = None,
         actor_user_id: UUID | None = None,
     ) -> tuple[list[AuditLog], int]:
@@ -82,6 +84,7 @@ class AuditLogService:
         user_id: UUID,
         skip: int = 0,
         limit: int = 50,
+        *,
         action: str | None = None,
     ) -> tuple[list[AuditLog], int]:
         project = await self.db.get(Project, str(project_id))

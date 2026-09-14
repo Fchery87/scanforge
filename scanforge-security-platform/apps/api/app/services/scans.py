@@ -106,6 +106,7 @@ class ScanService:
         user_id: UUID,
         skip: int = 0,
         limit: int = 20,
+        *,
         status_filter: str | None = None,
     ) -> tuple[list[Scan], int]:
         base_query = (
@@ -224,6 +225,7 @@ class ScanService:
         status: ScanStatusEnum,
         duration_ms: int | None = None,
         exit_code: int | None = None,
+        *,
         error_message: str | None = None,
         artifact_uri: str | None = None,
         metadata_json: dict | None = None,

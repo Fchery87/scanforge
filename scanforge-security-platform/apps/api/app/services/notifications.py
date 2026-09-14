@@ -16,6 +16,7 @@ class NotificationService:
         notification_type: str,
         title: str,
         body: str | None = None,
+        *,
         link: str | None = None,
         metadata_json: dict | None = None,
     ) -> Notification:

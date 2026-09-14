@@ -98,8 +98,10 @@ jobs:
         env:
           DATABASE_URL: postgresql+asyncpg://dummy:dummy@localhost/dummy
       - run: git diff --exit-code openapi.json
+      - name: Test dependency audit inventory
+        run: python -m unittest discover -s ../../scripts -p test_audit_python_dependencies.py
       - name: Audit dependencies (pip-audit)
-        run: pip-audit --strict
+        run: python ../../scripts/audit_python_dependencies.py
 
   worker:
     needs: changes
@@ -122,7 +124,7 @@ jobs:
       - name: Test (pytest)
         run: python -m pytest
       - name: Audit dependencies (pip-audit)
-        run: pip-audit --strict
+        run: python ../../scripts/audit_python_dependencies.py
 
   web:
     needs: changes
