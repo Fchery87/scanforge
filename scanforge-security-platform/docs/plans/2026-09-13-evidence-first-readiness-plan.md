@@ -47,16 +47,16 @@ A missing credential or unavailable runtime is `Blocked` in the evidence column,
 | R00 | Preserve and reproduce the baseline | None | Done | d54f4e9 | `/tmp/scanforge-r00-baseline-2026-09-13.txt`; preserved before focused commit |
 | R01 | Repair web test selection | R00 | Done | d54f4e9 | Node 75 passed; Vitest 3 passed; `make test` passed; `make lint` passed |
 | R02 | Activate CI at the actual repository root | R01 | Done | 09347dc | Hosted PR 19 run 34767606718 passed required, API, worker, web, and changes at head `09347dc3d0599f37ea46d96eb67974bf1d2b77a5`; SBOM skipped on stacked PR |
-| R03 | Settle evidence-contract and transition policy | R02 | In progress | 0d7b50b | Proposed draft exists; ref identity, cancellation, replay, transition precedence, thresholds, and compatibility limits remain open |
-| R04 | Enforce API-owned atomic completion | R03 | Not started | Pending | PostgreSQL rollback, replay, concurrency, cancellation tests |
-| R05 | Make disappearance and triage scope-safe | R04 | Not started | Pending | Comparable-scan matrix, transition tests, browser evidence |
-| R06 | Close user and worker authorization gaps | R02 | Not started | Pending | Two-organization route and service tests, audit evidence |
-| R07 | Enforce scanner containment and cleanup | R02 | Not started | Pending | Real Docker hostile-fixture and cleanup receipts |
-| R08 | Prove secret and artifact safety | R04, R06, R07 | Not started | Pending | Canary scan, storage and egress inspection |
-| R09 | Make queue failure and recovery observable | R04 | Not started | Pending | Real Streams crash recovery, alert and health receipts |
-| R10 | Complete GitHub triggers and advisory Checks | R05, R06, R09 | Not started | Pending | Recorded base/head diff, replay-safe Check, staging GitHub flow |
-| R11 | Repair browser contracts and triage experience | R05, R06, R10 | Not started | Pending | Contract tests, authenticated browser scenarios, keyboard review |
-| R12 | Prove deployment and operational recovery | R08, R09, R10, R11 | Not started | Pending | Clean staging deployment, migrations, recovery drills |
+| R03 | Settle evidence-contract and transition policy | R02 | Done-pending-G1 | cc9550b | Proposed draft exists; ref identity, cancellation, replay, transition precedence, thresholds, and compatibility limits remain open |
+| R04 | Enforce API-owned atomic completion | R03 | Done | 8c26647 | PostgreSQL rollback, replay, concurrency, cancellation tests |
+| R05 | Make disappearance and triage scope-safe | R04 | Done (implementation) | 2f9279f | Comparable-scan matrix, transition tests, browser evidence |
+| R06 | Close user and worker authorization gaps | R02 | Done (implementation) | 2f9279f | Two-organization route and service tests, audit evidence |
+| R07 | Enforce scanner containment and cleanup | R02 | Done (implementation; Docker-host evidence open) | 2f9279f | Real Docker hostile-fixture and cleanup receipts |
+| R08 | Prove secret and artifact safety | R04, R06, R07 | Done (implementation; canary/storage inspection open) | 2f9279f | Canary scan, storage and egress inspection |
+| R09 | Make queue failure and recovery observable | R04 | Done | 2f9279f | Real Streams crash recovery, alert and health receipts |
+| R10 | Complete GitHub triggers and advisory Checks | R05, R06, R09 | In progress (slice 1 done: 03ae865) | 03ae865 | Recorded base/head diff, replay-safe Check, staging GitHub flow |
+| R11 | Repair browser contracts and triage experience | R05, R06, R10 | In progress (slice 1 done: d27bb83) | d27bb83 | Contract tests, authenticated browser scenarios, keyboard review |
+| R12 | Prove deployment and operational recovery | R08, R09, R10, R11 | In progress (prep drills: 06389c0) | 06389c0 | Clean staging deployment, migrations, recovery drills |
 | R13 | Close release gates and approve cohort rollout | R12 | Not started | Pending | Aggregate gate, independent review, operator acceptance |
 
 ### Divide ownership without conflicting writes
