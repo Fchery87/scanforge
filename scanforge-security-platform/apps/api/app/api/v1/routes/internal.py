@@ -1,6 +1,6 @@
 import base64
 import logging
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -24,10 +24,12 @@ from app.schemas.scan_completion import ScanCompletionRequest
 from app.schemas.scans import ScanStatusUpdate
 from app.services.findings import FindingService
 from app.services.github import GitHubService
-from app.services.notifications import NotificationService
+from app.services.notifications import NotificationAuthorizationError, NotificationService
 from app.services.scan_completion import ScanCompletionConflict, ScanCompletionService
+from app.services.scan_lease import LEASE_SECONDS, RENEWAL_SECONDS, LeaseConflict, ScanLeaseService
 from app.services.scan_lifecycle import ScanLifecycleService
 from app.services.scan_schedules import ScanScheduleService
+from app.services.scans import ScanAuthorizationError, ScanService
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +87,11 @@ class ArtifactUploadRequest(BaseModel):
     size_bytes: int
 
 
+class HeartbeatRequest(BaseModel):
+    attempt_id: str
+    execution_revision: int
+
+
 @router.post("/scans/{scan_id}/artifacts/upload-url")
 async def create_artifact_upload_url(
     scan_id: UUID,
@@ -92,7 +99,16 @@ async def create_artifact_upload_url(
     principal: WorkerPrincipal = Depends(require_capability("artifacts:write")),
     db: AsyncSession = Depends(get_db),
 ):
-    scan, project = await require_scan_access(scan_id, principal, db)
+    try:
+        scan_project = await ScanService(db).authorize_scan_access(
+            scan_id,
+            caller_organization_id=principal.organization_id,
+        )
+    except ScanAuthorizationError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
+    if scan_project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan not found")
+    scan, project = scan_project
     if data.size_bytes < 0 or data.size_bytes > 50 * 1024 * 1024:
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Artifact too large")
     if not _valid_artifact_component(data.scanner_name) or not _valid_artifact_component(data.filename):
@@ -134,21 +150,26 @@ def _valid_artifact_component(value: str) -> bool:
 @router.post("/notifications")
 async def create_notification(
     data: NotificationCreate,
-    _principal: WorkerPrincipal = Depends(require_capability("notifications:write")),
+    principal: WorkerPrincipal = Depends(require_capability("notifications:write")),
     db: AsyncSession = Depends(get_db),
 ):
     if not data.user_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="user_id required")
 
     service = NotificationService(db)
-    return await service.create(
-        user_id=data.user_id,
-        notification_type=data.notification_type,
-        title=data.title,
-        body=data.body,
-        link=data.link,
-        metadata_json=data.metadata_json,
-    )
+    try:
+        return await service.create(
+            user_id=data.user_id,
+            notification_type=data.notification_type,
+            title=data.title,
+            body=data.body,
+            caller_organization_id=principal.organization_id,
+            organization_id=principal.organization_id,
+            link=data.link,
+            metadata_json=data.metadata_json,
+        )
+    except NotificationAuthorizationError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
 
 
 @router.post("/scans/{scan_id}/complete")
@@ -184,16 +205,18 @@ async def update_scan_status_internal(
     if data.status == ScanStatus.COMPLETED.value:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Use the atomic completion endpoint")
 
-    if data.status:
-        scan.status = ScanStatus(data.status)
-    if data.error_message is not None:
-        scan.error_message = data.error_message
-    if data.summary_json is not None:
-        scan.summary_json = data.summary_json
-
-    await db.commit()
-    await db.refresh(scan)
-    return scan
+    try:
+        return await ScanService(db).update_status(
+            scan_id,
+            ScanStatus(data.status) if data.status else scan.status,
+            error_message=data.error_message,
+            summary_json=data.summary_json,
+            caller_organization_id=principal.organization_id,
+        )
+    except ScanAuthorizationError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 class CreateScannerRunRequest(BaseModel):
@@ -217,17 +240,18 @@ async def create_scanner_run(
     principal: WorkerPrincipal = Depends(require_capability("scans:write")),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_scan_access(scan_id, principal, db)
-
-    run = ScannerRun(
-        scan_id=str(scan_id),
-        scanner_name=data.scanner_name,
-        scanner_version=data.scanner_version,
-        status=ScanStatus.RUNNING,
-    )
-    db.add(run)
-    await db.commit()
-    await db.refresh(run)
+    try:
+        run = await ScanService(db).create_scanner_run(
+            scan_id,
+            data.scanner_name,
+            data.scanner_version,
+            status=ScanStatus.RUNNING,
+            caller_organization_id=principal.organization_id,
+        )
+    except ScanAuthorizationError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan not found")
     return {"id": run.id, "scanner_name": run.scanner_name, "status": run.status.value}
 
 
@@ -241,24 +265,23 @@ async def update_scanner_run(
     run = await db.get(ScannerRun, str(run_id))
     if not run:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scanner run not found")
-    await require_scan_access(UUID(str(run.scan_id)), principal, db)
 
-    if data.status is not None:
-        run.status = ScanStatus(data.status)
-    if data.duration_ms is not None:
-        run.duration_ms = data.duration_ms
-    if data.exit_code is not None:
-        run.exit_code = data.exit_code
-    if data.error_message is not None:
-        run.error_message = data.error_message
-    if data.artifact_uri is not None:
-        run.artifact_uri = data.artifact_uri
-    if data.metadata_json is not None:
-        run.metadata_json = data.metadata_json
-
-    await db.commit()
-    await db.refresh(run)
-    return {"id": run.id, "status": run.status.value}
+    try:
+        updated = await ScanService(db).update_scanner_run(
+            run_id,
+            ScanStatus(data.status) if data.status is not None else None,
+            duration_ms=data.duration_ms,
+            exit_code=data.exit_code,
+            error_message=data.error_message,
+            artifact_uri=data.artifact_uri,
+            metadata_json=data.metadata_json,
+            caller_organization_id=principal.organization_id,
+        )
+    except ScanAuthorizationError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
+    if updated is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scanner run not found")
+    return {"id": updated.id, "status": updated.status.value}
 
 
 class PersistFindingsRequest(BaseModel):
@@ -277,12 +300,16 @@ async def persist_scan_findings(
         return {"inserted": 0}
 
     service = FindingService(db)
-    new_count, updated_count = await service.upsert_from_scan(
-        scan_id=str(scan_id),
-        repository_id=str(scan.repository_id),
-        project_id=str(scan.project_id),
-        normalized_findings=data.findings,
-    )
+    try:
+        new_count, updated_count = await service.upsert_from_scan(
+            scan_id=str(scan_id),
+            repository_id=str(scan.repository_id),
+            project_id=str(scan.project_id),
+            normalized_findings=data.findings,
+            caller_organization_id=principal.organization_id,
+        )
+    except ScanAuthorizationError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
 
     return {"inserted": new_count, "updated": updated_count}
 
@@ -343,7 +370,18 @@ async def get_scan_execution_context(
     principal: WorkerPrincipal = Depends(require_capability("scans:read")),
     db: AsyncSession = Depends(get_db),
 ):
-    scan, project = await require_scan_access(scan_id, principal, db)
+    # Service-boundary org check (merge follow-up): the R06 ScanAuthorizationError
+    # pattern applies to execution-context too, not only to mutations.
+    try:
+        scan_project = await ScanService(db).authorize_scan_access(
+            scan_id,
+            caller_organization_id=principal.organization_id,
+        )
+    except ScanAuthorizationError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
+    if scan_project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan not found")
+    scan, project = scan_project
 
     scan_type = getattr(scan, "scan_type", None) or "full"
 
@@ -352,14 +390,31 @@ async def get_scan_execution_context(
     # latest fetch carries an identity that can complete the scan.  Smallest sane
     # rule for terminal scans: the stored identity is returned frozen and never
     # bumped (attempt_id stays null when a scan ended before any attempt was issued).
-    locked_scan = (
-        await db.execute(select(Scan).where(Scan.id == str(scan.id)).with_for_update())
-    ).scalar_one()
-    if locked_scan.status not in TERMINAL_SCAN_STATUSES:
-        locked_scan.current_attempt_id = str(uuid4())
-        locked_scan.execution_revision = (locked_scan.execution_revision or 0) + 1
-        await db.commit()
-        await db.refresh(locked_scan)
+    lease_owner = str(principal.worker_id)
+    if scan.status not in TERMINAL_SCAN_STATUSES:
+        # R09: attempt identity is granted together with a 120 s execution
+        # lease.  A live lease rejects a duplicate claimant (409 lease_active);
+        # an expired lease is reclaimed with a dead-worker visibility event.
+        try:
+            locked_scan, reclaim_reason = await ScanLeaseService(db).acquire(
+                str(scan.id),
+                terminal_statuses=TERMINAL_SCAN_STATUSES,
+                worker_owner=lease_owner,
+            )
+        except LeaseConflict as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": exc.reason,
+                    "current_owner": exc.current_owner,
+                    "remaining_seconds": exc.remaining_seconds,
+                },
+            ) from exc
+    else:
+        locked_scan = (
+            await db.execute(select(Scan).where(Scan.id == str(scan.id)).with_for_update())
+        ).scalar_one()
+        reclaim_reason = "terminal"
 
     return {
         "scan_id": str(scan.id),
@@ -379,6 +434,50 @@ async def get_scan_execution_context(
         "user_id": str(scan.requested_by_user_id) if scan.requested_by_user_id else None,
         "attempt_id": locked_scan.current_attempt_id,
         "execution_revision": locked_scan.execution_revision,
+        "lease_owner": locked_scan.lease_owner,
+        "lease_expires_at": locked_scan.lease_expires_at.isoformat() if locked_scan.lease_expires_at else None,
+        "reclaim_reason": reclaim_reason,
+    }
+
+
+@router.post("/scans/{scan_id}/heartbeat")
+async def renew_scan_lease(
+    scan_id: UUID,
+    data: HeartbeatRequest,
+    principal: WorkerPrincipal = Depends(require_capability("scans:write")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Renew the execution lease for the current attempt (R09).
+
+    Candidate timings (R03 D1): 120 s lease, renewal every 30 s.  A stale
+    attempt and an expired lease are both 409; an expired lease cannot be
+    renewed, so the worker must stop and reclaim instead.
+    """
+    await require_scan_access(scan_id, principal, db)
+    try:
+        scan = await ScanLeaseService(db).renew(
+            str(scan_id),
+            attempt_id=data.attempt_id,
+            execution_revision=data.execution_revision,
+            worker_owner=str(principal.worker_id),
+        )
+    except LeaseConflict as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": exc.reason,
+                "current_owner": exc.current_owner,
+                "remaining_seconds": exc.remaining_seconds,
+            },
+        ) from exc
+    return {
+        "scan_id": str(scan.id),
+        "attempt_id": scan.current_attempt_id,
+        "execution_revision": scan.execution_revision,
+        "lease_expires_at": scan.lease_expires_at.isoformat() if scan.lease_expires_at else None,
+        "last_heartbeat_at": scan.last_heartbeat_at.isoformat() if scan.last_heartbeat_at else None,
+        "lease_seconds": LEASE_SECONDS,
+        "renewal_seconds": RENEWAL_SECONDS,
     }
 
 

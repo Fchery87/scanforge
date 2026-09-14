@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import copy
 import json
 import os
 import re
@@ -18,6 +17,8 @@ from app.clients.r2 import R2Client
 from app.core.logging import get_logger
 from app.scanners.base import ScannerResult
 from app.scanners.registry import SCANNER_REGISTRY, scanners_for_scan_type
+from app.security.proc_env import build_contained_env
+from app.security.redaction import redact_sensitive_text
 from app.security.secret_evidence import safe_artifact_key, sanitize_trivy_output
 from app.services.scan_pipeline.context import ScanContext
 
@@ -57,8 +58,7 @@ class ScanExecutionStage:
         parsed_url = urlparse(clone_url)
         if parsed_url.scheme != "https" or parsed_url.hostname != "github.com":
             raise RuntimeError("clone target must be the verified github.com origin")
-        git_env = copy.deepcopy(os.environ)
-        git_env.update(
+        git_env = build_contained_env(
             {
                 "GIT_CONFIG_COUNT": "1",
                 "GIT_CONFIG_KEY_0": "http.extraHeader",
@@ -180,14 +180,14 @@ class ScanExecutionStage:
                 duration_ms = int((datetime.now(UTC) - start).total_seconds() * 1000)
                 if run_id:
                     await self._update_scanner_run(
-                        run_id, status="failed", duration_ms=duration_ms, error_message=str(exc),
+                        run_id, status="failed", duration_ms=duration_ms, error_message=redact_sensitive_text(str(exc), known_secrets=(self.worker_credential,)),
                     )
                 _log.error(
                     "scanner crashed",
-                    extra={"scan_id": context.scan_id, "scanner": scanner_name, "error": str(exc)},
+                    extra={"scan_id": context.scan_id, "scanner": scanner_name, "error": redact_sensitive_text(str(exc), known_secrets=(self.worker_credential,))},
                 )
                 return scanner_name, ScannerResult(
-                    scanner_name=scanner_name, success=False, raw_output={}, artifact_paths=[], error=str(exc),
+                    scanner_name=scanner_name, success=False, raw_output={}, artifact_paths=[], error=redact_sensitive_text(str(exc), known_secrets=(self.worker_credential,)),
                 )
 
         completed = await asyncio.gather(*[run_single(n) for n in scanner_names], return_exceptions=True)

@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 
 from app.scanners.base import ScannerAdapter, ScannerResult
+from app.security.proc_env import build_contained_env
 
 
 class TrivyAdapter(ScannerAdapter):
@@ -18,6 +19,7 @@ class TrivyAdapter(ScannerAdapter):
                 capture_output=True,
                 text=True,
                 timeout=10,
+                env=build_contained_env(),
             )
             match = re.search(r"Version:\s*([^\s]+)", result.stdout)
             if match:
@@ -82,6 +84,7 @@ class TrivyAdapter(ScannerAdapter):
                 text=True,
                 timeout=600,
                 cwd=str(repo_path),
+                env=build_contained_env(),
             )
 
             duration_ms = int((time.time() - start) * 1000)

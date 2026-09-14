@@ -47,18 +47,19 @@ def test_hostile_runtime_command_contains_fork_disk_network_and_symlink_boundari
     assert "/workspace/source" in source_mount
 
 
-def test_runtime_timeout_is_reported_and_output_is_bounded(tmp_path):
-    completed = __import__("subprocess").CompletedProcess(
-        args=[],
-        returncode=1,
-        stdout="x" * 1000,
-        stderr="y" * 1000,
-    )
-    with patch("app.runtime.docker.subprocess.run", return_value=completed):
-        result = runtime().run(make_request(tmp_path))
+def test_runtime_output_is_bounded(tmp_path):
+    process = patch("app.runtime.docker.subprocess.Popen").start()
+    fake = process.return_value
+    fake.pid = 4242
+    fake.returncode = 1
+    fake.communicate.return_value = ("x" * 1000, "y" * 1000)
+
+    result = runtime().run(make_request(tmp_path))
 
     assert len(result.stdout.encode()) <= 256
     assert len(result.stderr.encode()) <= 256
+    assert result.timed_out is False
+    patch.stopall()
 
 
 def test_runtime_rejects_outbound_network_request(tmp_path):

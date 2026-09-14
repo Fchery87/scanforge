@@ -28,7 +28,7 @@ def test_checkov_adapter_uses_stdout_json_and_writes_artifact(monkeypatch, tmp_p
         }
     )
 
-    def fake_run(cmd, capture_output, text, timeout, cwd):
+    def fake_run(cmd, capture_output, text, timeout, cwd, env=None):
         assert "--output-file-path" not in cmd
         return subprocess.CompletedProcess(cmd, 1, stdout=stdout_payload, stderr="")
 
@@ -47,7 +47,7 @@ def test_checkov_adapter_uses_stdout_json_and_writes_artifact(monkeypatch, tmp_p
 def test_trivy_get_version_returns_compact_version(monkeypatch):
     adapter = TrivyAdapter()
 
-    def fake_run(cmd, capture_output, text, timeout):
+    def fake_run(cmd, capture_output, text, timeout, env=None):
         return subprocess.CompletedProcess(
             cmd,
             0,
@@ -63,7 +63,7 @@ def test_trivy_get_version_returns_compact_version(monkeypatch):
 def test_syft_get_version_returns_compact_version(monkeypatch):
     adapter = SyftAdapter()
 
-    def fake_run(cmd, capture_output, text, timeout):
+    def fake_run(cmd, capture_output, text, timeout, env=None):
         return subprocess.CompletedProcess(
             cmd,
             0,
@@ -91,7 +91,7 @@ def test_scanner_adapters_honor_binary_override_env_vars(monkeypatch):
 def test_trivy_adapter_uses_non_interactive_flags(monkeypatch, tmp_path: Path):
     adapter = TrivyAdapter()
 
-    def fake_run(cmd, capture_output, text, timeout, cwd):
+    def fake_run(cmd, capture_output, text, timeout, cwd, env=None):
         assert "--no-progress" in cmd
         assert "--skip-version-check" in cmd
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
@@ -106,7 +106,7 @@ def test_trivy_adapter_uses_non_interactive_flags(monkeypatch, tmp_path: Path):
 def test_semgrep_adapter_uses_non_interactive_flags(monkeypatch, tmp_path: Path):
     adapter = SemgrepAdapter()
 
-    def fake_run(cmd, capture_output, text, timeout, cwd):
+    def fake_run(cmd, capture_output, text, timeout, cwd, env=None):
         assert "--disable-version-check" in cmd
         assert "--jobs" in cmd
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
@@ -121,7 +121,7 @@ def test_semgrep_adapter_uses_non_interactive_flags(monkeypatch, tmp_path: Path)
 def test_checkov_adapter_uses_quiet_skip_download_flags(monkeypatch, tmp_path: Path):
     adapter = CheckovAdapter()
 
-    def fake_run(cmd, capture_output, text, timeout, cwd):
+    def fake_run(cmd, capture_output, text, timeout, cwd, env=None):
         assert "--quiet" in cmd
         assert "--skip-download" in cmd
         return subprocess.CompletedProcess(cmd, 0, stdout="{}", stderr="")
@@ -136,7 +136,7 @@ def test_checkov_adapter_uses_quiet_skip_download_flags(monkeypatch, tmp_path: P
 def test_grype_adapter_uses_quiet_flag(monkeypatch, tmp_path: Path):
     adapter = GrypeAdapter()
 
-    def fake_run(cmd, capture_output, text, timeout, cwd):
+    def fake_run(cmd, capture_output, text, timeout, cwd, env=None):
         assert "--quiet" in cmd
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
@@ -152,7 +152,7 @@ def test_grype_adapter_handles_list_json_output(monkeypatch, tmp_path: Path):
     output_file = tmp_path / "grype-results.json"
     output_file.write_text(json.dumps([{"artifact": {"name": "openssl"}}]))
 
-    def fake_run(cmd, capture_output, text, timeout, cwd):
+    def fake_run(cmd, capture_output, text, timeout, cwd, env=None):
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
     monkeypatch.setattr(subprocess, "run", fake_run)

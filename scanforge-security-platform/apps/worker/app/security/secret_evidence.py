@@ -104,12 +104,31 @@ def sanitize_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [sanitize_secret_finding(finding) for finding in findings]
 
 
+def _valid_artifact_component(value: str) -> bool:
+    return (
+        bool(value)
+        and value not in {".", ".."}
+        and "/" not in value
+        and "\\" not in value
+        and "\x00" not in value
+    )
+
+
 def safe_artifact_key(organization_id: str, scan_id: str, scanner_name: str, filename: str) -> str:
-    """Build the required tenant-scoped object key and reject traversal."""
-    safe_name = Path(filename).name
-    if not safe_name or safe_name in {".", ".."} or safe_name != filename:
+    """Build the required tenant-scoped object key and reject traversal.
+
+    Every key component must be a single path-safe segment, so one tenant
+    can never reach another organization's or scan's artifact prefix.
+    """
+    if not _valid_artifact_component(organization_id):
+        raise ValueError("invalid artifact organization")
+    if not _valid_artifact_component(scan_id):
+        raise ValueError("invalid artifact scan")
+    if not _valid_artifact_component(scanner_name):
+        raise ValueError("invalid artifact scanner")
+    if not _valid_artifact_component(Path(filename).name) or Path(filename).name != filename:
         raise ValueError("invalid artifact filename")
-    return f"scan-artifacts/{organization_id}/{scan_id}/{scanner_name}/{safe_name}"
+    return f"scan-artifacts/{organization_id}/{scan_id}/{scanner_name}/{filename}"
 
 
 def assert_ai_disabled_for_private_beta() -> None:

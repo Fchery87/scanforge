@@ -6,6 +6,7 @@ import asyncio
 import os
 import signal
 import traceback
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -23,7 +24,7 @@ def _load_env():
 
 _load_env()
 
-from app.clients.queue import QueueClient  # noqa: E402
+from app.clients.queue import QueueClient, QueuePollStatus  # noqa: E402
 from app.clients.r2 import R2Client  # noqa: E402
 from app.core.logging import configure_logging, get_logger  # noqa: E402
 from app.services.notifications import NotificationDispatcher  # noqa: E402
@@ -45,6 +46,7 @@ class Worker:
         self.shutdown_timeout = shutdown_timeout
         self._running = False
         self._shutdown_event = asyncio.Event()
+        self._degraded_since: datetime | None = None
 
     def _get_clients(self):
         organization_id = os.environ.get("WORKER_ORGANIZATION_ID", "").strip()
@@ -69,8 +71,31 @@ class Worker:
 
     async def process_single_job(self, queue: QueueClient, orchestrator: ScanOrchestrator):
         try:
-            job = await queue.dequeue(timeout_seconds=5)
+            job, status = await queue.dequeue_with_status(timeout_seconds=5)
             if job is None:
+                # R09: outages are observable. Log the exact state and apply
+                # bounded backoff; an empty poll resets backoff instead.
+                if status is QueuePollStatus.EMPTY:
+                    if self._degraded_since is not None:
+                        _log.info("queue recovered", extra={"previous_status": "degraded"})
+                        self._degraded_since = None
+                else:
+                    if self._degraded_since is None:
+                        self._degraded_since = datetime.now(UTC)
+                        _log.warning(
+                            "queue degraded",
+                            extra={"status": status.value, "backoff_seconds": queue.backoff_seconds},
+                        )
+                    else:
+                        _log.warning(
+                            "queue still degraded",
+                            extra={
+                                "status": status.value,
+                                "backoff_seconds": queue.backoff_seconds,
+                                "degraded_since": self._degraded_since.isoformat(),
+                            },
+                        )
+                    await asyncio.sleep(queue.backoff_seconds)
                 return
 
             _log.info("processing job", extra={"job_id": job.job_id, "job_type": job.job_type})

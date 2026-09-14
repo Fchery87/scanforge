@@ -4,8 +4,14 @@ import re
 import shutil
 import subprocess
 import time
+from uuid import uuid4
 
+from app.runtime.containment import kill_process_tree, popen_scanner_process
 from app.runtime.models import ScanRuntimeRequest, ScanRuntimeResult, bounded_text
+
+# Proposed cleanup budget from the readiness plan: kill the daemon-owned
+# container within 30 seconds of the configured deadline.
+CONTAINER_KILL_BUDGET_SECONDS = 30
 
 
 class DockerScanRuntime:
@@ -19,13 +25,24 @@ class DockerScanRuntime:
         self.image = image
         self.docker_binary = docker_binary
 
-    def build_command(self, request: ScanRuntimeRequest) -> list[str]:
+    @staticmethod
+    def new_container_name() -> str:
+        """Explicit container identity so cleanup never depends on CLI liveness."""
+        return f"scanforge-scan-{uuid4().hex[:12]}"
+
+    def build_command(
+        self,
+        request: ScanRuntimeRequest,
+        container_name: str | None = None,
+    ) -> list[str]:
         if request.network_enabled:
             raise ValueError("scanner runtime network access is disabled")
         return [
             self.docker_binary,
             "run",
             "--rm",
+            "--name",
+            container_name or self.new_container_name(),
             "--user",
             "65532:65532",
             "--read-only",
@@ -52,27 +69,49 @@ class DockerScanRuntime:
             *request.arguments,
         ]
 
-    def run(self, request: ScanRuntimeRequest) -> ScanRuntimeResult:
-        started = time.monotonic()
+    def _force_container_kill(self, container_name: str) -> None:
+        """SIGKILL of the CLI cannot stop a daemon-owned container; kill by name."""
         try:
-            completed = subprocess.run(  # noqa: S603
-                self.build_command(request),
+            subprocess.run(  # noqa: S603
+                [self.docker_binary, "kill", container_name],
                 capture_output=True,
                 text=True,
-                timeout=request.timeout_seconds,
+                timeout=CONTAINER_KILL_BUDGET_SECONDS,
                 env={"PATH": "/usr/bin:/bin"},
             )
-            return ScanRuntimeResult(
-                exit_code=completed.returncode,
-                stdout=bounded_text(completed.stdout, request.output_limit_bytes),
-                stderr=bounded_text(completed.stderr, request.output_limit_bytes),
-                duration_ms=int((time.monotonic() - started) * 1000),
-            )
-        except subprocess.TimeoutExpired as exc:
+        except (OSError, subprocess.SubprocessError):
+            return
+
+    def run(self, request: ScanRuntimeRequest) -> ScanRuntimeResult:
+        started = time.monotonic()
+        container_name = self.new_container_name()
+        process = popen_scanner_process(
+            self.build_command(request, container_name),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env={"PATH": "/usr/bin:/bin"},
+        )
+        try:
+            stdout, stderr = process.communicate(timeout=request.timeout_seconds)
+        except subprocess.TimeoutExpired:
+            # Kill the CLI process group (it may have spawned children), then
+            # force-kill the named container in case the daemon still runs it.
+            kill_process_tree(process)
+            stdout, stderr = process.communicate()
+            self._force_container_kill(container_name)
             return ScanRuntimeResult(
                 exit_code=124,
-                stdout=bounded_text(exc.stdout, request.output_limit_bytes),
-                stderr=bounded_text(exc.stderr, request.output_limit_bytes),
+                stdout=bounded_text(stdout, request.output_limit_bytes),
+                stderr=bounded_text(stderr, request.output_limit_bytes),
                 duration_ms=int((time.monotonic() - started) * 1000),
                 timed_out=True,
+                container_name=container_name,
             )
+        return ScanRuntimeResult(
+            exit_code=process.returncode,
+            stdout=bounded_text(stdout, request.output_limit_bytes),
+            stderr=bounded_text(stderr, request.output_limit_bytes),
+            duration_ms=int((time.monotonic() - started) * 1000),
+            container_name=container_name,
+        )

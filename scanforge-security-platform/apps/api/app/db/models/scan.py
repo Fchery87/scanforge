@@ -29,6 +29,10 @@ class Scan(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     summary_json: Mapped[dict | None] = mapped_column(JSONB)
     current_attempt_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     execution_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # R09 execution lease (candidate defaults from R03 D1: 120 s lease / 30 s renewal).
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lease_owner: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     scanner_runs: Mapped[list[ScannerRun]] = relationship("ScannerRun", back_populates="scan", lazy="noload")
 

@@ -10,6 +10,12 @@ from app.db.models import Organization, OrganizationMember, Project, Repository,
 from app.schemas.scans import ScanCreate
 
 
+class ScanAuthorizationError(Exception):
+    """Caller principal is not bound to the organization that owns the scan."""
+
+    code = "scan_org_mismatch"
+
+
 class ScanService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -143,19 +149,26 @@ class ScanService:
         status: ScanStatusEnum,
         error_message: str | None = None,
         summary_json: dict | None = None,
+        *,
+        caller_organization_id: UUID,
     ) -> Scan | None:
         scan = await self.db.get(Scan, scan_id)
         if not scan:
             return None
+        project = await self.db.get(Project, scan.project_id)
+        if project is None or str(project.organization_id) != str(caller_organization_id):
+            raise ScanAuthorizationError(
+                "Worker principal is not bound to the organization that owns the scan"
+            )
         if scan.status in (ScanStatusEnum.CANCELED, ScanStatusEnum.COMPLETED):
             raise ValueError("Terminal scan state cannot be overwritten")
         if status == ScanStatusEnum.COMPLETED:
             raise ValueError("Use atomic completion to complete a scan")
 
         scan.status = status
-        if error_message:
+        if error_message is not None:
             scan.error_message = error_message
-        if summary_json:
+        if summary_json is not None:
             scan.summary_json = summary_json
 
         await self.db.commit()
@@ -213,17 +226,59 @@ class ScanService:
         await self.db.refresh(scan)
         return scan
 
+    async def _scan_project_for_org(
+        self,
+        scan_id: UUID,
+    ) -> tuple[Scan | None, Project | None]:
+        scan = await self.db.get(Scan, scan_id)
+        if scan is None:
+            return None, None
+        project = await self.db.get(Project, scan.project_id)
+        return scan, project
+
+    async def authorize_scan_access(
+        self,
+        scan_id: UUID,
+        *,
+        caller_organization_id: UUID,
+    ) -> tuple[Scan, Project] | None:
+        """Service-boundary org check for worker-initiated scan mutations.
+
+        Returns (scan, project), None when the scan does not exist, and raises
+        ScanAuthorizationError when the caller organization does not own the
+        scan's project.
+        """
+        scan, project = await self._scan_project_for_org(scan_id)
+        if scan is None:
+            return None
+        if project is None or str(project.organization_id) != str(caller_organization_id):
+            raise ScanAuthorizationError(
+                "Worker principal is not bound to the organization that owns the scan"
+            )
+        return scan, project
+
     async def create_scanner_run(
         self,
         scan_id: UUID,
         scanner_name: str,
         scanner_version: str | None = None,
-    ) -> ScannerRun:
+        *,
+        status: ScanStatusEnum = ScanStatusEnum.QUEUED,
+        caller_organization_id: UUID,
+    ) -> ScannerRun | None:
+        scan, project = await self._scan_project_for_org(scan_id)
+        if scan is None:
+            return None
+        if project is None or str(project.organization_id) != str(caller_organization_id):
+            raise ScanAuthorizationError(
+                "Worker principal is not bound to the organization that owns the scan"
+            )
+
         run = ScannerRun(
             scan_id=scan_id,
             scanner_name=scanner_name,
             scanner_version=scanner_version,
-            status=ScanStatusEnum.QUEUED,
+            status=status,
         )
         self.db.add(run)
         await self.db.commit()
@@ -233,19 +288,28 @@ class ScanService:
     async def update_scanner_run(
         self,
         run_id: UUID,
-        status: ScanStatusEnum,
+        status: ScanStatusEnum | None,
         duration_ms: int | None = None,
         exit_code: int | None = None,
         *,
         error_message: str | None = None,
         artifact_uri: str | None = None,
         metadata_json: dict | None = None,
+        caller_organization_id: UUID,
     ) -> ScannerRun | None:
         run = await self.db.get(ScannerRun, run_id)
         if not run:
             return None
+        scan, project = await self._scan_project_for_org(UUID(str(run.scan_id)))
+        if scan is None:
+            return None
+        if project is None or str(project.organization_id) != str(caller_organization_id):
+            raise ScanAuthorizationError(
+                "Worker principal is not bound to the organization that owns the scan"
+            )
 
-        run.status = status
+        if status is not None:
+            run.status = status
         if duration_ms is not None:
             run.duration_ms = duration_ms
         if exit_code is not None:

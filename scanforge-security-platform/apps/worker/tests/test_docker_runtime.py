@@ -29,7 +29,8 @@ def test_docker_runtime_requires_digest_and_builds_contained_command(tmp_path):
 
     command = runtime.build_command(request(tmp_path))
 
-    assert command[:4] == ["docker", "run", "--rm", "--user"]
+    assert command[:3] == ["docker", "run", "--rm"]
+    assert command[command.index("--name") + 1].startswith("scanforge-scan-")
     assert "65532:65532" in command
     assert "--read-only" in command
     assert "--network=none" in command

@@ -7,6 +7,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.db.enums import ScanStatus
 from app.db.models import (
     Finding,
     FindingEvent,
@@ -16,18 +17,32 @@ from app.db.models import (
     OrganizationMember,
     Project,
     Repository,
+    Scan,
+    ScannerRun,
 )
 from app.schemas.canonical_findings import CanonicalFindingCandidate
 from app.schemas.findings import (
     FindingStats,
 )
 from app.services.finding_lifecycle import (
-    can_mark_not_observed,
-    can_promote_to_fixed,
+    ABSENCE_THRESHOLD,
+    POLICY_VERSION,
+    REOPEN_CHECKPOINT_KEY,
+    AbsenceBlockReason,
+    absence_transition_target,
+    branch_obligation_counts,
+    evaluate_scan_absence_evidence,
+    observed_branches,
+    record_manual_reopen_checkpoint,
+    record_observed_branch,
+    record_qualifying_absence,
+    reset_branch_series,
+    scan_precedes_checkpoint,
     transition_event_for_state,
     validate_transition,
 )
 from app.services.risk_scoring import calculate_risk_score
+from app.services.scans import ScanAuthorizationError
 from app.services.secret_safety import sanitize_secret_mapping
 
 
@@ -196,11 +211,21 @@ class FindingService:
         normalized_findings: Sequence[dict | CanonicalFindingCandidate],
         *,
         commit: bool = True,
+        caller_organization_id: UUID | None = None,
     ) -> tuple[int, int]:
+        if caller_organization_id is not None:
+            project = await self.db.get(Project, project_id)
+            if project is None or str(project.organization_id) != str(caller_organization_id):
+                raise ScanAuthorizationError(
+                    "Worker principal is not bound to the organization that owns the scan"
+                )
+
         new_count = 0
         updated_count = 0
         repository = await self.db.get(Repository, repository_id)
         repository_importance = getattr(repository, "importance", "normal") or "normal"
+        scan_row = await self.db.get(Scan, str(scan_id))
+        presence_branch = getattr(scan_row, "branch_name", None) if scan_row else None
 
         for finding_input in normalized_findings:
             candidate = (
@@ -226,8 +251,16 @@ class FindingService:
 
             if finding:
                 finding.last_seen_at = datetime.now(UTC)
-                if finding.status == "fixed":
+                if finding.status in ("fixed", "not_observed"):
+                    # API reappearance: ordered positive evidence reopens
+                    # machine-closed states and resets the series (D2/D7).
                     finding.status = "open"
+                if presence_branch:
+                    # Positive evidence on this branch: record the observed
+                    # ref and reset its absence series (presence wins, D2).
+                    presence_meta = record_observed_branch(finding.metadata_json, branch=presence_branch)
+                    presence_meta = reset_branch_series(presence_meta, branch=presence_branch)
+                    finding.metadata_json = presence_meta
                 updated_count += 1
             else:
                 finding = Finding(
@@ -248,7 +281,11 @@ class FindingService:
                         repository_importance=repository_importance,
                     ),
                     fixed_version=candidate.fixed_version,
-                    metadata_json=candidate.metadata_json,
+                    metadata_json=(
+                        record_observed_branch(candidate.metadata_json, branch=presence_branch)
+                        if presence_branch
+                        else candidate.metadata_json
+                    ),
                     first_seen_at=datetime.now(UTC),
                     last_seen_at=datetime.now(UTC),
                 )
@@ -324,6 +361,94 @@ class FindingService:
         )
         return list(result.scalars().all())
 
+    async def _scan_persisted_fingerprints(self, scan_id: str) -> set[str]:
+        result = await self.db.execute(
+            select(Finding.canonical_fingerprint)
+            .join(FindingInstance, FindingInstance.finding_id == Finding.id)
+            .where(FindingInstance.scan_id == scan_id)
+        )
+        return set(result.scalars().all())
+
+    async def _scan_has_incomplete_scanner_evidence(self, scan_id: str) -> bool:
+        """Committed ScannerRun rows must show healthy coverage (D3)."""
+        result = await self.db.execute(select(ScannerRun.status).where(ScannerRun.scan_id == scan_id))
+        statuses = [getattr(status, "value", status) for status in result.scalars().all()]
+        if not statuses:
+            # No committed scanner outcome: missing evidence is ineligible,
+            # never assumed clean.
+            return True
+        return any(status != ScanStatus.COMPLETED.value for status in statuses)
+
+    async def _apply_branch_absence(self, finding, scan, branch: str, present: set[str]) -> int:
+        """Record one branch-local absence and transition when eligible.
+
+        Returns 1 when the finding state changed, else 0.
+        """
+        if finding.canonical_fingerprint in present:
+            return 0
+        metadata = dict(finding.metadata_json or {})
+        known_branches = observed_branches(metadata)
+        if not known_branches:
+            # Unknown branch provenance blocks auto-closure.
+            return 0
+        if branch not in known_branches:
+            # Absence on a branch where the finding was never seen is
+            # ignored for this finding.
+            return 0
+        if scan_precedes_checkpoint(scan.created_at, metadata.get(REOPEN_CHECKPOINT_KEY)):
+            # Scan issued at/before a manual reopen decision.
+            return 0
+
+        metadata, counted = record_qualifying_absence(
+            metadata, branch=branch, scan_id=str(scan.id), commit_sha=str(scan.commit_sha)
+        )
+        finding.metadata_json = metadata
+        counts = branch_obligation_counts(metadata)
+        min_count = min(counts.get(name, 0) for name in known_branches)
+        next_state = absence_transition_target(finding.status, min_branch_absences=min_count)
+
+        if next_state:
+            finding.status = next_state
+            self.db.add(
+                FindingEvent(
+                    finding_id=finding.id,
+                    event_type=transition_event_for_state(next_state),
+                    actor_user_id=None,
+                    metadata_json={
+                        "scan_id": str(scan.id),
+                        "commit_sha": str(scan.commit_sha),
+                        "branch": branch,
+                        "policy": POLICY_VERSION,
+                        "threshold": ABSENCE_THRESHOLD,
+                        "qualifying_absences": min_count,
+                    },
+                )
+            )
+            return 1
+        if counted:
+            # Observation recorded without a transition (human triage state
+            # or unresolved branch obligation).
+            blocked = [AbsenceBlockReason.HUMAN_BLOCK_STATE.value]
+            if finding.status in ("open", "not_observed"):
+                blocked = [AbsenceBlockReason.UNRESOLVED_BRANCH_OBLIGATION.value]
+            self.db.add(
+                FindingEvent(
+                    finding_id=finding.id,
+                    event_type="absence_recorded",
+                    actor_user_id=None,
+                    metadata_json={
+                        "scan_id": str(scan.id),
+                        "commit_sha": str(scan.commit_sha),
+                        "branch": branch,
+                        "policy": POLICY_VERSION,
+                        "qualifying_absences": counts.get(branch, 0),
+                        "state": finding.status,
+                        "blocked_by": blocked,
+                    },
+                )
+            )
+        return 0
+
     async def mark_not_observed_after_scan(
         self,
         *,
@@ -333,31 +458,41 @@ class FindingService:
         scan_summary: dict | None,
         commit: bool = True,
     ) -> int:
+        """Apply ordered-series disappearance for one completed scan.
+
+        Scope safety (R03 D2/D3/D7): only a full, healthy, comparable scan on
+        a branch where the finding was observed may record a qualifying
+        absence. Two distinct-commit absences on every observed branch close
+        the finding; a manual reopen checkpoint blocks older scans. The
+        ``seen_fingerprints`` argument stays for call compatibility; the
+        finding instances persisted for this scan are the authoritative
+        presence set.
+        """
+        scan = await self.db.get(Scan, str(scan_id))
+        if scan is None:
+            # Without committed scan context (ref, commit, type) absence is
+            # unknown, never assumed.
+            return 0
+
+        scan_context = {
+            "scan_type": scan.scan_type,
+            "branch_name": scan.branch_name,
+            "commit_sha": scan.commit_sha,
+            "scanner_health": (scan_summary or {}).get("scanner_health"),
+        }
+        eligible, _ = evaluate_scan_absence_evidence(scan_context)
+        if not eligible:
+            return 0
+        if await self._scan_has_incomplete_scanner_evidence(str(scan.id)):
+            return 0
+
+        present = await self._scan_persisted_fingerprints(str(scan.id))
+        present = present | set(seen_fingerprints or [])
+
+        branch = scan.branch_name
         updated = 0
-        open_findings = await self._list_open_findings_for_repository(repository_id)
-
-        for finding in open_findings:
-            if finding.canonical_fingerprint in seen_fingerprints:
-                continue
-            if not can_mark_not_observed(scan_summary, primary_scanner=finding.primary_scanner):
-                continue
-
-            metadata = dict(finding.metadata_json or {})
-            not_observed_count = int(metadata.get("not_observed_count") or 0) + 1
-            metadata["not_observed_count"] = not_observed_count
-            finding.metadata_json = metadata
-            can_fix = can_promote_to_fixed(finding.status, not_observed_count=not_observed_count)
-            next_state = "fixed" if can_fix else "not_observed"
-            finding.status = next_state
-            self.db.add(
-                FindingEvent(
-                    finding_id=finding.id,
-                    event_type=transition_event_for_state(next_state),
-                    actor_user_id=None,
-                    metadata_json={"scan_id": str(scan_id), "not_observed_count": not_observed_count},
-                )
-            )
-            updated += 1
+        for finding in await self._list_open_findings_for_repository(repository_id):
+            updated += await self._apply_branch_absence(finding, scan, branch, present)
 
         if updated:
             if commit:
@@ -444,12 +579,22 @@ class FindingService:
         user_id: UUID,
         reason: str | None = None,
     ) -> Finding | None:
-        return await self._set_status(
+        finding = await self._set_status(
             finding_id,
             user_id,
             "open",
             reason=reason,
         )
+        if not finding:
+            return None
+        # Manual reopen clears every absence series and records a checkpoint
+        # so old or delayed receipts cannot immediately reclose it (D7).
+        finding.metadata_json = record_manual_reopen_checkpoint(
+            finding.metadata_json, checkpoint=datetime.now(UTC)
+        )
+        await self.db.commit()
+        await self.db.refresh(finding)
+        return finding
 
     async def get_events(
         self,

@@ -11,7 +11,7 @@ from app.db.session import get_db
 from app.middleware.auth import UserContext, get_current_user
 from app.schemas.common import PaginatedResponse, PaginationParams
 from app.schemas.exports import ExportCreate, ExportResponse
-from app.services.exports import ExportService
+from app.services.exports import ExportAuthorizationError, ExportService
 from app.services.organizations import OrganizationService
 
 router = APIRouter()
@@ -59,6 +59,8 @@ async def create_export(
     service = ExportService(db)
     try:
         export = await service.create(project_id, data, current_user.user_id)
+    except ExportAuthorizationError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 

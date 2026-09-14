@@ -79,6 +79,9 @@ async def test_get_scan_execution_context_loads_authoritative_scan_context(monke
         status=internal.ScanStatus.RUNNING,
         current_attempt_id=None,
         execution_revision=0,
+        lease_owner=None,
+        lease_expires_at=None,
+        last_heartbeat_at=None,
     )
     project = SimpleNamespace(id=project_id, organization_id=org_id)
 
@@ -99,9 +102,10 @@ async def test_get_scan_execution_context_loads_authoritative_scan_context(monke
         async def refresh(self, _scan):
             return None
 
+    # The route authorizes through the R06 service-boundary seam now.
     monkeypatch.setattr(
-        internal,
-        "require_scan_access",
+        internal.ScanService,
+        "authorize_scan_access",
         AsyncMock(return_value=(scan, project)),
     )
     result = await internal.get_scan_execution_context(
@@ -110,7 +114,13 @@ async def test_get_scan_execution_context_loads_authoritative_scan_context(monke
         db=Db(),
     )
 
-    assert result == {
+    assert result["attempt_id"] == scan.current_attempt_id
+    assert result["execution_revision"] == scan.execution_revision
+    # R09: lease grant fields accompany the attempt identity.
+    assert result["reclaim_reason"] == "fresh_start"
+    assert result["lease_owner"] == scan.lease_owner
+    assert result["lease_expires_at"] == scan.lease_expires_at.isoformat()
+    expected = {
         "scan_id": str(scan_id),
         "org_id": str(org_id),
         "repository_id": str(repository_id),
@@ -126,9 +136,13 @@ async def test_get_scan_execution_context_loads_authoritative_scan_context(monke
         "commit_sha": "deadbeef",
         "status": scan.status.value,
         "user_id": str(user_id),
-        "attempt_id": scan.current_attempt_id,
-        "execution_revision": scan.execution_revision,
+        "attempt_id": result["attempt_id"],
+        "execution_revision": 1,
+        "lease_owner": result["lease_owner"],
+        "lease_expires_at": result["lease_expires_at"],
+        "reclaim_reason": "fresh_start",
     }
+    assert result == expected
 
 
 @pytest.mark.asyncio
