@@ -148,7 +148,8 @@ web-lint:
 	cd apps/web && npm run lint
 
 web-test:
-	cd apps/web && npm test
+	cd apps/web && npm run test:node
+	cd apps/web && npm run test:vitest
 
 # ─── API ─────────────────────────────────────────────────────────────
 
@@ -197,4 +198,5 @@ lint:
 test:
 	PYTHONPATH="$(PWD)/apps/api" $(API_PYTHON) -m pytest apps/api
 	PYTHONPATH="$(PWD)/apps/worker" $(WORKER_PYTHON) -m pytest apps/worker
-	cd apps/web && npm test
+	cd apps/web && npm run test:node
+	cd apps/web && npm run test:vitest
