@@ -8344,6 +8344,18 @@
             ],
             "title": "Commit Sha"
           },
+          "base_sha": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Sha"
+          },
           "pull_request_number": {
             "anyOf": [
               {
@@ -8418,6 +8430,17 @@
               }
             ],
             "title": "Commit Sha"
+          },
+          "base_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Sha"
           },
           "pull_request_number": {
             "anyOf": [
@@ -8553,6 +8576,17 @@
               }
             ],
             "title": "Commit Sha"
+          },
+          "base_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Sha"
           },
           "pull_request_number": {
             "anyOf": [

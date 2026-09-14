@@ -23,6 +23,9 @@ class Scan(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
     branch_name: Mapped[str | None] = mapped_column(String(255))
     commit_sha: Mapped[str | None] = mapped_column(String(64), index=True)
+    # R10 recorded base/head diff: base commit recorded alongside commit_sha when the
+    # trigger event provides it (pull_request base.sha).
+    base_sha: Mapped[str | None] = mapped_column(String(64))
     pull_request_number: Mapped[int | None] = mapped_column(Integer)
     requested_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     error_message: Mapped[str | None] = mapped_column(Text)

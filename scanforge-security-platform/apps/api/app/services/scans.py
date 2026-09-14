@@ -42,6 +42,7 @@ class ScanService:
             status=ScanStatusEnum.QUEUED,
             branch_name=data.branch_name or repo.default_branch,
             commit_sha=data.commit_sha,
+            base_sha=data.base_sha,
             pull_request_number=data.pull_request_number,
             requested_by_user_id=user_id,
         )
