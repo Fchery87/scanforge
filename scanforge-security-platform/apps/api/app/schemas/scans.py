@@ -31,6 +31,7 @@ class ScanCreate(BaseModel):
     trigger_type: str = Field(default="manual", pattern="^(manual|scheduled|webhook|pull_request)$")
     branch_name: str | None = Field(None, max_length=255)
     commit_sha: str | None = Field(None, max_length=64)
+    base_sha: str | None = Field(None, max_length=64)
     pull_request_number: int | None = None
     scan_type: str = Field(default="full", pattern="^(full|diff|dependencies|secrets)$")
 
@@ -46,6 +47,7 @@ class ScanResponse(BaseModel):
     status: str
     branch_name: str | None
     commit_sha: str | None
+    base_sha: str | None = None
     pull_request_number: int | None
     requested_by_user_id: UUID | None
     error_message: str | None

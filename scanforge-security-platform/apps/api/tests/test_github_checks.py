@@ -8,14 +8,14 @@ from app.services.github_checks import (
 
 
 def test_check_run_payload_is_idempotent_for_same_scan_evidence():
-    kwargs = dict(
-        scan_id="11111111-1111-1111-1111-111111111111",
-        head_sha="cafebabe",
-        scan_status="completed",
-        policy_status="pass",
-        details_url="https://app.scanforge.example/scans/11111111-1111-1111-1111-111111111111",
-        scanner_summary={"findings_total": 3, "scanners_complete": True, "scanners_total": 4},
-    )
+    kwargs = {
+        "scan_id": "11111111-1111-1111-1111-111111111111",
+        "head_sha": "cafebabe",
+        "scan_status": "completed",
+        "policy_status": "pass",
+        "details_url": "https://app.scanforge.example/scans/11111111-1111-1111-1111-111111111111",
+        "scanner_summary": {"findings_total": 3, "scanners_complete": 4, "scanners_total": 4},
+    }
     first = build_check_run_payload(**kwargs)
     second = build_check_run_payload(**kwargs)
     assert first == second
@@ -78,7 +78,7 @@ def test_check_run_output_reports_counts_and_policy_result():
         scan_status="completed",
         policy_status="pass",
         details_url="https://app.scanforge.example/scans/scan-1",
-        scanner_summary={"findings_total": 3, "scanners_complete": False, "scanners_total": 4},
+        scanner_summary={"findings_total": 3, "scanners_complete": 3, "scanners_total": 4},
     )
     summary = payload["output"]["summary"]
     assert "policy pass" in summary

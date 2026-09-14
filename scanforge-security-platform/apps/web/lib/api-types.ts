@@ -2327,6 +2327,8 @@ export interface components {
             branch_name?: string | null;
             /** Commit Sha */
             commit_sha?: string | null;
+            /** Base Sha */
+            base_sha?: string | null;
             /** Pull Request Number */
             pull_request_number?: number | null;
             /**
@@ -2362,6 +2364,8 @@ export interface components {
             branch_name: string | null;
             /** Commit Sha */
             commit_sha: string | null;
+            /** Base Sha */
+            base_sha?: string | null;
             /** Pull Request Number */
             pull_request_number: number | null;
             /** Requested By User Id */
@@ -2415,6 +2419,8 @@ export interface components {
             branch_name: string | null;
             /** Commit Sha */
             commit_sha: string | null;
+            /** Base Sha */
+            base_sha?: string | null;
             /** Pull Request Number */
             pull_request_number: number | null;
             /** Requested By User Id */

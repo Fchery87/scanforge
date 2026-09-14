@@ -19,17 +19,28 @@ class _FakeResult:
 
 
 class _FakeDB:
-    def __init__(self, *, repo, project, integration, flush_error=None, existing_delivery=None):
+    def __init__(
+        self,
+        *,
+        repo,
+        project,
+        integration,
+        flush_error=None,
+        existing_delivery=None,
+        existing_after_conflict=None,
+    ):
         self.repo = repo
         self.project = project
         self.integration = integration
         self.flush_error = flush_error
         self.existing_delivery = existing_delivery
+        self.existing_after_conflict = existing_after_conflict
+        self.lookups = 0
         self.added = []
         self.rolled_back = False
         self.committed = False
 
-    async def get(self, model, value):
+    async def get(self, model, _value):
         if model is webhooks.Repository:
             return self.repo
         if model is webhooks.Project:
@@ -40,6 +51,9 @@ class _FakeDB:
         return self.integration
 
     async def execute(self, _query):
+        self.lookups += 1
+        if self.existing_after_conflict is not None and self.lookups >= 2:
+            return _FakeResult(self.existing_after_conflict)
         return _FakeResult(self.existing_delivery)
 
     def add(self, obj):
@@ -122,7 +136,6 @@ async def test_github_webhook_duplicate_delivery_replays_original_scan(monkeypat
         repo=repo,
         project=project,
         integration=integration,
-        flush_error=IntegrityError("duplicate", params={}, orig=Exception("duplicate")),
         existing_delivery=existing_delivery,
     )
     request = _FakeRequest(
@@ -145,7 +158,7 @@ async def test_github_webhook_duplicate_delivery_replays_original_scan(monkeypat
 
     assert response == {"status": "queued", "scan_id": str(original_scan_id)}
     scan_factory.assert_not_called()
-    assert db.rolled_back is True
+    assert db.rolled_back is False
     assert db.committed is False
 
 
@@ -174,7 +187,7 @@ async def test_github_webhook_different_delivery_same_commit_replays_original_sc
         project=project,
         integration=integration,
         flush_error=IntegrityError("duplicate", params={}, orig=Exception("duplicate")),
-        existing_delivery=existing_delivery,
+        existing_after_conflict=existing_delivery,
     )
     request = _FakeRequest(
         {
@@ -197,6 +210,8 @@ async def test_github_webhook_different_delivery_same_commit_replays_original_sc
 
     assert response == {"status": "queued", "scan_id": str(original_scan_id)}
     scan_factory.assert_not_called()
+    assert db.rolled_back is True
+
 
 @pytest.mark.asyncio
 async def test_github_webhook_queues_scan_for_matching_payload(monkeypatch):
