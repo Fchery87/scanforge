@@ -25,3 +25,8 @@ class Notification(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     target_type: Mapped[str | None] = mapped_column(String(100))
     target_id: Mapped[str | None] = mapped_column(String(64))
     metadata_json: Mapped[dict | None] = mapped_column(JSONB)
+
+    @property
+    def link(self) -> str | None:
+        value = (self.metadata_json or {}).get("link")
+        return value if isinstance(value, str) else None

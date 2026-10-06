@@ -16,6 +16,7 @@ async def test_create_export_persists_title():
 
     db = AsyncMock()
     db.get.return_value = project
+    db.execute.return_value = Mock(scalar_one_or_none=Mock(return_value=SimpleNamespace(role="owner")))
     db.add = Mock(side_effect=lambda export: captured.setdefault("export", export))
 
     service = ExportService(db)

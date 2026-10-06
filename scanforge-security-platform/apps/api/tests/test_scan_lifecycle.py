@@ -43,6 +43,7 @@ async def test_create_manual_scan_creates_scan_and_enqueues_job():
     queue.enqueue.assert_awaited_once_with(
         "scan.repo.full",
         {"scan_id": str(scan.id)},
+        organization_id=org_id,
     )
     db.commit.assert_not_awaited()
     db.refresh.assert_not_awaited()
@@ -98,6 +99,7 @@ async def test_create_scheduled_scan_uses_same_scan_job_invariants():
     queue.enqueue.assert_awaited_once_with(
         "scan.dependencies",
         {"scan_id": str(scan.id)},
+        organization_id=org_id,
     )
 
 

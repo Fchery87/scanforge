@@ -5,7 +5,15 @@ from uuid import uuid4
 import pytest
 
 from app.api.v1.routes import internal
-from app.schemas.scans import ScanStatusUpdate
+from app.middleware.service_auth import WorkerPrincipal
+
+
+def principal(org_id):
+    return WorkerPrincipal(
+        worker_id=uuid4(),
+        organization_id=org_id,
+        capabilities=frozenset({"scans:read", "scans:write"}),
+    )
 
 
 @pytest.mark.asyncio
@@ -53,7 +61,7 @@ async def test_run_due_scan_schedules_counts_lifecycle_exceptions(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_get_scan_execution_context_loads_authoritative_scan_context():
+async def test_get_scan_execution_context_loads_authoritative_scan_context(monkeypatch):
     scan_id = uuid4()
     org_id = uuid4()
     project_id = uuid4()
@@ -67,18 +75,38 @@ async def test_get_scan_execution_context_loads_authoritative_scan_context():
         branch_name="main",
         commit_sha="deadbeef",
         requested_by_user_id=user_id,
+        status=internal.ScanStatus.RUNNING,
+        current_attempt_id=None,
+        execution_revision=0,
     )
     project = SimpleNamespace(id=project_id, organization_id=org_id)
 
     class Db:
-        async def get(self, model, key):
-            if model is internal.Scan and key == str(scan_id):
-                return scan
-            if model is internal.Project and key == str(project_id):
-                return project
+        async def execute(self, _statement):
+            class Result:
+                def scalar_one(self):
+                    return scan
+
+            scan.current_attempt_id = "attempt-1"
+            scan.execution_revision = 1
+            return Result()
+
+        async def commit(self):
             return None
 
-    result = await internal.get_scan_execution_context(scan_id=scan_id, db=Db())
+        async def refresh(self, _scan):
+            return None
+
+    monkeypatch.setattr(
+        internal,
+        "require_scan_access",
+        AsyncMock(return_value=(scan, project)),
+    )
+    result = await internal.get_scan_execution_context(
+        scan_id=scan_id,
+        principal=principal(org_id),
+        db=Db(),
+    )
 
     assert result == {
         "scan_id": str(scan_id),
@@ -94,21 +122,33 @@ async def test_get_scan_execution_context_loads_authoritative_scan_context():
         },
         "branch": "main",
         "commit_sha": "deadbeef",
+        "base_commit_sha": None,
+        "head_commit_sha": None,
+        "status": scan.status.value,
         "user_id": str(user_id),
+        "attempt_id": scan.current_attempt_id,
+        "execution_revision": scan.execution_revision,
     }
 
 
 @pytest.mark.asyncio
-async def test_completed_scan_status_marks_absent_findings_not_observed(monkeypatch):
+async def test_completed_status_is_rejected_by_progress_endpoint(monkeypatch):
     scan_id = uuid4()
-    scan = SimpleNamespace(id=scan_id, repository_id="repo-1", status="running", summary_json=None, error_message=None)
-    lifecycle = SimpleNamespace(mark_not_observed_for_completed_scan=AsyncMock(return_value=2))
+    org_id = uuid4()
+    scan = SimpleNamespace(
+        id=scan_id,
+        repository_id="repo-1",
+        status=internal.ScanStatus.RUNNING,
+        summary_json=None,
+        error_message=None,
+        current_attempt_id=str(uuid4()),
+        execution_revision=1,
+    )
+    project = SimpleNamespace(organization_id=org_id)
 
     class Db:
-        async def get(self, model, key):
-            if model is internal.Scan and key == str(scan_id):
-                return scan
-            return None
+        async def scalar(self, _statement):
+            return scan
 
         async def commit(self):
             return None
@@ -116,15 +156,21 @@ async def test_completed_scan_status_marks_absent_findings_not_observed(monkeypa
         async def refresh(self, _scan):
             return None
 
-    monkeypatch.setattr(internal, "FindingService", lambda _db: lifecycle)
-
-    summary = {"scanner_health": {"completed": ["trivy"]}}
-    result = await internal.update_scan_status_internal(
-        scan_id=scan_id,
-        data=ScanStatusUpdate(status="completed", summary_json=summary),
-        db=Db(),
+    monkeypatch.setattr(
+        internal,
+        "require_scan_access",
+        AsyncMock(return_value=(scan, project)),
     )
 
-    assert result is scan
-    assert scan.summary_json == summary
-    lifecycle.mark_not_observed_for_completed_scan.assert_awaited_once_with(scan)
+    summary = {"scanner_health": {"completed": ["trivy"]}}
+    with pytest.raises(internal.HTTPException) as error:
+        await internal.update_scan_status_internal(
+            scan_id=scan_id,
+            data=internal.ScanProgressUpdate(status="completed", summary_json=summary,
+                                             attempt_id=scan.current_attempt_id, execution_revision=1),
+            principal=principal(org_id),
+            db=Db(),
+        )
+
+    assert error.value.status_code == 409
+    assert scan.status == internal.ScanStatus.RUNNING

@@ -31,6 +31,8 @@ async def create_schedule(
     service = ScanScheduleService(db)
     try:
         schedule = await service.create(repo_id, data, current_user.user_id)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
@@ -67,10 +69,15 @@ async def update_schedule(
 
     service = ScanScheduleService(db)
     existing = await service.get_by_id(schedule_id, current_user.user_id)
-    if not existing or existing.repository_id != repo_id:
+    if not existing or str(existing.repository_id) != str(repo_id):
         raise HTTPException(status_code=404, detail="Schedule not found in this repository")
 
-    updated = await service.update(schedule_id, data, user_id=current_user.user_id)
+    try:
+        updated = await service.update(schedule_id, data, user_id=current_user.user_id)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     if not updated:
         raise HTTPException(status_code=404, detail="Schedule not found")
     return updated
@@ -90,9 +97,12 @@ async def delete_schedule(
 
     service = ScanScheduleService(db)
     existing = await service.get_by_id(schedule_id, current_user.user_id)
-    if not existing or existing.repository_id != repo_id:
+    if not existing or str(existing.repository_id) != str(repo_id):
         raise HTTPException(status_code=404, detail="Schedule not found in this repository")
 
-    deleted = await service.delete(schedule_id, user_id=current_user.user_id)
+    try:
+        deleted = await service.delete(schedule_id, user_id=current_user.user_id)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
     if not deleted:
         raise HTTPException(status_code=404, detail="Schedule not found")

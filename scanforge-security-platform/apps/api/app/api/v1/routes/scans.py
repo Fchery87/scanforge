@@ -24,6 +24,8 @@ from app.services.scans import ScanService
 router = APIRouter()
 
 
+ARTIFACT_KEY_SEGMENTS = 5
+
 def _build_scan_artifact_download_url(org_id: UUID, project_id: UUID, scan_id: UUID, run_id: UUID) -> str:
     return f"/api/v1/organizations/{org_id}/projects/{project_id}/scans/{scan_id}/scanner-runs/{run_id}/download"
 
@@ -156,6 +158,15 @@ async def download_scan_artifact(
     if not run or not run.artifact_uri:
         raise HTTPException(status_code=404, detail="Artifact not found")
 
+    parts = run.artifact_uri.split("/")
+    if (
+        len(parts) != ARTIFACT_KEY_SEGMENTS
+        or parts[:4] != ["scan-artifacts", str(org_id), str(scan_id), run.scanner_name]
+        or run.scanner_name == "gitleaks"
+        or not parts[4]
+        or any(part in {".", ".."} or "\\" in part or "\x00" in part for part in parts)
+    ):
+        raise HTTPException(status_code=404, detail="Artifact not found")
     return RedirectResponse(url=_get_r2_client().generate_presigned_url(run.artifact_uri))
 
 

@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,7 +29,15 @@ class UserContext(BaseModel):
         return self._user_id
 
 
+def _record_audit_context(request: Request | None, context: UserContext) -> UserContext:
+    if request is not None and hasattr(request, "state"):
+        request.state.audit_user_id = str(context.user_id)
+        request.state.audit_org_id = context.org_id
+    return context
+
+
 async def get_current_user(
+    request: Request = None,  # type: ignore[assignment]
     credentials: HTTPAuthorizationCredentials = Depends(security),
     _jwks_client: JWKSClient = Depends(get_jwks_client),
     db: AsyncSession = Depends(get_db),
@@ -45,12 +53,13 @@ async def get_current_user(
         payload = await verify_token(credentials.credentials, _jwks_client)
         await UserService(db).get_or_create_from_token(payload)
 
-        return UserContext(
+        context = UserContext(
             sub=payload.get("sub", ""),
             email=payload.get("email"),
             name=payload.get("name"),
             org_id=payload.get("org_id"),
         )
+        return _record_audit_context(request, context)
     except AuthenticationError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -60,6 +69,7 @@ async def get_current_user(
 
 
 async def get_optional_user(
+    request: Request = None,  # type: ignore[assignment]
     credentials: HTTPAuthorizationCredentials = Depends(security),
     _jwks_client: JWKSClient = Depends(get_jwks_client),
 ) -> UserContext | None:
@@ -68,11 +78,12 @@ async def get_optional_user(
 
     try:
         payload = await verify_token(credentials.credentials, _jwks_client)
-        return UserContext(
+        context = UserContext(
             sub=payload.get("sub", ""),
             email=payload.get("email"),
             name=payload.get("name"),
             org_id=payload.get("org_id"),
         )
+        return _record_audit_context(request, context)
     except AuthenticationError:
         return None

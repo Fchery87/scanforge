@@ -152,7 +152,7 @@ async def update_project(
         raise HTTPException(status_code=404, detail="Project not found")
 
     if data.slug:
-        existing = await service.get_by_org_and_slug(project.organization_id, data.slug)
+        existing = await service.get_by_org_and_slug(UUID(str(project.organization_id)), data.slug)
         if existing and existing.id != project_id:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,

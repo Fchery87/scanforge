@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import asyncio
 import os
-import re
 import shutil
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -13,6 +11,7 @@ from app.clients.queue import QueueClient, QueueJob
 from app.clients.r2 import R2Client
 from app.core.alerts import send_slack_alert
 from app.core.logging import get_logger
+from app.security.redaction import redact_sensitive_text
 from app.services.ai_investigation.stage import AIInvestigationStage
 from app.services.scan_pipeline.context import ScanContext
 from app.services.scan_pipeline.execution import ScanExecutionStage
@@ -33,47 +32,77 @@ class ScanOrchestrator:
         queue: QueueClient,
         r2: R2Client,
         api_base_url: str = "http://localhost:8000",
+        worker_credential: str = "",
+        runtime=None,
     ):
         self.queue = queue
         self.r2 = r2
         self.api_base_url = api_base_url
-        self._internal_api_key = os.environ.get("INTERNAL_API_KEY", "")
+        self._worker_credential = worker_credential or os.environ.get("WORKER_CREDENTIAL", "")
         self._notifier: NotificationDispatcher | None = None
 
-        self._execution = ScanExecutionStage(r2, api_base_url, self._internal_api_key)
+        self._execution = ScanExecutionStage(
+            r2,
+            api_base_url,
+            self._worker_credential,
+            runtime=runtime,
+        )
         self._normalization = NormalizationStage()
         self._ai_investigation = AIInvestigationStage()
-        self._persistence = PersistenceStage(api_base_url, self._internal_api_key)
+        self._persistence = PersistenceStage(api_base_url, self._worker_credential)
 
     def set_notifier(self, notifier: NotificationDispatcher) -> None:
         self._notifier = notifier
 
     def _redact_sensitive_text(self, value: str) -> str:
-        redacted = value or ""
-        if self._internal_api_key:
-            redacted = redacted.replace(self._internal_api_key, "[REDACTED]")
-        return re.sub(r"Authorization: Basic\s+\S+", "Authorization: Basic [REDACTED]", redacted)
+        return redact_sensitive_text(value, (self._worker_credential,))
+
+    async def _is_canceled(self, context: ScanContext) -> bool:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.api_base_url}/api/v1/internal/scans/{context.scan_id}/execution-context",
+                headers={"X-Worker-Credential": self._worker_credential},
+                timeout=30.0,
+            )
+            response.raise_for_status()
+            return response.json().get("status") == "canceled"
+
+    async def _stop_if_canceled(self, context: ScanContext, job: QueueJob) -> bool:
+        if not await self._is_canceled(context):
+            return False
+        await self._update_status(context, "canceled")
+        await self.queue.ack(job)
+        return True
 
     async def process_job(self, job: QueueJob) -> bool:
         context = await self._load_scan_context(job)
         _log.info("scan job started", extra={"scan_id": context.scan_id, "job_id": context.job_id})
 
         try:
+            if context.initial_status in {"completed", "canceled"}:
+                await self.queue.ack(job)
+                return True
+            self._execution.begin_scan()
             await self._update_status(context, "claimed")
+            if await self._stop_if_canceled(context, job):
+                return True
             await self._update_scan_status(context, "running")
 
             # Stage 1 — Execution: clone, scan, upload
             await self._update_status(context, "repo_preparing")
             context.repo_path = await self._execution.prepare_repository(context)
+            if await self._stop_if_canceled(context, job):
+                return True
 
             if job.job_type == "scan.repo.diff":
-                context.changed_files = await self._execution.collect_changed_files(context.repo_path)
+                context.changed_files = await self._execution.collect_changed_files(
+                    context.repo_path, base_sha=context.base_commit_sha, head_sha=context.head_commit_sha
+                )
 
             await self._update_status(context, "scanners_running")
             context.scanner_results = await self._execution.run_scanners(context, job.job_type)
-
-            await self._update_status(context, "artifacts_uploading")
-            context.artifact_uris = await self._execution.upload_artifacts(context)
+            if await self._stop_if_canceled(context, job):
+                return True
 
             # Stage 2 — Normalization
             await self._update_status(context, "normalizing")
@@ -85,23 +114,30 @@ class ScanOrchestrator:
             context.critical_count = sum(1 for f in context.findings if f.get("severity") == "critical")
             context.high_count = sum(1 for f in context.findings if f.get("severity") == "high")
 
+            await self._update_status(context, "artifacts_uploading")
+            context.artifact_uris = await self._execution.upload_artifacts(context)
+            if await self._stop_if_canceled(context, job):
+                return True
+
             # Stage 3 — AI investigation (non-blocking)
             await self._update_status(context, "ai_investigating")
             await self._ai_investigation.run(context, job_type=job.job_type)
 
-            # Stage 4 — Persistence: findings + notifications
-            await self._update_status(context, "persisting")
-            await self._persistence.persist_findings(context)
-
+            # Atomic completion is the only operation that can mark the scan complete.
             duration = (datetime.now(UTC) - context.start_time.replace(tzinfo=UTC)).total_seconds()
-            await self._update_status(context, "done")
-            await self._update_scan_status(
+            context.summary_json = self._build_completion_summary(
                 context,
-                "completed",
-                summary=self._build_completion_summary(context, job_type=job.job_type, duration_seconds=duration),
+                job_type=job.job_type,
+                duration_seconds=duration,
             )
+            await self._update_status(context, "persisting")
+            if await self._stop_if_canceled(context, job):
+                return True
+            await self._persistence.complete_scan(context)
+
+            await self._update_status(context, "done")
             await self._persistence.send_notifications(context, self._notifier)
-            await self.queue.ack(context.job_id)
+            await self.queue.ack(job)
 
             _log.info(
                 "scan job completed",
@@ -130,8 +166,7 @@ class ScanOrchestrator:
             )
 
             if retry_count >= self.MAX_RETRIES:
-                await self.queue.release(job.job_id)
-                await self.queue.enqueue_to_dlq(job)
+                await self.queue.move_to_dlq(job)
                 await self._update_scan_status(context, "failed", error=f"Max retries exceeded: {safe_error}")
                 await self._persistence.send_failure_notification(context, self._notifier, retry_count)
                 await send_slack_alert(
@@ -140,35 +175,45 @@ class ScanOrchestrator:
                 )
                 return False
 
-            await asyncio.sleep(min(retry_count * 30, 300))
-            await self.queue.release(job.job_id)
-            await self.queue.requeue(job)
+            await self.queue.requeue(job, delay_seconds=min(retry_count * 30, 300))
             return False
 
         finally:
+            cancel = getattr(self._execution.runtime, "cancel", None)
+            if cancel and context.repo_path:
+                import asyncio
+
+                await asyncio.to_thread(cancel, context.repo_path)
+            if context.output_root and context.output_root.exists():
+                shutil.rmtree(context.output_root)
             if context.repo_path and context.repo_path.exists():
-                shutil.rmtree(context.repo_path, ignore_errors=True)
+                shutil.rmtree(context.repo_path)
 
     async def _load_scan_context(self, job: QueueJob) -> ScanContext:
         scan_id = job.payload.get("scan_id")
         if not scan_id:
             raise RuntimeError("scan job payload missing scan_id")
         async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{self.api_base_url}/api/v1/internal/scans/{scan_id}/execution-context",
-                headers={"X-Service-Key": self._internal_api_key},
+            resp = await client.post(
+                f"{self.api_base_url}/api/v1/internal/scans/{scan_id}/claim",
+                headers={"X-Worker-Credential": self._worker_credential},
                 timeout=30.0,
             )
             resp.raise_for_status()
             data = resp.json()
         return ScanContext(
             scan_id=data["scan_id"],
+            initial_status=data.get("status"),
             organization_id=data["org_id"],
             repository_id=data["repository_id"],
             project_id=data["project_id"],
             branch=data.get("branch"),
             commit_sha=data.get("commit_sha"),
+            base_commit_sha=data.get("base_commit_sha"),
+            head_commit_sha=data.get("head_commit_sha"),
             user_id=data.get("user_id"),
+            attempt_id=data.get("attempt_id"),
+            execution_revision=data.get("execution_revision"),
             job_id=job.job_id,
             expected_scanners=data.get("expected_scanners"),
             coverage_scope=data.get("coverage_scope"),
@@ -223,8 +268,9 @@ class ScanOrchestrator:
             try:
                 resp = await client.patch(
                     f"{self.api_base_url}/api/v1/internal/scans/{context.scan_id}/status",
-                    json={"status": status, "error_message": error, "summary_json": summary},
-                    headers={"X-Service-Key": self._internal_api_key},
+                    json={"status": status, "error_message": error, "summary_json": summary,
+                          "attempt_id": context.attempt_id, "execution_revision": context.execution_revision},
+                    headers={"X-Worker-Credential": self._worker_credential},
                     timeout=30.0,
                 )
                 resp.raise_for_status()

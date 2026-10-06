@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
-import traceback
 from pathlib import Path
 
 
@@ -28,6 +27,7 @@ from app.clients.r2 import R2Client  # noqa: E402
 from app.core.logging import configure_logging, get_logger  # noqa: E402
 from app.services.notifications import NotificationDispatcher  # noqa: E402
 from app.services.scan_orchestrator import ScanOrchestrator  # noqa: E402
+from app.worker.health import write_health  # noqa: E402
 
 configure_logging(level=os.environ.get("LOG_LEVEL", "INFO"))
 _log = get_logger(__name__)
@@ -36,45 +36,81 @@ _log = get_logger(__name__)
 class Worker:
     def __init__(
         self,
-        concurrency: int = 2,
+        concurrency: int = 1,
         poll_interval: float = 5.0,
         shutdown_timeout: float = 30.0,
     ):
+        if os.environ.get("APP_ENV", "development").lower() == "private-beta" and concurrency != 1:
+            raise ValueError("Private-beta workers require one scan at a time")
         self.concurrency = concurrency
         self.poll_interval = poll_interval
         self.shutdown_timeout = shutdown_timeout
+        self.queue_available = False
+        self.queue_failures = 0
         self._running = False
         self._shutdown_event = asyncio.Event()
 
+    @property
+    def queue_backoff_seconds(self) -> float:
+        return min(60.0, max(self.poll_interval, 2.0 ** min(self.queue_failures, 6)))
+
+    async def _process_with_lease(self, queue, orchestrator, job):
+        processing = asyncio.create_task(orchestrator.process_job(job))
+
+        async def renew():
+            while True:
+                await asyncio.sleep(30)
+                if not await queue.heartbeat(job):
+                    raise RuntimeError("Pending scan lease was lost")
+
+        lease = asyncio.create_task(renew())
+        try:
+            done, _ = await asyncio.wait({processing, lease}, return_when=asyncio.FIRST_COMPLETED)
+            if processing in done:
+                return await processing
+            await lease
+        finally:
+            processing.cancel()
+            lease.cancel()
+            await asyncio.gather(processing, lease, return_exceptions=True)
+
     def _get_clients(self):
+        organization_id = os.environ.get("WORKER_ORGANIZATION_ID", "").strip()
+        consumer_name = os.environ.get("WORKER_CONSUMER_NAME", "").strip()
+        worker_credential = os.environ.get("WORKER_CREDENTIAL", "").strip()
+        if not organization_id or not consumer_name or not worker_credential:
+            raise RuntimeError(
+                "WORKER_ORGANIZATION_ID, WORKER_CONSUMER_NAME, and WORKER_CREDENTIAL are required"
+            )
         redis_url = os.environ.get("UPSTASH_REDIS_REST_URL", "")
         redis_token = os.environ.get("UPSTASH_REDIS_REST_TOKEN", "")
-        r2_endpoint = os.environ.get("R2_ENDPOINT", "")
-        r2_bucket = os.environ.get("R2_BUCKET", "")
-        r2_access = os.environ.get("R2_ACCESS_KEY_ID", "")
-        r2_secret = os.environ.get("R2_SECRET_ACCESS_KEY", "")
-        r2_public = os.environ.get("R2_PUBLIC_BASE_URL", "")
         api_base = os.environ.get("API_BASE_URL", "http://localhost:8000")
 
-        queue = QueueClient(redis_url=redis_url, redis_token=redis_token)
-        r2 = R2Client(
-            endpoint=r2_endpoint,
-            bucket=r2_bucket,
-            access_key_id=r2_access,
-            secret_access_key=r2_secret,
-            public_base_url=r2_public,
+        queue = QueueClient(
+            redis_url=redis_url,
+            redis_token=redis_token,
+            organization_id=organization_id,
+            consumer_name=consumer_name,
         )
+        r2 = R2Client(api_base_url=api_base, worker_credential=worker_credential)
         return queue, r2, api_base
 
     async def process_single_job(self, queue: QueueClient, orchestrator: ScanOrchestrator):
         try:
             job = await queue.dequeue(timeout_seconds=5)
+            if not self.queue_available:
+                _log.info("queue recovered")
+            self.queue_available = True
+            self.queue_failures = 0
             if job is None:
                 return
 
             _log.info("processing job", extra={"job_id": job.job_id, "job_type": job.job_type})
 
-            success = await orchestrator.process_job(job)
+            if job.stream_entry_id:
+                success = await self._process_with_lease(queue, orchestrator, job)
+            else:
+                success = await orchestrator.process_job(job)
 
             if success:
                 _log.info("job completed successfully", extra={"job_id": job.job_id})
@@ -89,8 +125,10 @@ class Worker:
                     },
                 )
 
-        except Exception as e:
-            _log.error("error processing job", extra={"error": str(e), "traceback": traceback.format_exc()})
+        except Exception as exc:
+            self.queue_available = False
+            self.queue_failures += 1
+            _log.error("worker dependency failed", extra={"error_type": type(exc).__name__})
 
     async def run(self):
         queue, r2, api_base = self._get_clients()
@@ -98,11 +136,12 @@ class Worker:
             queue=queue,
             r2=r2,
             api_base_url=api_base,
+            worker_credential=os.environ.get("WORKER_CREDENTIAL", ""),
         )
         orchestrator.set_notifier(
             NotificationDispatcher(
                 api_base_url=api_base,
-                internal_api_key=os.environ.get("INTERNAL_API_KEY", ""),
+                worker_credential=os.environ.get("WORKER_CREDENTIAL", ""),
             )
         )
 
@@ -122,13 +161,19 @@ class Worker:
 
         async def worker_loop():
             while self._running:
+                try:
+                    await queue.promote_due_retries()
+                except Exception as exc:
+                    _log.warning("could not promote retry jobs", extra={"error": str(exc)})
+
                 active = [t for t in tasks if not t.done()]
 
                 if len(active) < self.concurrency:
                     task = asyncio.create_task(self.process_single_job(queue, orchestrator))
                     tasks.append(task)
 
-                await asyncio.sleep(1)
+                write_health(queue_available=self.queue_available, queue_failures=self.queue_failures)
+                await asyncio.sleep(1 if self.queue_available else self.queue_backoff_seconds)
 
                 done = [t for t in tasks if t.done()]
                 for t in done:
@@ -138,13 +183,18 @@ class Worker:
             while self._running:
                 try:
                     ql = await queue.get_queue_length()
+                    oldest_age = await queue.get_oldest_job_age_seconds()
+                    if oldest_age > 300:
+                        _log.warning("scan queue age exceeds beta budget", extra={"oldest_job_age_seconds": oldest_age})
                     active = len([t for t in tasks if not t.done()])
                     _log.info(
                         "worker status",
-                        extra={"queue_length": ql, "active_tasks": active, "workers": self.concurrency},
+                        extra={"queue_length": ql, "oldest_job_age_seconds": oldest_age,
+                               "active_tasks": active, "workers": self.concurrency},
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    self.queue_available = False
+                    _log.warning("queue monitoring failed", extra={"error_type": type(exc).__name__})
                 await asyncio.sleep(30)
 
         loops = [asyncio.create_task(worker_loop()), asyncio.create_task(monitor_loop())]
@@ -167,7 +217,10 @@ class Worker:
 
 
 def main():
-    concurrency = int(os.environ.get("WORKER_CONCURRENCY", "2"))
+    from app.runtime.base import build_scan_runtime
+
+    build_scan_runtime()
+    concurrency = int(os.environ.get("WORKER_CONCURRENCY", "1"))
     worker = Worker(concurrency=concurrency)
 
     loop = asyncio.new_event_loop()

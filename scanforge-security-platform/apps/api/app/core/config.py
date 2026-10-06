@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     APP_NAME: str = "repo-security-platform-api"
     APP_URL: str = "http://localhost:8000"
+    WEB_APP_URL: str = "http://localhost:3000"
 
     CORS_ORIGINS: str = "http://localhost:3000"
     TRUSTED_PROXY_IPS: str = ""
@@ -50,6 +51,8 @@ class Settings(BaseSettings):
     GITHUB_STATE_SIGNING_SECRET: str = ""
 
     INTERNAL_API_KEY: str = ""
+    WORKER_CREDENTIAL_PEPPER: str = ""
+    SCHEDULER_API_KEY: str = ""
 
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587

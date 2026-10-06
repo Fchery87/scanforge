@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/internal/scans/{scan_id}/artifacts/upload-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Artifact Upload Url */
+        post: operations["create_artifact_upload_url_api_v1_internal_scans__scan_id__artifacts_upload_url_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/internal/notifications": {
         parameters: {
             query?: never;
@@ -49,6 +66,23 @@ export interface paths {
         put?: never;
         /** Create Notification */
         post: operations["create_notification_api_v1_internal_notifications_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/scans/{scan_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete Scan */
+        post: operations["complete_scan_api_v1_internal_scans__scan_id__complete_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -160,17 +194,17 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/internal/onboarding": {
+    "/api/v1/internal/scans/{scan_id}/claim": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get Onboarding Checklist */
-        get: operations["get_onboarding_checklist_api_v1_internal_onboarding_get"];
+        get?: never;
         put?: never;
-        post?: never;
+        /** Claim Scan Execution */
+        post: operations["claim_scan_execution_api_v1_internal_scans__scan_id__claim_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -188,6 +222,23 @@ export interface paths {
         put?: never;
         /** Run Due Scan Schedules */
         post: operations["run_due_scan_schedules_api_v1_internal_scan_schedules_run_due_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/github-checks/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Github Checks */
+        post: operations["retry_github_checks_api_v1_internal_github_checks_retry_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1073,6 +1124,27 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ArtifactUploadRequest */
+        ArtifactUploadRequest: {
+            /**
+             * Attempt Id
+             * Format: uuid
+             */
+            attempt_id: string;
+            /** Execution Revision */
+            execution_revision: number;
+            /** Scanner Name */
+            scanner_name: string;
+            /** Filename */
+            filename: string;
+            /**
+             * Content Type
+             * @default application/json
+             */
+            content_type: string;
+            /** Size Bytes */
+            size_bytes: number;
+        };
         /** CanonicalFindingCandidate */
         CanonicalFindingCandidate: {
             /** Canonical Fingerprint */
@@ -1151,6 +1223,13 @@ export interface components {
         };
         /** CreateScannerRunRequest */
         CreateScannerRunRequest: {
+            /**
+             * Attempt Id
+             * Format: uuid
+             */
+            attempt_id: string;
+            /** Execution Revision */
+            execution_revision: number;
             /** Scanner Name */
             scanner_name: string;
             /** Scanner Version */
@@ -2227,6 +2306,36 @@ export interface components {
             /** Reason */
             reason?: string | null;
         };
+        /** ScanCompletionRequest */
+        ScanCompletionRequest: {
+            /**
+             * Contract Version
+             * @default 1
+             * @constant
+             */
+            contract_version: 1;
+            /**
+             * Winning Attempt Id
+             * Format: uuid
+             */
+            winning_attempt_id: string;
+            /** Observed Commit Sha */
+            observed_commit_sha?: string | null;
+            /** Execution Revision */
+            execution_revision: number;
+            /** Findings */
+            findings?: components["schemas"]["CanonicalFindingCandidate"][];
+            /** Scanner Runs */
+            scanner_runs?: components["schemas"]["ScannerRunCompletion"][];
+            /** Summary Json */
+            summary_json?: {
+                [key: string]: unknown;
+            };
+            /** Artifact Uris */
+            artifact_uris?: {
+                [key: string]: unknown;
+            };
+        };
         /** ScanCreate */
         ScanCreate: {
             /**
@@ -2245,6 +2354,10 @@ export interface components {
             commit_sha?: string | null;
             /** Pull Request Number */
             pull_request_number?: number | null;
+            /** Base Commit Sha */
+            base_commit_sha?: string | null;
+            /** Head Commit Sha */
+            head_commit_sha?: string | null;
             /**
              * Scan Type
              * @default full
@@ -2280,6 +2393,10 @@ export interface components {
             commit_sha: string | null;
             /** Pull Request Number */
             pull_request_number: number | null;
+            /** Base Commit Sha */
+            base_commit_sha?: string | null;
+            /** Head Commit Sha */
+            head_commit_sha?: string | null;
             /** Requested By User Id */
             requested_by_user_id: string | null;
             /** Error Message */
@@ -2303,6 +2420,24 @@ export interface components {
              * @default []
              */
             scanner_runs: components["schemas"]["ScannerRunResponse"][];
+        };
+        /** ScanProgressUpdate */
+        ScanProgressUpdate: {
+            /**
+             * Attempt Id
+             * Format: uuid
+             */
+            attempt_id: string;
+            /** Execution Revision */
+            execution_revision: number;
+            /** Status */
+            status?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Summary Json */
+            summary_json?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** ScanResponse */
         ScanResponse: {
@@ -2333,6 +2468,10 @@ export interface components {
             commit_sha: string | null;
             /** Pull Request Number */
             pull_request_number: number | null;
+            /** Base Commit Sha */
+            base_commit_sha?: string | null;
+            /** Head Commit Sha */
+            head_commit_sha?: string | null;
             /** Requested By User Id */
             requested_by_user_id: string | null;
             /** Error Message */
@@ -2417,14 +2556,24 @@ export interface components {
             /** Is Active */
             is_active?: boolean | null;
         };
-        /** ScanStatusUpdate */
-        ScanStatusUpdate: {
+        /** ScannerRunCompletion */
+        ScannerRunCompletion: {
+            /** Scanner Name */
+            scanner_name: string;
+            /** Scanner Version */
+            scanner_version?: string | null;
             /** Status */
-            status?: string | null;
+            status: string;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /** Exit Code */
+            exit_code?: number | null;
             /** Error Message */
             error_message?: string | null;
-            /** Summary Json */
-            summary_json?: {
+            /** Artifact Uri */
+            artifact_uri?: string | null;
+            /** Metadata Json */
+            metadata_json?: {
                 [key: string]: unknown;
             } | null;
         };
@@ -2587,6 +2736,13 @@ export interface components {
         };
         /** UpdateScannerRunRequest */
         UpdateScannerRunRequest: {
+            /**
+             * Attempt Id
+             * Format: uuid
+             */
+            attempt_id: string;
+            /** Execution Revision */
+            execution_revision: number;
             /** Status */
             status?: string | null;
             /** Duration Ms */
@@ -2689,9 +2845,44 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    create_artifact_upload_url_api_v1_internal_scans__scan_id__artifacts_upload_url_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Worker-Credential"?: string | null;
+            };
+            path: {
+                scan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArtifactUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -2700,7 +2891,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-service-key"?: string | null;
+                "X-Worker-Credential"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -2731,11 +2922,11 @@ export interface operations {
             };
         };
     };
-    update_scan_status_internal_api_v1_internal_scans__scan_id__status_patch: {
+    complete_scan_api_v1_internal_scans__scan_id__complete_post: {
         parameters: {
             query?: never;
             header?: {
-                "x-service-key"?: string | null;
+                "X-Worker-Credential"?: string | null;
             };
             path: {
                 scan_id: string;
@@ -2744,7 +2935,44 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ScanStatusUpdate"];
+                "application/json": components["schemas"]["ScanCompletionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_scan_status_internal_api_v1_internal_scans__scan_id__status_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Worker-Credential"?: string | null;
+            };
+            path: {
+                scan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScanProgressUpdate"];
             };
         };
         responses: {
@@ -2772,7 +3000,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-service-key"?: string | null;
+                "X-Worker-Credential"?: string | null;
             };
             path: {
                 scan_id: string;
@@ -2809,7 +3037,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-service-key"?: string | null;
+                "X-Worker-Credential"?: string | null;
             };
             path: {
                 run_id: string;
@@ -2846,7 +3074,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-service-key"?: string | null;
+                "X-Worker-Credential"?: string | null;
             };
             path: {
                 scan_id: string;
@@ -2883,7 +3111,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-service-key"?: string | null;
+                "X-Worker-Credential"?: string | null;
             };
             path: {
                 repo_id: string;
@@ -2916,7 +3144,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-service-key"?: string | null;
+                "X-Worker-Credential"?: string | null;
             };
             path: {
                 scan_id: string;
@@ -2945,15 +3173,15 @@ export interface operations {
             };
         };
     };
-    get_onboarding_checklist_api_v1_internal_onboarding_get: {
+    claim_scan_execution_api_v1_internal_scans__scan_id__claim_post: {
         parameters: {
-            query?: {
-                org_id?: string | null;
-            };
+            query?: never;
             header?: {
-                "x-service-key"?: string | null;
+                "X-Worker-Credential"?: string | null;
             };
-            path?: never;
+            path: {
+                scan_id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2982,7 +3210,38 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-service-key"?: string | null;
+                "x-scheduler-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_github_checks_api_v1_internal_github_checks_retry_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-scheduler-key"?: string | null;
             };
             path?: never;
             cookie?: never;

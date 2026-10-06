@@ -52,4 +52,6 @@ SCANNER_REGISTRY = _build_registry()
 
 
 def scanners_for_scan_type(scan_type: str) -> list[str]:
-    return SCAN_MODE_REGISTRY.get(scan_type, SCAN_MODE_REGISTRY["scan.repo.full"])
+    if scan_type not in SCAN_MODE_REGISTRY:
+        raise ValueError("unsupported scan type")
+    return SCAN_MODE_REGISTRY[scan_type]

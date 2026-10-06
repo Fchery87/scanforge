@@ -9,6 +9,40 @@ class CheckovAdapter(ScannerAdapter):
     name = "checkov"
     binary_name = "checkov"
     binary_env_var = "CHECKOV_BINARY"
+    report_filename = "checkov-results.json"
+    report_from_stdout = True
+    accepted_exit_codes = frozenset({0, 1})
+
+    def runtime_arguments(self) -> tuple[str, ...]:
+        return (
+            "--directory",
+            "/workspace/source",
+            "--quiet",
+            "--skip-download",
+            "--download-external-modules",
+            "false",
+            "--skip-framework",
+            "secrets",
+            "--output",
+            "json",
+        )
+
+    def parse_runtime_result(self, completed, output_directory: Path) -> ScannerResult:
+        def valid_report(report):
+            reports = report if isinstance(report, list) else [report]
+            return bool(reports) and all(
+                isinstance(item, dict)
+                and isinstance(item.get("results"), dict)
+                and isinstance(item["results"].get("failed_checks"), list)
+                and not item["results"].get("parsing_errors")
+                and all(
+                    isinstance(check, dict) and isinstance(check.get("check_id"), str)
+                    for check in item["results"]["failed_checks"]
+                )
+                for item in reports
+            )
+
+        return self._parse_report(completed, output_directory, valid_report)
 
     def run(self, repo_path: Path) -> ScannerResult:
         import time

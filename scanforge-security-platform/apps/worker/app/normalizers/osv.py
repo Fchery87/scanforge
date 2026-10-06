@@ -39,7 +39,7 @@ def normalize_osv_output(raw_output: dict, repository_id: str) -> list[dict]:
                 pkg = package_entry.get("package", {})
                 package_name = pkg.get("name", "")
                 ecosystem = pkg.get("ecosystem", "unknown")
-                installed_version = str(package_entry.get("version", "unknown"))
+                installed_version = str(pkg.get("version") or package_entry.get("version", "unknown"))
                 for vuln in package_entry.get("vulnerabilities", []) or []:
                     finding = _build_osv_finding(
                         repository_id=repository_id,

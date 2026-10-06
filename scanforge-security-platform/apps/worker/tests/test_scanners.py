@@ -5,12 +5,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.normalizers.grype import normalize_grype_output
 from app.scanners.checkov import CheckovAdapter
 from app.scanners.grype import GrypeAdapter
 from app.scanners.semgrep import SemgrepAdapter
 from app.scanners.syft import SyftAdapter
 from app.scanners.trivy import TrivyAdapter
-from app.normalizers.grype import normalize_grype_output
 
 
 def test_checkov_adapter_uses_stdout_json_and_writes_artifact(monkeypatch, tmp_path: Path):

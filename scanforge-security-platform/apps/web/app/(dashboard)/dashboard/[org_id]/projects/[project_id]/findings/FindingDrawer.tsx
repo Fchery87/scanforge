@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
+import type { Finding, FindingDetail, Member } from "@/lib/api-schemas";
 import {
   X,
   ExternalLink,
@@ -38,11 +40,21 @@ export default function FindingDrawer({
   onUpdate,
   onSelectFinding,
 }: FindingDrawerProps) {
-  const [finding, setFinding] = useState<any>(null);
+  const [finding, setFinding] = useState<FindingDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [reload, setReload] = useState(0);
+  const returnFocus = useRef(typeof document !== "undefined" && document.activeElement instanceof HTMLElement ? document.activeElement : null);
+  const selection = useRef(0);
   const [tab, setTab] = useState<string>("details");
-  const [related, setRelated] = useState<any[]>([]);
-  const [members, setMembers] = useState<any[]>([]);
+  const [related, setRelated] = useState<Finding[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [membersError, setMembersError] = useState("");
+  const [membersReload, setMembersReload] = useState(0);
+  const [relatedError, setRelatedError] = useState("");
+  const [relatedLoading, setRelatedLoading] = useState(false);
+  const [relatedReload, setRelatedReload] = useState(0);
   const [actionForm, setActionForm] = useState({
     action: "",
     reason: "",
@@ -56,46 +68,50 @@ export default function FindingDrawer({
   const [savingTriage, setSavingTriage] = useState(false);
 
   useEffect(() => {
+    let active = true;
+    selection.current += 1;
     setLoading(true);
-    api.findings
-      .get(orgId, projectId, findingId)
-      .then((data) => {
-        setFinding(data);
-        setTriageForm({
-          assigneeUserId: data.assignee_user_id ?? "",
-          dueDate: data.due_date ?? "",
-        });
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, [findingId, orgId, projectId]);
+    setFinding(null);
+    setLoadError("");
+    setActionError("");
+    setActing(false);
+    setSavingTriage(false);
+    setActionForm({ action: "", reason: "", fixedVersion: "" });
+    api.findings.get(orgId, projectId, findingId).then((data) => {
+      if (!active) return;
+      setFinding(data);
+      setTriageForm({ assigneeUserId: data.assignee_user_id ?? "", dueDate: data.due_date ?? "" });
+    }).catch((error: unknown) => {
+      if (active) setLoadError(error instanceof Error ? error.message : "Unable to load finding");
+    }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; selection.current += 1; };
+  }, [findingId, orgId, projectId, reload]);
 
   useEffect(() => {
-    api.members
-      .list(orgId, 0, 100)
-      .then((res: any) => setMembers(res.items ?? []))
-      .catch(() => setMembers([]));
-  }, [orgId]);
+    let active = true;
+    setMembersError("");
+    api.members.list(orgId, 0, 100).then((res) => { if (active) setMembers(res.items); })
+      .catch((error: unknown) => { if (active) setMembersError(error instanceof Error ? error.message : "Unable to load members"); });
+    return () => { active = false; };
+  }, [orgId, membersReload]);
 
   useEffect(() => {
+    let active = true;
     if (tab !== "related" || !finding) return;
-    api.findings
-      .list(orgId, projectId, {
-        category: finding.category,
-        repositoryId: finding.repository_id,
-      })
-      .then((res: any) => {
-        setRelated(
-          (res.items ?? [])
-            .filter((f: any) => f.id !== findingId)
-            .slice(0, 5)
-        );
-      })
-      .catch(() => setRelated([]));
-  }, [tab, finding, orgId, projectId, findingId]);
+    setRelated([]);
+    setRelatedError("");
+    setRelatedLoading(true);
+    api.findings.list(orgId, projectId, { category: finding.category, repositoryId: finding.repository_id })
+      .then((res) => { if (active) setRelated(res.items.filter((item) => item.id !== findingId).slice(0, 5)); })
+      .catch((error: unknown) => { if (active) setRelatedError(error instanceof Error ? error.message : "Unable to load related findings"); })
+      .finally(() => { if (active) setRelatedLoading(false); });
+    return () => { active = false; };
+  }, [tab, finding, orgId, projectId, findingId, relatedReload]);
 
   const handleAction = async (action: string) => {
     if (!actionForm.reason && action !== "reopen") return;
+    const selected = selection.current;
+    setActionError("");
     setActing(true);
     try {
       if (action === "suppress") {
@@ -110,7 +126,8 @@ export default function FindingDrawer({
           orgId,
           projectId,
           findingId,
-          actionForm.fixedVersion
+          actionForm.fixedVersion,
+          actionForm.reason
         );
       } else if (action === "accept_risk") {
         await api.findings.acceptRisk(
@@ -131,32 +148,38 @@ export default function FindingDrawer({
       }
       onUpdate();
       const updated = await api.findings.get(orgId, projectId, findingId);
+      if (selection.current !== selected) return;
       setFinding(updated);
       setActionForm({ action: "", reason: "", fixedVersion: "" });
     } catch (err) {
-      console.error(err);
+      if (selection.current === selected) setActionError(err instanceof Error ? err.message : "Unable to save changes");
     } finally {
-      setActing(false);
+      if (selection.current === selected) setActing(false);
     }
   };
 
   const handleSaveTriage = async () => {
+    const selected = selection.current;
+    setActionError("");
     setSavingTriage(true);
     try {
-      const updated = await api.findings.updateTriage(orgId, projectId, findingId, {
+      await api.findings.updateTriage(orgId, projectId, findingId, {
         assignee_user_id: triageForm.assigneeUserId || null,
         due_date: triageForm.dueDate || null,
       });
+      const updated = await api.findings.get(orgId, projectId, findingId);
+      if (selection.current !== selected) return;
       setFinding(updated);
       onUpdate();
     } catch (err) {
-      console.error(err);
+      if (selection.current === selected) setActionError(err instanceof Error ? err.message : "Unable to save changes");
     } finally {
-      setSavingTriage(false);
+      if (selection.current === selected) setSavingTriage(false);
     }
   };
 
   const formatDate = (d: string) => new Date(d).toLocaleString();
+  const canDisposition = finding !== null && ["open", "reviewing", "to_fix", "not_observed"].includes(finding.status);
 
   const daysSince = (d: string) => {
     const days = Math.floor((Date.now() - new Date(d).getTime()) / 86400000);
@@ -166,19 +189,20 @@ export default function FindingDrawer({
   };
 
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm animate-fade-in"
-        onClick={onClose}
-      />
-
-      {/* Drawer */}
-      <div
-        className={cn(
-          "fixed right-0 top-0 bottom-0 z-50 w-full max-w-xl bg-surface border-l border-border shadow-2xl animate-slide-in-right flex flex-col"
-        )}
-      >
+    <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm" />
+        <Dialog.Content
+          className="fixed right-0 top-0 bottom-0 z-[101] w-full max-w-xl bg-surface border-l border-border shadow-2xl flex flex-col"
+          onCloseAutoFocus={(event) => { event.preventDefault(); returnFocus.current?.focus(); }}
+        >
+          {!finding && <Dialog.Title className="sr-only">Finding details</Dialog.Title>}
+          <Dialog.Description className="sr-only">Review finding evidence and update triage.</Dialog.Description>
+          <Dialog.Close asChild>
+            <Button variant="ghost" size="icon" aria-label="Close finding details" className="absolute right-4 top-4 z-10">
+              <X className="h-4 w-4" />
+            </Button>
+          </Dialog.Close>
         {loading ? (
           <div className="flex items-center justify-center h-full">
             <div className="flex items-center gap-2 text-sm text-text-tertiary">
@@ -186,7 +210,12 @@ export default function FindingDrawer({
               Loading…
             </div>
           </div>
-        ) : !finding ? null : (
+        ) : loadError ? (
+          <div className="p-8 space-y-4">
+            <p role="alert">{loadError}</p>
+            <Button onClick={() => setReload((current) => current + 1)}>Retry</Button>
+          </div>
+        ) : !finding ? <p className="p-8">Finding unavailable</p> : (
           <>
             {/* Header */}
             <div className="flex items-start justify-between p-5 border-b border-border">
@@ -195,9 +224,9 @@ export default function FindingDrawer({
                   <SeverityBadge severity={finding.severity} />
                   <StatusBadge status={finding.status} showIcon={false} />
                 </div>
-                <h2 className="text-base font-semibold font-display text-text-primary leading-snug">
+                <Dialog.Title className="text-base font-semibold font-display text-text-primary leading-snug">
                   {finding.title}
-                </h2>
+                </Dialog.Title>
                 <div className="flex items-center gap-3 mt-2 text-xs text-text-tertiary">
                   <span className="inline-flex items-center gap-1">
                     <Clock className="h-3 w-3" />
@@ -212,14 +241,6 @@ export default function FindingDrawer({
                   </span>
                 </div>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={onClose}
-                className="flex-shrink-0"
-              >
-                <X className="h-4 w-4" />
-              </Button>
             </div>
 
             {/* Tabs */}
@@ -281,12 +302,15 @@ export default function FindingDrawer({
                       <h4 className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-2">
                         Triage
                       </h4>
+                      {membersError && <div className="space-y-2"><p role="alert">{membersError}</p>
+                        <Button onClick={() => setMembersReload((current) => current + 1)}>Retry members</Button></div>}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <label className="space-y-1.5">
                           <span className="text-[11px] font-medium text-text-tertiary uppercase tracking-wider">
                             Owner
                           </span>
                           <select
+                            disabled={!!membersError}
                             value={triageForm.assigneeUserId}
                             onChange={(e) =>
                               setTriageForm((prev) => ({
@@ -297,7 +321,7 @@ export default function FindingDrawer({
                             className="h-9 w-full rounded-md border border-border bg-surface-elevated px-3 text-sm text-text-primary outline-none focus:border-primary/50"
                           >
                             <option value="">Unassigned</option>
-                            {members.map((member: any) => (
+                            {members.map((member) => (
                               <option key={member.user_id} value={member.user_id}>
                                 {member.user_name || member.user_email || member.user_id}
                               </option>
@@ -343,7 +367,7 @@ export default function FindingDrawer({
                     </div>
                   </div>
 
-                  {finding.references?.length > 0 && (
+                  {finding.references.length > 0 && (
                     <>
                       <Separator />
                       <div>
@@ -351,7 +375,7 @@ export default function FindingDrawer({
                           References
                         </h4>
                         <ul className="space-y-1.5">
-                          {finding.references.map((ref: any) => (
+                          {finding.references.map((ref) => (
                             <li key={ref.id} className="flex items-center gap-2 text-sm">
                               <span className="text-[10px] uppercase font-semibold text-text-tertiary px-1.5 py-0.5 rounded bg-surface-elevated">
                                 {ref.reference_type}
@@ -410,7 +434,7 @@ export default function FindingDrawer({
                       No instances recorded
                     </p>
                   )}
-                  {(finding.instances || []).map((inst: any) => (
+                  {(finding.instances || []).map((inst) => (
                     <div
                       key={inst.id}
                       className="rounded-lg border border-border bg-surface-elevated p-3 space-y-2"
@@ -463,7 +487,7 @@ export default function FindingDrawer({
                       No events recorded
                     </p>
                   )}
-                  {(finding.events || []).map((evt: any, i: number) => (
+                  {(finding.events || []).map((evt, i) => (
                     <div key={evt.id} className="flex gap-3 relative">
                       <div className="flex flex-col items-center">
                         <div
@@ -506,12 +530,15 @@ export default function FindingDrawer({
                 </TabsContent>
 
                 <TabsContent value="related" className="p-5 mt-0 space-y-2">
-                  {related.length === 0 && (
+                  {relatedLoading && <p role="status">Loading related findings…</p>}
+                  {relatedError && <div className="space-y-2"><p role="alert">{relatedError}</p>
+                    <Button onClick={() => setRelatedReload((current) => current + 1)}>Retry related findings</Button></div>}
+                  {!relatedLoading && !relatedError && related.length === 0 && (
                     <p className="text-sm text-text-tertiary text-center py-8">
                       No related findings found
                     </p>
                   )}
-                  {related.map((f: any) => (
+                  {related.map((f) => (
                     <button
                       key={f.id}
                       onClick={() =>
@@ -534,9 +561,9 @@ export default function FindingDrawer({
               </ScrollArea>
             </Tabs>
 
-            {/* Footer Actions */}
+            {actionError && <p role="alert" className="px-4 py-2 text-danger">{actionError}</p>}
             <div className="flex items-center gap-2 p-4 border-t border-border bg-surface">
-              {finding.status === "open" && (
+              {canDisposition && (
                 <>
                   {actionForm.action === "" && (
                     <>
@@ -596,6 +623,7 @@ export default function FindingDrawer({
                       </h5>
                       {actionForm.action === "resolve" && (
                         <Input
+                          aria-label="Fixed version"
                           placeholder="Fixed version (optional)"
                           value={actionForm.fixedVersion}
                           onChange={(e) =>
@@ -609,6 +637,7 @@ export default function FindingDrawer({
                       )}
                       <Input
                         required
+                        aria-label="Reason"
                         placeholder="Reason"
                         value={actionForm.reason}
                         onChange={(e) =>
@@ -646,7 +675,7 @@ export default function FindingDrawer({
                 </>
               )}
               {(finding.status === "fixed" ||
-                finding.status === "suppressed" ||
+                finding.status === "false_positive" ||
                 finding.status === "accepted_risk" ||
                 finding.status === "duplicate") && (
                 <Button
@@ -659,9 +688,9 @@ export default function FindingDrawer({
                   {acting ? "Reopening…" : "Reopen"}
                 </Button>
               )}
-              {finding.status !== "open" &&
+              {!canDisposition &&
                 finding.status !== "fixed" &&
-                finding.status !== "suppressed" &&
+                finding.status !== "false_positive" &&
                 finding.status !== "accepted_risk" &&
                 finding.status !== "duplicate" && (
                   <p className="text-xs text-text-tertiary flex-1 text-center py-1">
@@ -672,7 +701,8 @@ export default function FindingDrawer({
             </div>
           </>
         )}
-      </div>
-    </>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

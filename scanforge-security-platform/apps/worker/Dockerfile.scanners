@@ -1,0 +1,90 @@
+# syntax=docker/dockerfile:1.7
+# Debian 12 Python base pinned to a digest; scanner versions are immutable build args.
+FROM python:3.12.8-slim-bookworm@sha256:3cce65a9b53e85a94b8c76bb27bc4eab5049b21c4414ea8f4cdf7dc59b7fddd8 AS scanner
+
+ARG TRIVY_VERSION=0.69.3
+ARG GITLEAKS_VERSION=8.30.0
+ARG SEMGREP_VERSION=1.156.0
+ARG CHECKOV_VERSION=3.2.513
+ARG SYFT_VERSION=1.42.3
+ARG GRYPE_VERSION=0.110.0
+ARG OSV_SCANNER_VERSION=2.3.3
+ARG SEMGREP_RULES_COMMIT=a84ff9cc2453ca91d581380de4b8b3f272f6f4be
+ARG SEMGREP_RULES_SHA256=b227c2d234ffd9c84c4dbd6619a5897a7192637c141baeace3bfc37b0715a887
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl git jq tar \
+    && rm -rf /var/lib/apt/lists/*
+
+# Trusted image builds download pinned releases and scanner databases. Runtime
+# containers have --network=none, so customer scans cannot update or exfiltrate.
+RUN pip install --no-cache-dir --upgrade "pip==26.2.1" \
+    && pip install --no-cache-dir "semgrep==${SEMGREP_VERSION}" "checkov==${CHECKOV_VERSION}" "PyYAML==6.0.3"
+RUN set -eu; cd /tmp; \
+    for tool in trivy gitleaks syft grype; do \
+      case "$tool" in \
+        trivy) publisher=aquasecurity; version="$TRIVY_VERSION"; architecture=Linux-64bit ;; \
+        gitleaks) publisher=gitleaks; version="$GITLEAKS_VERSION"; architecture=linux_x64 ;; \
+        syft) publisher=anchore; version="$SYFT_VERSION"; architecture=linux_amd64 ;; \
+        grype) publisher=anchore; version="$GRYPE_VERSION"; architecture=linux_amd64 ;; \
+      esac; \
+      release="https://github.com/$publisher/$tool/releases/download/v$version"; \
+      archive="${tool}_${version}_${architecture}.tar.gz"; \
+      curl --fail --location --silent --show-error "$release/$archive" -o "$archive"; \
+      curl --fail --location --silent --show-error "$release/${tool}_${version}_checksums.txt" -o checksums.txt; \
+      sha256sum --check --ignore-missing checksums.txt; \
+      tar -xz -f "$archive" -C /usr/local/bin "$tool"; \
+      rm "$archive" checksums.txt; \
+    done; \
+    release="https://github.com/google/osv-scanner/releases/download/v${OSV_SCANNER_VERSION}"; \
+    curl --fail --location --silent --show-error "$release/osv-scanner_linux_amd64" -o osv-scanner_linux_amd64; \
+    curl --fail --location --silent --show-error "$release/osv-scanner_SHA256SUMS" -o checksums.txt; \
+    sha256sum --check --ignore-missing checksums.txt; \
+    install -m 0555 osv-scanner_linux_amd64 /usr/local/bin/osv-scanner; \
+    rm osv-scanner_linux_amd64 checksums.txt
+
+COPY apps/worker/app/scanners/image_manifest.py /opt/scanforge-image-manifest.py
+RUN mkdir -p /opt/scanner-rules/semgrep \
+    && curl --fail --location --silent --show-error \
+      "https://codeload.github.com/semgrep/semgrep-rules/tar.gz/${SEMGREP_RULES_COMMIT}" -o /tmp/semgrep-rules.tar.gz \
+    && printf '%s  /tmp/semgrep-rules.tar.gz\n' "$SEMGREP_RULES_SHA256" | sha256sum --check \
+    && tar -xz -f /tmp/semgrep-rules.tar.gz -C /opt/scanner-rules/semgrep --strip-components=1 \
+    && python3 /opt/scanforge-image-manifest.py prepare-semgrep-rules \
+    && semgrep scan --validate --config /opt/scanner-rules/semgrep --metrics off --disable-version-check \
+    && rm /tmp/semgrep-rules.tar.gz
+
+RUN mkdir -p /opt/scanner-db /workspace/source /workspace/output \
+    && trivy image --download-db-only --cache-dir /opt/scanner-db/trivy \
+    && trivy image --download-java-db-only --cache-dir /opt/scanner-db/trivy \
+    && mkdir -p /tmp/trivy-fixture \
+    && printf 'resource "aws_s3_bucket" "fixture" { bucket = "scanforge-build-fixture" }\n' > /tmp/trivy-fixture/main.tf \
+    && trivy fs --scanners misconfig --cache-dir /opt/scanner-db/trivy /tmp/trivy-fixture \
+    && GRYPE_DB_CACHE_DIR=/opt/scanner-db/grype grype db update \
+    && python3 /opt/scanforge-image-manifest.py download-osv \
+    && python3 /opt/scanforge-image-manifest.py build \
+      "trivy=$TRIVY_VERSION" "gitleaks=$GITLEAKS_VERSION" "semgrep=$SEMGREP_VERSION" \
+      "checkov=$CHECKOV_VERSION" "syft=$SYFT_VERSION" "grype=$GRYPE_VERSION" "osv=$OSV_SCANNER_VERSION" \
+    && test -s /opt/scanner-manifest.json \
+    && rm -rf /tmp/trivy-fixture \
+    && useradd --uid 65532 --no-create-home --shell /usr/sbin/nologin scanner \
+    && chown -R 65532:65532 /workspace/output
+
+ENV TRIVY_CACHE_DIR=/opt/scanner-db/trivy \
+    GRYPE_DB_CACHE_DIR=/opt/scanner-db/grype \
+    OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY=/opt/scanner-db/osv \
+    TRIVY_SKIP_DB_UPDATE=true \
+    TRIVY_SKIP_JAVA_DB_UPDATE=true \
+    TRIVY_SKIP_CHECK_UPDATE=true \
+    TRIVY_TELEMETRY=false \
+    GRYPE_DB_AUTO_UPDATE=false \
+    GRYPE_CHECK_FOR_APP_UPDATE=false \
+    SYFT_CHECK_FOR_APP_UPDATE=false \
+    SEMGREP_SEND_METRICS=off \
+    SEMGREP_ENABLE_VERSION_CHECK=0 \
+    BC_SKIP_MAPPING=true \
+    BC_SKIP_LOAD_MODULES=true \
+    HOME=/tmp \
+    XDG_CACHE_HOME=/tmp/cache
+USER 65532:65532
+WORKDIR /workspace/source
+ENTRYPOINT []

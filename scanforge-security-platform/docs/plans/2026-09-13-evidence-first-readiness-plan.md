@@ -1,6 +1,6 @@
 # Implement evidence-first private-beta readiness
 
-**Status:** Not started
+**Status:** In progress. Local implementation is complete. Verification is ongoing.
 
 **Spec:** [Evidence-first readiness](../../spec/2026-09-13-evidence-first-readiness.md)
 
@@ -47,17 +47,22 @@ A missing credential or unavailable runtime is `Blocked` in the evidence column,
 | R00 | Preserve and reproduce the baseline | None | Done | d54f4e9 | `/tmp/scanforge-r00-baseline-2026-09-13.txt`; preserved before focused commit |
 | R01 | Repair web test selection | R00 | Done | d54f4e9 | Node 75 passed; Vitest 3 passed; `make test` passed; `make lint` passed |
 | R02 | Activate CI at the actual repository root | R01 | In progress | Pending | Local YAML/path validation passed; real PR run still required |
-| R03 | Settle evidence-contract and transition policy | R02 | Not started | Pending | Decision table, fixtures, ADR disposition |
-| R04 | Enforce API-owned atomic completion | R03 | Not started | Pending | PostgreSQL rollback, replay, concurrency, cancellation tests |
-| R05 | Make disappearance and triage scope-safe | R04 | Not started | Pending | Comparable-scan matrix, transition tests, browser evidence |
-| R06 | Close user and worker authorization gaps | R02 | Not started | Pending | Two-organization route and service tests, audit evidence |
-| R07 | Enforce scanner containment and cleanup | R02 | Not started | Pending | Real Docker hostile-fixture and cleanup receipts |
-| R08 | Prove secret and artifact safety | R04, R06, R07 | Not started | Pending | Canary scan, storage and egress inspection |
-| R09 | Make queue failure and recovery observable | R04 | Not started | Pending | Real Streams crash recovery, alert and health receipts |
-| R10 | Complete GitHub triggers and advisory Checks | R05, R06, R09 | Not started | Pending | Recorded base/head diff, replay-safe Check, staging GitHub flow |
-| R11 | Repair browser contracts and triage experience | R05, R06, R10 | Not started | Pending | Contract tests, authenticated browser scenarios, keyboard review |
-| R12 | Prove deployment and operational recovery | R08, R09, R10, R11 | Not started | Pending | Clean staging deployment, migrations, recovery drills |
-| R13 | Close release gates and approve cohort rollout | R12 | Not started | Pending | Aggregate gate, independent review, operator acceptance |
+| R03 | Settle evidence-contract and transition policy | R02 | Done, unverified | Pending | ADR-010 and transition fixtures implemented; committed decision SHA and release review remain required |
+| R04 | Enforce API-owned atomic completion | R03 | Done, unverified | Pending | Native PostgreSQL rollback, replay, and concurrent completion passed locally; full PostgreSQL API suite, real worker commit-before-ack, and completion p95 receipts remain required |
+| R05 | Make disappearance and triage scope-safe | R04 | Done, unverified | Pending | Scoped absence, authoritative provenance, forged-history, and transition regressions pass locally; authenticated UI evidence and 10,000-finding lifecycle performance remain required |
+| R06 | Close user and worker authorization gaps | R02 | Done, unverified | Pending | Direct-service membership, schedule roles, and worker boundary regressions pass locally; disposable API negative requests, audit concurrency, and authorization p95 receipts remain required |
+| R07 | Enforce scanner containment and cleanup | R02 | Done, unverified | Pending | Contained adapters, bounded exports, cleanup, and prelaunch cancellation implemented with local regressions; Blocked for live image build, hostile Docker fixtures, and ten-cycle daemon cleanup evidence |
+| R08 | Prove secret and artifact safety | R04, R06, R07 | Done, unverified | Pending | Raw Gitleaks omission, Trivy sanitization, artifact ownership, and pinned image assets implemented; Blocked for real canary scans across PostgreSQL, storage, logs, notifications, and egress boundaries |
+| R09 | Make queue failure and recovery observable | R04 | Done, unverified | Pending | Backoff, degraded readiness, lease heartbeats, and native Redis recovery pass locally; Upstash REST crash/replay/outage, live alerts, and recovery timing remain required |
+| R10 | Complete GitHub triggers and advisory Checks | R05, R06, R09 | Done, unverified | Pending | Trigger lifecycle, exact Git diff context, advisory Checks, and retry publication implemented; real GitHub installation flow, Check URLs, and publication latency remain required |
+| R11 | Repair browser contracts and triage experience | R05, R06, R10 | Done, unverified | Pending | Runtime contracts, scoped onboarding, production drawer, and hidden exports implemented; authenticated production browser, screenshots/video, keyboard evidence, and UI timing remain required |
+| R12 | Prove deployment and operational recovery | R08, R09, R10, R11 | In progress | Pending | Executable gate and shared API/minute-scheduler/dedicated-worker configuration implemented; clean staging deploy, upgraded staging migration, containment/canary proofs, backup/restore, replacement, rotation, kill switch, DLQ, retention, incident drills, alerts, and beta-load receipts remain required |
+| R13 | Close release gates and approve cohort rollout | R12 | In progress | Pending | Independent code review and local verification in progress; exact committed SHA, green real CI, complete live/performance receipts, operator release approval, and design-partner acceptance remain required |
+
+Working-tree implementation and command evidence are recorded in
+[the September implementation results](../reviews/readiness-2026-09-30/results.md).
+These receipts do not identify an accepted committed implementation SHA. Task boxes remain unchecked until
+the required committed, live, and performance evidence exists.
 
 ### Divide ownership without conflicting writes
 
@@ -194,7 +199,7 @@ One owner writes migrations at a time. Inspect the actual Alembic head before as
 
 - [ ] Validate API, scheduler, and dedicated-worker configuration. Prove one scan per organization worker and absence of broad credentials.
 - [ ] Apply migrations to an empty PostgreSQL database and an upgraded sanitized staging copy. Verify recovery from failed migrations before rollout.
-- [ ] Implement or verify `make private-beta-gate`. Include lint, type checks, tests, migrations, build, dependency audits, real services, containment, and canaries. This target is planned, not assumed to exist.
+- [ ] Implement or verify `make private-beta-gate`. Include lint, type checks, tests, migrations, build, dependency audits, real services, containment, and canaries. The target now exists; local execution cannot replace missing release evidence.
 - [ ] Run clean deployment, provisioning, backup/restore, replacement, rotation, kill switch, DLQ, queue, API, storage, persistence, scanner-timeout, retention, and incident-response drills.
 - [ ] Require operator approval before deployment or destructive drills. Use disposable fixtures and approved staging targets only.
 - [ ] Record alerts, failure-injection time, detection time, recovery time, data integrity, and sanitized evidence locations.
@@ -278,8 +283,10 @@ requirements, preserve dated first-party citations in a repository research docu
 
 ## Appendix C. Planning limits and unproven behavior
 
-This task produced documentation only. No runtime prototypes, staging drills, new CI runs, or application fixes were performed.
-R00 reproduces the review observations. R03 settles architectural details before writing contract logic.
+The original September planning task produced documentation only. The authorized implementation run
+started on September 30 and implemented R03 through R11 in the working tree. Local verification and
+independent review continue. No staging deployment, live Docker execution, or customer onboarding is
+claimed by this tracker. See the results receipt for executed commands and remaining evidence.
 
 Keel is not configured in this repository. Its plan lifecycle validator is unavailable.
 The installed Poteto multi-phase checker assumes an armed autonomous fleet with ten named-model live lanes per PR.

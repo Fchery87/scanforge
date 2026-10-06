@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Calendar, Plus, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import type { ScanSchedule } from "@/lib/api-schemas";
 import {
   Select,
   SelectTrigger,
@@ -22,16 +22,22 @@ interface Props {
 }
 
 export default function ScheduleSection({ orgId, projectId, repoId, repoName }: Props) {
-  const [schedules, setSchedules] = useState<any[]>([]);
+  const [schedules, setSchedules] = useState<ScanSchedule[]>([]);
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ schedule_type: "daily", scan_type: "full", cron_expression: "" });
+  const [form, setForm] = useState({ schedule_type: "daily", scan_type: "full" });
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError("");
     api.schedules.list(orgId, projectId, repoId)
-      .then((data: any) => { setSchedules(Array.isArray(data) ? data : (data?.items ?? [])); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, [repoId]);
+      .then((data) => { if (active) setSchedules(data); })
+      .catch((error: unknown) => { if (active) setError(error instanceof Error ? error.message : "Unable to load schedules"); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [orgId, projectId, repoId]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,26 +45,25 @@ export default function ScheduleSection({ orgId, projectId, repoId, repoName }: 
       const sched = await api.schedules.create(orgId, projectId, repoId, {
         repository_id: repoId,
         ...form,
-        cron_expression: form.cron_expression || undefined,
       });
       setSchedules((prev) => [...prev, sched]);
       setShowCreate(false);
-      setForm({ schedule_type: "daily", scan_type: "full", cron_expression: "" });
-    } catch (err) { console.error(err); }
+      setForm({ schedule_type: "daily", scan_type: "full" });
+    } catch (err) { setError(err instanceof Error ? err.message : "Unable to save schedule"); }
   };
 
-  const toggleActive = async (sched: any) => {
+  const toggleActive = async (sched: ScanSchedule) => {
     try {
       const updated = await api.schedules.update(orgId, projectId, repoId, sched.id, { is_active: !sched.is_active });
       setSchedules((prev) => prev.map((s) => s.id === sched.id ? updated : s));
-    } catch (err) { console.error(err); }
+    } catch (err) { setError(err instanceof Error ? err.message : "Unable to save schedule"); }
   };
 
   const handleDelete = async (schedId: string) => {
     try {
       await api.schedules.remove(orgId, projectId, repoId, schedId);
       setSchedules((prev) => prev.filter((s) => s.id !== schedId));
-    } catch (err) { console.error(err); }
+    } catch (err) { setError(err instanceof Error ? err.message : "Unable to save schedule"); }
   };
 
   return (
@@ -72,6 +77,7 @@ export default function ScheduleSection({ orgId, projectId, repoId, repoName }: 
         </Button>
       </div>
 
+      {error && <p role="alert" className="text-danger">{error}</p>}
       {loading ? (
         <p className="text-sm text-text-tertiary py-4">Loading schedules\u2026</p>
       ) : schedules.length === 0 && !showCreate ? (
@@ -144,16 +150,6 @@ export default function ScheduleSection({ orgId, projectId, repoId, repoName }: 
               </Select>
             </div>
           </div>
-          {form.schedule_type !== "on_push" && (
-            <div className="space-y-2">
-              <Label>Cron (optional)</Label>
-              <Input
-                placeholder="Cron expression"
-                value={form.cron_expression}
-                onChange={(e) => setForm({ ...form, cron_expression: e.target.value })}
-              />
-            </div>
-          )}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={() => setShowCreate(false)}>Cancel</Button>
             <Button type="submit">Create</Button>

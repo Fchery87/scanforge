@@ -21,6 +21,7 @@ const STEP_ORDER = [
   "connect_repo",
   "run_first_scan",
   "review_findings",
+  "setup_schedule",
 ];
 
 const STEP_LABELS: Record<string, string> = {
@@ -30,6 +31,7 @@ const STEP_LABELS: Record<string, string> = {
   connect_repo: "Connect Repository",
   run_first_scan: "Run First Scan",
   review_findings: "Review Findings",
+  setup_schedule: "Set Up Scanning",
 };
 
 const STEP_DESCRIPTIONS: Record<string, string> = {
@@ -39,6 +41,7 @@ const STEP_DESCRIPTIONS: Record<string, string> = {
   connect_repo: "Add a repository to scan",
   run_first_scan: "Trigger your first security scan",
   review_findings: "Review and triage detected findings",
+  setup_schedule: "Enable recurring scans",
 };
 
 export function deriveOnboardingNextActions(steps: OnboardingStep[]): OnboardingNextAction[] {

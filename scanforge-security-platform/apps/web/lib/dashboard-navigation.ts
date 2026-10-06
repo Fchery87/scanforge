@@ -55,12 +55,6 @@ export function buildDashboardNavigation(pathname: string): DashboardNavigationM
         !(orgId && projectId)
       ),
       navItem(
-        FileText,
-        "Exports",
-        orgId && projectId ? `/dashboard/${orgId}/projects/${projectId}/exports` : null,
-        !(orgId && projectId)
-      ),
-      navItem(
         BarChart3,
         "Scorecard",
         orgId ? `/dashboard/${orgId}/scorecard` : null,

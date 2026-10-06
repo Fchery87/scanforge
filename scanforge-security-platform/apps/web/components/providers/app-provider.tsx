@@ -16,6 +16,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     <ThemeProvider>
       <NeonAuthUIProvider
         authClient={authClient as never}
+        signUp={false}
         navigate={router.push}
         replace={router.replace}
         onSessionChange={router.refresh}

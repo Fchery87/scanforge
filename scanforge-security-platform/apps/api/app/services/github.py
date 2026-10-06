@@ -172,7 +172,7 @@ class GitHubService:
         try:
             app_jwt = _make_app_jwt()
         except Exception:
-            logger.error("Failed to create GitHub App JWT — check GITHUB_APP_ID and GITHUB_PRIVATE_KEY", exc_info=True)
+            logger.error("Failed to create GitHub App JWT. Check app credentials")
             raise
 
         async with httpx.AsyncClient() as client:
@@ -186,12 +186,29 @@ class GitHubService:
             )
             if not resp.is_success:
                 logger.error(
-                    "GitHub installation token exchange failed: %s %s",
+                    "GitHub installation token exchange failed with status %s",
                     resp.status_code,
-                    resp.text,
                 )
             resp.raise_for_status()
             return resp.json()["token"]
+
+    async def repository_is_accessible(
+        self,
+        installation_id: str,
+        owner_name: str,
+        repo_name: str,
+    ) -> bool:
+        token = await self._get_installation_token(installation_id)
+        async with httpx.AsyncClient(follow_redirects=False) as client:
+            response = await client.get(
+                f"https://api.github.com/repos/{owner_name}/{repo_name}",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+            )
+        return response.status_code == httpx.codes.OK
 
     async def list_repositories(self, installation_id: str, per_page: int = 100) -> list[GitHubRepoItem]:
         token = await self._get_installation_token(installation_id)
@@ -235,3 +252,65 @@ class GitHubService:
                 page += 1
 
         return repos
+
+    async def publish_check_run(
+        self,
+        *,
+        installation_id: str,
+        owner: str,
+        repository: str,
+        head_sha: str,
+        external_id: str,
+        payload: dict,
+        check_run_id: int | None = None,
+    ) -> int:
+        token = await self._get_installation_token(installation_id)
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2026-03-10",
+        }
+        base = f"https://api.github.com/repos/{owner}/{repository}"
+        page_size = 100
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            if check_run_id is None:
+                for page in range(1, 11):
+                    response = await client.get(
+                        f"{base}/commits/{head_sha}/check-runs",
+                        headers=headers,
+                        params={
+                            "check_name": "ScanForge advisory",
+                            "filter": "all",
+                            "per_page": page_size,
+                            "page": page,
+                        },
+                    )
+                    response.raise_for_status()
+                    runs = response.json().get("check_runs", [])
+                    matching = [
+                        run
+                        for run in runs
+                        if run.get("external_id") == external_id
+                        and str((run.get("app") or {}).get("id")) == str(settings.GITHUB_APP_ID)
+                    ]
+                    if matching:
+                        check_run_id = matching[0]["id"]
+                        break
+                    if len(runs) < page_size:
+                        break
+                else:
+                    raise RuntimeError("GitHub check reconciliation exceeded its page limit")
+            if check_run_id is None:
+                response = await client.post(
+                    f"{base}/check-runs",
+                    headers=headers,
+                    json={**payload, "head_sha": head_sha, "external_id": external_id},
+                )
+            else:
+                response = await client.patch(
+                    f"{base}/check-runs/{check_run_id}",
+                    headers=headers,
+                    json=payload,
+                )
+            response.raise_for_status()
+            return int(response.json()["id"])

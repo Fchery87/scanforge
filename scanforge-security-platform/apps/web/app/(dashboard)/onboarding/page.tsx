@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 
 import { api } from "@/lib/api";
+import { loadOnboardingChecklist, type OnboardingChecklist } from "@/lib/onboarding/checklist";
 import { deriveOnboardingNextActions, getOnboardingCompletionSummary } from "@/lib/onboarding/next-step";
 import { getSlugAdjustmentNotice, getSlugPreviewMessage } from "@/lib/organizations/slug-feedback";
 import { cn } from "@/lib/utils";
@@ -28,24 +29,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { OnboardingNextActions } from "@/components/scanforge/onboarding-next-actions";
 import { Progress } from "@/components/ui/progress";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-
-interface OnboardingStep {
-  id: string;
-  label: string;
-  description: string;
-  completed: boolean;
-  action_url: string | null;
-}
-
-interface OnboardingChecklist {
-  user_id: string;
-  organization_id: string | null;
-  steps: OnboardingStep[];
-  completion_percentage: number;
-  is_complete: boolean;
-}
 
 const STEP_ICONS: Record<string, React.ReactNode> = {
   create_org: <Building2 size={18} />,
@@ -58,21 +41,27 @@ const STEP_ICONS: Record<string, React.ReactNode> = {
 
 function ConnectGitHubButton({ orgId }: { orgId: string }) {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   async function handleConnect() {
     setLoading(true);
+    setError("");
     try {
       const { url } = await api.github.getInstallUrl(orgId);
       window.location.href = url;
-    } catch {
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : "Unable to connect GitHub. Please retry.");
       setLoading(false);
     }
   }
 
   return (
-    <Button onClick={handleConnect} disabled={loading} size="sm">
-      {loading ? "Redirecting..." : "Connect GitHub"}
-    </Button>
+    <div className="space-y-2">
+      <Button onClick={handleConnect} disabled={loading} size="sm">
+        {loading ? "Redirecting..." : "Connect GitHub"}
+      </Button>
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+    </div>
   );
 }
 
@@ -82,6 +71,8 @@ function OnboardingContent() {
   const orgId = searchParams.get("org_id") ?? undefined;
   const [checklist, setChecklist] = useState<OnboardingChecklist | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [reload, setReload] = useState(0);
   const [dismissed, setDismissed] = useState(false);
   const [inlineOrgForm, setInlineOrgForm] = useState({ name: "", slug: "" });
   const [creatingOrg, setCreatingOrg] = useState(false);
@@ -97,23 +88,20 @@ function OnboardingContent() {
       : null;
 
   useEffect(() => {
-    if (localStorage.getItem("scanforge_onboarding_dismissed") === "true") setDismissed(true);
-  }, []);
-
-  useEffect(() => {
-    async function loadChecklist() {
-      try {
-        const res = await fetch(`${API_BASE}/api/v1/onboarding?org_id=${orgId || ""}`, { credentials: "include" });
-        if (res.ok) setChecklist(await res.json());
-        else setChecklist(null);
-      } catch {
-        setChecklist(null);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadChecklist();
-  }, [orgId]);
+    let active = true;
+    setLoading(true);
+    setLoadError("");
+    setDismissed(false);
+    loadOnboardingChecklist(orgId).then((data) => {
+      if (!active) return;
+      setChecklist(data);
+      const key = `scanforge:onboarding:${data.user_id}:${data.organization_id ?? "new"}`;
+      try { setDismissed(localStorage.getItem(key) === "true"); } catch { /* Storage may be unavailable. */ }
+    }).catch((error: unknown) => {
+      if (active) setLoadError(error instanceof Error ? error.message : "Unable to load setup progress");
+    }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [orgId, reload]);
 
   useEffect(() => {
     if (!inlineOrgForm.slug) {
@@ -142,7 +130,10 @@ function OnboardingContent() {
   }, [inlineOrgForm.slug]);
 
   function handleDismiss() {
-    localStorage.setItem("scanforge_onboarding_dismissed", "true");
+    if (checklist) {
+      const key = `scanforge:onboarding:${checklist.user_id}:${checklist.organization_id ?? "new"}`;
+      try { localStorage.setItem(key, "true"); } catch { /* Storage may be unavailable. */ }
+    }
     setDismissed(true);
   }
 
@@ -156,12 +147,15 @@ function OnboardingContent() {
       const params = new URLSearchParams({ org_id: org.id, org_slug: org.slug });
       if (requestedSlug !== org.slug) params.set("slug_adjusted_from", requestedSlug);
       router.push(`/onboarding?${params.toString()}`);
-    } catch (error: any) {
-      setOrgCreateError(error?.message ?? "Failed to create organization");
+    } catch (error: unknown) {
+      setOrgCreateError(error instanceof Error ? error.message : "Failed to create organization");
       setCreatingOrg(false);
     }
   }
 
+  if (loadError) return <div className="mx-auto max-w-3xl px-4 py-12 space-y-4">
+    <p role="alert">{loadError}</p><Button onClick={() => setReload((current) => current + 1)}>Retry</Button>
+  </div>;
   if (dismissed) return null;
 
   if (loading) {
@@ -175,6 +169,7 @@ function OnboardingContent() {
     );
   }
 
+  const activeOrgId = orgId ?? checklist?.organization_id;
   const summary = getOnboardingCompletionSummary(checklist?.steps ?? []);
   const nextActions = deriveOnboardingNextActions(checklist?.steps ?? []);
 
@@ -189,7 +184,7 @@ function OnboardingContent() {
             <p className="section-title mb-2">Onboarding</p>
             <h1 className="font-display text-[2.2rem] leading-none tracking-[-0.04em] text-text-primary">Welcome to ScanForge</h1>
             <p className="mt-3 max-w-[52ch] text-sm leading-relaxed text-text-secondary">
-              Complete the setup steps below to connect your workspace, onboard repositories, and get to your first findings review.
+              Complete setup for your first project, connect repositories, and review findings.
             </p>
           </div>
         </div>
@@ -297,9 +292,9 @@ function OnboardingContent() {
                   </form>
                 ) : null}
 
-                {step.id === "connect_github" && !step.completed && orgId ? (
+                {step.id === "connect_github" && !step.completed && activeOrgId ? (
                   <div className="mt-4">
-                    <ConnectGitHubButton orgId={orgId} />
+                    <ConnectGitHubButton orgId={activeOrgId} />
                   </div>
                 ) : null}
               </div>
@@ -318,8 +313,8 @@ function OnboardingContent() {
         <Link href="/dashboard" className="text-sm text-text-secondary hover:text-text-primary">
           Back to Dashboard
         </Link>
-        {orgId ? (
-          <Link href={`/dashboard/${orgId}`} className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline">
+        {activeOrgId ? (
+          <Link href={`/dashboard/${activeOrgId}`} className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline">
             Go to Organization <ArrowRight size={16} />
           </Link>
         ) : null}
@@ -329,28 +324,28 @@ function OnboardingContent() {
         <div className="mt-10">
           <h3 className="mb-4 font-display text-lg text-text-primary">What's Next?</h3>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Link href={`/dashboard/${orgId}/scorecard`} className="card-serif card-interactive flex items-start gap-3 p-4">
+            <Link href={`/dashboard/${activeOrgId}/scorecard`} className="card-serif card-interactive flex items-start gap-3 p-4">
               <BarChart3 size={20} className="mt-0.5 shrink-0 text-primary" />
               <div>
                 <strong className="block text-sm text-text-primary">Security Scorecard</strong>
                 <span className="text-xs text-text-tertiary">Review your organization's security posture.</span>
               </div>
             </Link>
-            <Link href={`/dashboard/${orgId}/settings`} className="card-serif card-interactive flex items-start gap-3 p-4">
+            <Link href={`/dashboard/${activeOrgId}/settings`} className="card-serif card-interactive flex items-start gap-3 p-4">
               <Users size={20} className="mt-0.5 shrink-0 text-primary" />
               <div>
                 <strong className="block text-sm text-text-primary">Invite Team Members</strong>
                 <span className="text-xs text-text-tertiary">Add collaborators to your organization.</span>
               </div>
             </Link>
-            <Link href={`/dashboard/${orgId}/audit-logs`} className="card-serif card-interactive flex items-start gap-3 p-4">
+            <Link href={`/dashboard/${activeOrgId}/audit-logs`} className="card-serif card-interactive flex items-start gap-3 p-4">
               <FileSearch size={20} className="mt-0.5 shrink-0 text-primary" />
               <div>
                 <strong className="block text-sm text-text-primary">Audit Logs</strong>
                 <span className="text-xs text-text-tertiary">Track all activity in your organization.</span>
               </div>
             </Link>
-            <Link href={`/dashboard/${orgId}/settings`} className="card-serif card-interactive flex items-start gap-3 p-4">
+            <Link href={`/dashboard/${activeOrgId}/settings`} className="card-serif card-interactive flex items-start gap-3 p-4">
               <Settings size={20} className="mt-0.5 shrink-0 text-primary" />
               <div>
                 <strong className="block text-sm text-text-primary">Configure Notifications</strong>

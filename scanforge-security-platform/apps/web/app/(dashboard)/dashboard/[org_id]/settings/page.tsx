@@ -161,7 +161,6 @@ function OrgSettingsContent() {
   async function handleConnectGitHub() {
     try {
       const { url } = await api.github.getInstallUrl(org_id as string);
-      localStorage.setItem("github_connect_org_id", org_id as string);
       window.location.href = url;
     } catch {
       // ignore

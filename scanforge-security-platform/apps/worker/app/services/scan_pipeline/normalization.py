@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.scanners.registry import SCANNER_REGISTRY
+from app.security.secret_evidence import sanitize_secret_finding
 from app.services.scan_pipeline.context import ScanContext
 
 
@@ -12,7 +13,10 @@ class NormalizationStage:
                 continue
             registration = SCANNER_REGISTRY.get(scanner_name)
             if registration:
-                all_findings.extend(registration.normalize(result.raw_output, context.repository_id))
+                all_findings.extend(
+                    sanitize_secret_finding(finding)
+                    for finding in registration.normalize(result.raw_output, context.repository_id)
+                )
         return all_findings
 
     def filter_to_changed_files(self, findings: list[dict], changed_files: list[str]) -> list[dict]:

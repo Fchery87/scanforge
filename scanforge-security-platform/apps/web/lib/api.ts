@@ -1,6 +1,7 @@
 "use client";
 
-import { type ZodType } from "zod";
+import { z, type ZodType } from "zod";
+import type { components } from "./api-types";
 
 import { authClient } from "@/lib/auth/client";
 import { getApiAccessToken } from "@/lib/auth/api-token";
@@ -8,6 +9,11 @@ import {
   auditLogSchema,
   exportSchema,
   findingSchema,
+  findingDetailSchema,
+  findingEventSchema,
+  findingTrendSchema,
+  orgStatsSchema,
+  userSchema,
   findingStatsSchema,
   githubIntegrationSchema,
   memberSchema,
@@ -47,58 +53,60 @@ async function getAuthorizationHeader(): Promise<Record<string, string>> {
   };
 }
 
-async function request<T>(path: string, options: RequestInit = {}, schema?: ZodType<T>): Promise<T> {
-  const authHeader = await getAuthorizationHeader();
-  const res = await fetch(`${API_BASE}/api/v1${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeader,
-      ...options.headers,
-    },
-  });
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({ detail: "Request failed" }));
-    throw new ApiError(error.detail ?? `HTTP ${res.status}`, res.status);
-  }
-  const data = (await res.json()) as T;
-  if (schema) {
-    const result = schema.safeParse(data);
-    if (!result.success) {
-      console.error("[api] schema validation failed", { path, errors: result.error.flatten() });
-      return data;
+async function request<T>(path: string, options: RequestInit, schema: ZodType<T>): Promise<T> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const authHeader = await getAuthorizationHeader();
+    const res = await fetch(`${API_BASE}/api/v1${path}`, {
+      ...options, signal: controller.signal,
+      headers: { "Content-Type": "application/json", ...authHeader, ...options.headers },
+    });
+    if (!res.ok) {
+      const body: unknown = await res.json().catch(() => null);
+      const detail = z.object({ detail: z.string() }).safeParse(body);
+      throw new ApiError(detail.success ? detail.data.detail : `HTTP ${res.status}`, res.status);
     }
+    const data: unknown = res.status === 204 ? undefined : await res.json().catch(() => {
+      throw new ApiError(`Invalid JSON response for ${path}`, 502);
+    });
+    const result = schema.safeParse(data);
+    if (!result.success) throw new ApiError(`Invalid response contract for ${path}`, 502);
     return result.data;
+  } catch (error) {
+    if (controller.signal.aborted) throw new ApiError("Request timed out. Please retry.", 408);
+    if (error instanceof ApiError) throw error;
+    throw new ApiError("Unable to reach ScanForge. Please retry.", 503);
+  } finally {
+    clearTimeout(timeout);
   }
-  return data;
 }
 
 export const api = {
-  health: () => request<{ status: string }>("/health"),
+  health: () => request("/health", {}, z.object({ status: z.string() })),
 
   organizations: {
     list: (skip = 0, limit = 20) =>
       request(`/organizations?skip=${skip}&limit=${limit}`, {}, paginated(organizationSchema)),
     previewSlug: (slug: string) =>
-      request<{ requested_slug: string; available_slug: string; adjusted: boolean }>(
-        `/organizations/slug-preview?${new URLSearchParams({ slug }).toString()}`
-      ),
+      request(`/organizations/slug-preview?${new URLSearchParams({ slug }).toString()}`, {},
+        z.object({ requested_slug: z.string(), available_slug: z.string(), adjusted: z.boolean() })),
     create: (data: { name: string; slug: string }) =>
       request("/organizations", { method: "POST", body: JSON.stringify(data) }, organizationSchema),
     get: (id: string) => request(`/organizations/${id}`, {}, organizationSchema),
     update: (id: string, data: { name?: string; slug?: string }) =>
       request(`/organizations/${id}`, { method: "PATCH", body: JSON.stringify(data) }, organizationSchema),
     stats: (orgId: string) =>
-      request<any>(`/organizations/${orgId}/stats`),
+      request(`/organizations/${orgId}/stats`, {}, orgStatsSchema),
     delete: (orgId: string) =>
-      request<void>(`/organizations/${orgId}`, { method: "DELETE" }),
+      request(`/organizations/${orgId}`, { method: "DELETE" }, z.void()),
   },
 
   github: {
     getInstallUrl: (orgId: string) =>
-      request<{ url: string }>(`/organizations/${orgId}/github/install-url`),
+      request(`/organizations/${orgId}/github/install-url`, {}, z.object({ url: z.string().url() })),
     getOAuthAuthorizeUrl: (orgId: string) =>
-      request<{ url: string }>(`/organizations/${orgId}/github/oauth/authorize`),
+      request(`/organizations/${orgId}/github/oauth/authorize`, {}, z.object({ url: z.string().url() })),
     oauthCallback: (code: string, state: string) =>
       request(`/github/oauth/callback`, {
         method: "POST",
@@ -117,11 +125,10 @@ export const api = {
     getIntegration: (orgId: string) =>
       request(`/organizations/${orgId}/github/integration`, {}, githubIntegrationSchema),
     listRepositories: (orgId: string) =>
-      request<{ items: Array<{ id: string; full_name: string }>; total: number }>(
-        `/organizations/${orgId}/github/repositories`
-      ),
+      request(`/organizations/${orgId}/github/repositories`, {},
+        paginated(z.object({ id: z.string(), full_name: z.string() }).passthrough())),
     disconnect: (orgId: string) =>
-      request<void>(`/organizations/${orgId}/github/integration`, { method: "DELETE" }),
+      request(`/organizations/${orgId}/github/integration`, { method: "DELETE" }, z.void()),
   },
 
   projects: {
@@ -153,9 +160,9 @@ export const api = {
         body: JSON.stringify(data),
       }, repositorySchema),
     remove: (orgId: string, projectId: string, repoId: string) =>
-      request<void>(`/organizations/${orgId}/projects/${projectId}/repositories/${repoId}`, {
+      request(`/organizations/${orgId}/projects/${projectId}/repositories/${repoId}`, {
         method: "DELETE",
-      }),
+      }, z.void()),
   },
 
   scans: {
@@ -186,7 +193,7 @@ export const api = {
       );
     },
     get: (orgId: string, projectId: string, findingId: string) =>
-      request<any>(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}`),
+      request(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}`, {}, findingDetailSchema),
     stats: (orgId: string, projectId: string, params: Record<string, string> = {}) => {
       const qs = new URLSearchParams(params).toString();
       return request(
@@ -200,10 +207,10 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ reason }),
       }, findingSchema),
-    resolve: (orgId: string, projectId: string, findingId: string, fixedVersion?: string) =>
+    resolve: (orgId: string, projectId: string, findingId: string, fixedVersion?: string, reason?: string) =>
       request(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/resolve`, {
         method: "POST",
-        body: JSON.stringify({ fixed_version: fixedVersion }),
+        body: JSON.stringify({ fixed_version: fixedVersion, reason }),
       }, findingSchema),
     reopen: (orgId: string, projectId: string, findingId: string) =>
       request(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/reopen`, {
@@ -230,14 +237,14 @@ export const api = {
         body: JSON.stringify(data),
       }, findingSchema),
     events: (orgId: string, projectId: string, findingId: string) =>
-      request(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/events`, {}, paginated(findingSchema)),
+      request(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/events`, {}, z.array(findingEventSchema)),
     bulk: (orgId: string, projectId: string, data: { finding_ids: string[]; action: string; reason: string }) =>
-      request<void>(`/organizations/${orgId}/projects/${projectId}/findings/bulk`, {
+      request(`/organizations/${orgId}/projects/${projectId}/findings/bulk`, {
         method: "POST",
         body: JSON.stringify(data),
-      }),
+      }, z.void()),
     trend: (orgId: string, projectId: string, days = 30) =>
-      request<any>(`/organizations/${orgId}/projects/${projectId}/findings/trend?days=${days}`),
+      request(`/organizations/${orgId}/projects/${projectId}/findings/trend?days=${days}`, {}, findingTrendSchema),
   },
 
   exports: {
@@ -248,6 +255,8 @@ export const api = {
         method: "POST",
         body: JSON.stringify(data),
       }, exportSchema),
+    download: (orgId: string, projectId: string, exportId: string) =>
+      request(`/organizations/${orgId}/projects/${projectId}/exports/${exportId}`, {}, exportSchema),
   },
 
   auditLogs: {
@@ -268,13 +277,13 @@ export const api = {
         {},
         paginated(notificationSchema),
       ),
-    unreadCount: () => request<{ unread_count: number }>("/notifications/unread-count"),
+    unreadCount: () => request("/notifications/unread-count", {}, z.object({ unread_count: z.number() })),
     markRead: (ids: string[]) =>
-      request<{ marked_read: number }>("/notifications/mark-read", {
+      request("/notifications/mark-read", {
         method: "POST",
         body: JSON.stringify({ notification_ids: ids }),
-      }),
-    markAllRead: () => request<{ marked_read: number }>("/notifications/mark-all-read", { method: "POST" }),
+      }, z.object({ marked_read: z.number() })),
+    markAllRead: () => request("/notifications/mark-all-read", { method: "POST" }, z.object({ marked_read: z.number() })),
   },
 
   scorecard: {
@@ -284,23 +293,23 @@ export const api = {
 
   schedules: {
     list: (orgId: string, projectId: string, repoId: string) =>
-      request(`/organizations/${orgId}/projects/${projectId}/repositories/${repoId}/schedules`, {}, paginated(scanScheduleSchema)),
+      request(`/organizations/${orgId}/projects/${projectId}/repositories/${repoId}/schedules`, {}, z.array(scanScheduleSchema)),
     create: (orgId: string, projectId: string, repoId: string, data: {
-      repository_id: string; schedule_type: string; cron_expression?: string; scan_type?: string;
+      repository_id: string; schedule_type: string; scan_type?: string;
     }) =>
       request(`/organizations/${orgId}/projects/${projectId}/repositories/${repoId}/schedules`, {
         method: "POST",
         body: JSON.stringify(data),
       }, scanScheduleSchema),
-    update: (orgId: string, projectId: string, repoId: string, scheduleId: string, data: any) =>
+    update: (orgId: string, projectId: string, repoId: string, scheduleId: string, data: components["schemas"]["ScanScheduleUpdate"]) =>
       request(`/organizations/${orgId}/projects/${projectId}/repositories/${repoId}/schedules/${scheduleId}`, {
         method: "PATCH",
         body: JSON.stringify(data),
       }, scanScheduleSchema),
     remove: (orgId: string, projectId: string, repoId: string, scheduleId: string) =>
-      request<void>(`/organizations/${orgId}/projects/${projectId}/repositories/${repoId}/schedules/${scheduleId}`, {
+      request(`/organizations/${orgId}/projects/${projectId}/repositories/${repoId}/schedules/${scheduleId}`, {
         method: "DELETE",
-      }),
+      }, z.void()),
   },
 
   suppressionRules: {
@@ -317,9 +326,9 @@ export const api = {
         body: JSON.stringify(data),
       }, suppressionRuleSchema),
     remove: (orgId: string, ruleId: string) =>
-      request<void>(`/organizations/${orgId}/suppression-rules/${ruleId}`, {
+      request(`/organizations/${orgId}/suppression-rules/${ruleId}`, {
         method: "DELETE",
-      }),
+      }, z.void()),
   },
 
   members: {
@@ -336,13 +345,13 @@ export const api = {
         body: JSON.stringify({ role }),
       }, memberSchema),
     remove: (orgId: string, userId: string) =>
-      request<void>(`/organizations/${orgId}/members/${userId}`, {
+      request(`/organizations/${orgId}/members/${userId}`, {
         method: "DELETE",
-      }),
+      }, z.void()),
   },
 
   users: {
-    me: () => request(`/users/me`, {}, organizationSchema),
+    me: () => request(`/users/me`, {}, userSchema),
   },
 };
 

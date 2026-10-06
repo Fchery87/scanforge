@@ -1,19 +1,19 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
 from app.core.webhook import verify_github_webhook_async
 from app.db.enums import ScanTriggerType
-from app.db.models import Project, Repository, RepositoryIntegration, WebhookDelivery
+from app.db.models import Project, Repository, RepositoryIntegration, ScanSchedule, WebhookDelivery
 from app.db.session import AsyncSession, get_db
 from app.schemas.scans import ScanCreate
 from app.services.audit_logs import AuditLogService
 from app.services.github_pr_advisory import build_pr_advisory_payload
 from app.services.scan_lifecycle import ScanLifecycleService
-from app.services.scans import ScanService
 
 router = APIRouter()
 
@@ -41,7 +41,12 @@ async def github_webhook(
         select(RepositoryIntegration).where(RepositoryIntegration.repository_id == repository_id)
     )
 
-    if not repo or not project or repo.project_id != project_id or project.organization_id != org_id:
+    if (
+        not repo
+        or not project
+        or str(repo.project_id) != str(project_id)
+        or str(project.organization_id) != str(org_id)
+    ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Webhook target not found")
 
     if integration is None:
@@ -81,47 +86,33 @@ async def github_webhook(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Duplicate webhook delivery") from exc
 
     if event == "push":
-        branch = payload.get("ref", "").replace("refs/heads/", "")
-
-        scan_service = ScanService(db)
-        scan_data = ScanCreate(
+        return await _queue_push_scans(
+            db=db,
+            org_id=org_id,
             repository_id=repository_id,
-            trigger_type=ScanTriggerType.WEBHOOK,
-            branch_name=branch,
-            commit_sha=payload.get("after"),
+            payload=payload,
+            delivery=delivery,
         )
-
-        scan, _, _ = await scan_service.create(str(repository_id), scan_data, user_id=None)
-
-        audit_service = AuditLogService(db)
-        await audit_service.create(
-            actor_user_id=None,
-            action="scan_triggered",
-            target_type="scan",
-            target_id=scan.id,
-            organization_id=org_id,
-            metadata_json={
-                "event": event,
-                "delivery": delivery,
-                "branch": branch,
-                "trigger": "github_push",
-            },
-        )
-        await db.commit()
-
-        return {"status": "queued", "scan_id": str(scan.id)}
 
     if event == "pull_request" and payload.get("action") in {"opened", "reopened", "synchronize"}:
         pull_request = payload.get("pull_request") or {}
         head = pull_request.get("head") or {}
-        scan_data = ScanCreate(
-            repository_id=repository_id,
-            trigger_type=ScanTriggerType.PULL_REQUEST,
-            branch_name=head.get("ref"),
-            commit_sha=head.get("sha"),
-            pull_request_number=pull_request.get("number"),
-            scan_type="diff",
-        )
+        base = pull_request.get("base") or {}
+        if not base.get("sha") or not head.get("sha") or not pull_request.get("number"):
+            raise HTTPException(status_code=400, detail="Pull request base, head, and number required")
+        try:
+            scan_data = ScanCreate(
+                repository_id=repository_id,
+                trigger_type=ScanTriggerType.PULL_REQUEST,
+                branch_name=head.get("ref"),
+                commit_sha=head.get("sha"),
+                pull_request_number=pull_request.get("number"),
+                base_commit_sha=base["sha"],
+                head_commit_sha=head["sha"],
+                scan_type="diff",
+            )
+        except ValidationError as exc:
+            raise HTTPException(status_code=400, detail="Invalid pull request scan context") from exc
 
         scan = await ScanLifecycleService(db).create_manual_scan(org_id=org_id, data=scan_data, user_id=None)
 
@@ -142,11 +133,11 @@ async def github_webhook(
         await db.commit()
 
         return {
-            "status": "queued",
+            "status": str(scan.status),
             "scan_id": str(scan.id),
             "advisory": build_pr_advisory_payload(
                 scan_id=str(scan.id),
-                policy_evaluation={"status": "pass", "blocking": False, "reasons": []},
+                policy_evaluation={"status": "pending", "blocking": False, "reasons": []},
             ),
         }
 
@@ -156,3 +147,46 @@ async def github_webhook(
 
     await db.commit()
     return {"status": "ignored", "event": event}
+
+
+async def _queue_push_scans(*, db: AsyncSession, org_id: UUID, repository_id: UUID, payload: dict, delivery: str):
+    ref = payload.get("ref", "")
+    if not ref.startswith("refs/heads/") or payload.get("deleted"):
+        await db.commit()
+        return {"status": "ignored", "event": "push"}
+    branch = ref.removeprefix("refs/heads/")
+    schedules = await db.scalars(
+        select(ScanSchedule)
+        .where(
+            ScanSchedule.repository_id == str(repository_id),
+            ScanSchedule.schedule_type == "on_push",
+            ScanSchedule.is_active.is_(True),
+        )
+        .order_by(ScanSchedule.created_at)
+    )
+    scan_types = sorted({schedule.scan_type for schedule in schedules.all()})
+    if not scan_types:
+        await db.commit()
+        return {"status": "ignored", "event": "push"}
+    scans = []
+    lifecycle = ScanLifecycleService(db)
+    for scan_type in scan_types:
+        scan_data = ScanCreate(
+            repository_id=repository_id,
+            trigger_type=ScanTriggerType.WEBHOOK,
+            branch_name=branch,
+            commit_sha=payload.get("after"),
+            scan_type=scan_type,
+        )
+        scan = await lifecycle.create_manual_scan(org_id=org_id, data=scan_data, user_id=None)
+        scans.append(scan)
+        await AuditLogService(db).create(
+            actor_user_id=None,
+            action="scan_triggered",
+            target_type="scan",
+            target_id=scan.id,
+            organization_id=org_id,
+            metadata_json={"event": "push", "delivery": delivery, "branch": branch, "trigger": "github_push"},
+        )
+    await db.commit()
+    return {"status": str(scans[0].status), "scan_id": str(scans[0].id)}

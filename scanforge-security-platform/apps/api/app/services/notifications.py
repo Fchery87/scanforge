@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Notification
+from app.db.models import Notification, OrganizationMember, User
 
 
 class NotificationService:
@@ -18,14 +18,39 @@ class NotificationService:
         body: str | None = None,
         link: str | None = None,
         metadata_json: dict | None = None,
+        *,
+        organization_id: UUID,
     ) -> Notification:
+        membership = await self.db.execute(
+            select(OrganizationMember)
+            .join(User, User.id == OrganizationMember.user_id)
+            .where(
+                OrganizationMember.organization_id == str(organization_id),
+                OrganizationMember.user_id == str(user_id),
+                User.is_active.is_(True),
+            )
+        )
+        if membership.scalar_one_or_none() is None:
+            raise ValueError("Notification recipient not found in this organization")
+
+        metadata = dict(metadata_json or {})
+        effective_link = link if link is not None else metadata.get("link")
+        if effective_link is not None:
+            if (
+                not isinstance(effective_link, str)
+                or not effective_link.startswith("/dashboard/")
+                or "\\" in effective_link
+                or any(character < " " for character in effective_link)
+            ):
+                raise ValueError("Notification link must be a relative dashboard path")
+            metadata["link"] = effective_link
         notification = Notification(
             user_id=str(user_id),
+            organization_id=str(organization_id),
             notification_type=notification_type,
             title=title,
             body=body,
-            link=link,
-            metadata_json=metadata_json,
+            metadata_json=metadata or None,
         )
         self.db.add(notification)
         await self.db.commit()
@@ -48,11 +73,7 @@ class NotificationService:
         total_result = await self.db.execute(count_query)
         total = total_result.scalar_one()
 
-        result = await self.db.execute(
-            base_query.order_by(Notification.created_at.desc())
-            .offset(skip)
-            .limit(limit)
-        )
+        result = await self.db.execute(base_query.order_by(Notification.created_at.desc()).offset(skip).limit(limit))
 
         return list(result.scalars().all()), total
 

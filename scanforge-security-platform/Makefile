@@ -55,11 +55,11 @@ WORKER_RUFF = $(WORKER_VENV)/bin/ruff
 install:
 	cd apps/web && npm install
 	python3 -m venv $(API_VENV)
-	$(API_PIP) install --upgrade pip
-	$(API_PIP) install -e "apps/api[dev]"
+	$(API_PIP) install -c apps/api/constraints.txt --upgrade pip
+	$(API_PIP) install -c apps/api/constraints.txt -e "apps/api[dev]"
 	python3 -m venv $(WORKER_VENV)
-	$(WORKER_PIP) install --upgrade pip
-	$(WORKER_PIP) install -e "apps/worker[dev]"
+	$(WORKER_PIP) install -c apps/worker/constraints.txt --upgrade pip
+	$(WORKER_PIP) install -c apps/worker/constraints.txt -e "apps/worker[dev]"
 
 scanner-install:
 	@echo "Installing scanner binaries..."
@@ -155,8 +155,8 @@ web-test:
 
 api-install:
 	python3 -m venv $(API_VENV)
-	$(API_PIP) install --upgrade pip
-	$(API_PIP) install -e "apps/api[dev]"
+	$(API_PIP) install -c apps/api/constraints.txt --upgrade pip
+	$(API_PIP) install -c apps/api/constraints.txt -e "apps/api[dev]"
 
 api-dev:
 	PYTHONPATH="$(PWD)/apps/api" $(API_UVICORN) app.main:app --reload --port 8000
@@ -168,14 +168,14 @@ api-prod:
 
 worker-install:
 	python3 -m venv $(WORKER_VENV)
-	$(WORKER_PIP) install --upgrade pip
-	$(WORKER_PIP) install -e "apps/worker[dev]"
+	$(WORKER_PIP) install -c apps/worker/constraints.txt --upgrade pip
+	$(WORKER_PIP) install -c apps/worker/constraints.txt -e "apps/worker[dev]"
 
 worker-dev:
 	PYTHONPATH="$(PWD)/apps/worker" $(WORKER_PYTHON) -m app.worker.main
 
 worker-prod:
-	PYTHONPATH="$(PWD)/apps/worker" $(WORKER_PYTHON) -m app.worker.main --concurrency=4
+	WORKER_CONCURRENCY=1 PYTHONPATH="$(PWD)/apps/worker" $(WORKER_PYTHON) -m app.worker.main
 
 worker-purge-queue:
 	PYTHONPATH="$(PWD)/apps/worker" $(WORKER_PYTHON) -m app.worker.maintenance --purge-scan-queue
@@ -200,3 +200,10 @@ test:
 	PYTHONPATH="$(PWD)/apps/worker" $(WORKER_PYTHON) -m pytest apps/worker
 	cd apps/web && npm run test:node
 	cd apps/web && npm run test:vitest
+
+.PHONY: private-beta-gate private-beta-gate-local
+private-beta-gate:
+	python3 scripts/private_beta_gate.py --mode release $(GATE_ARGS)
+
+private-beta-gate-local:
+	python3 scripts/private_beta_gate.py --mode local $(GATE_ARGS)

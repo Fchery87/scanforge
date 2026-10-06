@@ -81,4 +81,7 @@ localstack_data/
 .vercel/
 .turbo/
 .worktrees/
+.cache/
+.apex-code/
+.audit/
 turbo.json

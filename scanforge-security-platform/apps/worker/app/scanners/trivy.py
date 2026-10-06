@@ -10,6 +10,7 @@ class TrivyAdapter(ScannerAdapter):
     name = "trivy"
     binary_name = "trivy"
     binary_env_var = "TRIVY_BINARY"
+    report_filename = "trivy-results.json"
 
     def get_version(self) -> str:
         try:
@@ -25,6 +26,53 @@ class TrivyAdapter(ScannerAdapter):
             return result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
         except Exception:
             return ""
+
+    def runtime_arguments(self) -> tuple[str, ...]:
+        return (
+            "fs",
+            "--no-progress",
+            "--skip-version-check",
+            "--skip-db-update",
+            "--skip-java-db-update",
+            "--skip-check-update",
+            "--offline-scan",
+            "--cache-backend",
+            "memory",
+            "--format",
+            "json",
+            "--output",
+            "/workspace/output/trivy-results.json",
+            "--scanners",
+            "vuln,secret,misconfig",
+            "/workspace/source",
+        )
+
+    def parse_runtime_result(self, completed, output_directory: Path) -> ScannerResult:
+        return self._parse_report(
+            completed,
+            output_directory,
+            lambda report: (
+                isinstance(report, dict)
+                and (
+                    isinstance(report.get("Results"), list)
+                    or (
+                        "Results" not in report
+                        and report.get("SchemaVersion") == 2
+                        and report.get("ArtifactType") == "filesystem"
+                        and report.get("ArtifactName") == "/workspace/source"
+                    )
+                )
+                and all(
+                    isinstance(result, dict)
+                    and all(
+                        isinstance(result[key], list) and all(isinstance(item, dict) for item in result[key])
+                        for key in ("Vulnerabilities", "Secrets", "Misconfigurations")
+                        if key in result
+                    )
+                    for result in report.get("Results", [])
+                )
+            ),
+        )
 
     def run(self, repo_path: Path) -> ScannerResult:
         import time

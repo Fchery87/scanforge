@@ -21,11 +21,16 @@ def compute_checkov_fingerprint(
 
 def normalize_checkov_output(raw_output: dict | list, repository_id: str) -> list[dict]:
     findings = []
-    results = raw_output.get("results", {}) if isinstance(raw_output, dict) else {}
-    failed_checks = results.get("failed_checks", []) if isinstance(results, dict) else []
-
-    if isinstance(raw_output, list):
-        failed_checks = [item for item in raw_output if isinstance(item, dict)]
+    reports = raw_output if isinstance(raw_output, list) else [raw_output]
+    failed_checks = []
+    for report in reports:
+        if not isinstance(report, dict):
+            continue
+        results = report.get("results")
+        if isinstance(results, dict):
+            failed_checks.extend(results.get("failed_checks", []))
+        elif "check_id" in report:
+            failed_checks.append(report)
 
     for failed in failed_checks:
         check_id = failed.get("check_id", "")

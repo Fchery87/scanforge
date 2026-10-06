@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ScanTriggerType(str):
@@ -32,7 +32,19 @@ class ScanCreate(BaseModel):
     branch_name: str | None = Field(None, max_length=255)
     commit_sha: str | None = Field(None, max_length=64)
     pull_request_number: int | None = None
+    base_commit_sha: str | None = Field(None, pattern="^[a-fA-F0-9]{40}([a-fA-F0-9]{24})?$")
+    head_commit_sha: str | None = Field(None, pattern="^[a-fA-F0-9]{40}([a-fA-F0-9]{24})?$")
     scan_type: str = Field(default="full", pattern="^(full|diff|dependencies|secrets)$")
+
+    @model_validator(mode="after")
+    def validate_pull_request_context(self):
+        if self.trigger_type == "pull_request":
+            if not self.base_commit_sha or not self.head_commit_sha or not self.pull_request_number:
+                raise ValueError("Pull request base, head, and number required")
+            if self.commit_sha and self.commit_sha != self.head_commit_sha:
+                raise ValueError("Pull request commit must match recorded head")
+            self.commit_sha = self.head_commit_sha
+        return self
 
 
 class ScanResponse(BaseModel):
@@ -47,6 +59,8 @@ class ScanResponse(BaseModel):
     branch_name: str | None
     commit_sha: str | None
     pull_request_number: int | None
+    base_commit_sha: str | None = None
+    head_commit_sha: str | None = None
     requested_by_user_id: UUID | None
     error_message: str | None
     summary_json: dict | None

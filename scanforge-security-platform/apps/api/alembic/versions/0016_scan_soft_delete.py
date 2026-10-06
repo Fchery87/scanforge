@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = "0016_scan_soft_delete"
-down_revision = "0015_finding_instance_ai_annotation"
+down_revision = "0015_finding_ai_annotation"
 branch_labels = None
 depends_on = None
 

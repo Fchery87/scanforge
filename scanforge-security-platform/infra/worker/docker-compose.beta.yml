@@ -1,0 +1,39 @@
+services:
+  worker:
+    build:
+      context: ../..
+      dockerfile: apps/worker/Dockerfile
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 1g
+    cpus: 1.0
+    group_add:
+      - ${DOCKER_SOCKET_GID:?set dedicated host Docker socket group ID}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${WORKER_WORKSPACE:?set absolute shared host workspace}:${WORKER_WORKSPACE:?set absolute shared host workspace}
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=256m
+    environment:
+      APP_ENV: private-beta
+      TMPDIR: ${WORKER_WORKSPACE:?set absolute shared host workspace}
+      API_BASE_URL: ${API_BASE_URL:?set API_BASE_URL}
+      UPSTASH_REDIS_REST_URL: ${UPSTASH_REDIS_REST_URL:?set UPSTASH_REDIS_REST_URL}
+      UPSTASH_REDIS_REST_TOKEN: ${UPSTASH_REDIS_REST_TOKEN:?set UPSTASH_REDIS_REST_TOKEN}
+      WORKER_CREDENTIAL: ${WORKER_CREDENTIAL:?set WORKER_CREDENTIAL}
+      WORKER_ORGANIZATION_ID: ${WORKER_ORGANIZATION_ID:?set WORKER_ORGANIZATION_ID}
+      WORKER_CONSUMER_NAME: ${WORKER_CONSUMER_NAME:?set WORKER_CONSUMER_NAME}
+      WORKER_CONCURRENCY: "1"
+      SCANNER_IMAGE: ${SCANNER_IMAGE:?set digest-pinned SCANNER_IMAGE}
+      AI_ENABLED: "false"
+    healthcheck:
+      test: ["CMD", "python", "-c", "from app.worker.health import ready; raise SystemExit(0 if ready() else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

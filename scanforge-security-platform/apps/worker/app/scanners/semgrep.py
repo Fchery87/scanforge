@@ -9,6 +9,42 @@ class SemgrepAdapter(ScannerAdapter):
     name = "semgrep"
     binary_name = "semgrep"
     binary_env_var = "SEMGREP_BINARY"
+    report_filename = "semgrep-results.json"
+
+    def runtime_arguments(self) -> tuple[str, ...]:
+        return (
+            "scan",
+            "--json",
+            "--disable-version-check",
+            "--metrics",
+            "off",
+            "--strict",
+            "--jobs",
+            "1",
+            "--config",
+            "/opt/scanner-rules/semgrep",
+            "--json-output",
+            "/workspace/output/semgrep-results.json",
+            "/workspace/source",
+        )
+
+    def parse_runtime_result(self, completed, output_directory: Path) -> ScannerResult:
+        return self._parse_report(
+            completed,
+            output_directory,
+            lambda report: (
+                isinstance(report, dict)
+                and isinstance(report.get("results"), list)
+                and report.get("errors") == []
+                and all(
+                    isinstance(item, dict)
+                    and isinstance(item.get("check_id"), str)
+                    and isinstance(item.get("path"), str)
+                    and isinstance(item.get("extra"), dict)
+                    for item in report["results"]
+                )
+            ),
+        )
 
     def run(self, repo_path: Path) -> ScannerResult:
         import time

@@ -10,6 +10,37 @@ class SyftAdapter(ScannerAdapter):
     name = "syft"
     binary_name = "syft"
     binary_env_var = "SYFT_BINARY"
+    report_filename = "syft-results.json"
+
+    def runtime_arguments(self) -> tuple[str, ...]:
+        return (
+            "scan",
+            "dir:/workspace/source",
+            "--quiet",
+            "--base-path",
+            "/workspace/source",
+            "--output",
+            "syft-json=/workspace/output/syft-results.json",
+        )
+
+    def runtime_timeout_seconds(self) -> int:
+        return 300
+
+    def parse_runtime_result(self, completed, output_directory: Path) -> ScannerResult:
+        return self._parse_report(
+            completed,
+            output_directory,
+            lambda report: (
+                isinstance(report, dict)
+                and isinstance(report.get("artifacts"), list)
+                and all(
+                    isinstance(item, dict)
+                    and isinstance(item.get("name"), str)
+                    and isinstance(item.get("version"), str)
+                    for item in report["artifacts"]
+                )
+            ),
+        )
 
     def run(self, repo_path: Path) -> ScannerResult:
         import time

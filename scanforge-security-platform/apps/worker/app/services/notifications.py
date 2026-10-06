@@ -24,9 +24,9 @@ def _safe_error_message(message: str | None) -> str:
 
 
 class NotificationDispatcher:
-    def __init__(self, api_base_url: str, internal_api_key: str = ""):
+    def __init__(self, api_base_url: str, worker_credential: str = "", **kwargs):
         self.api_base_url = api_base_url
-        self.internal_api_key = internal_api_key
+        self.worker_credential = worker_credential or kwargs.pop("internal_api_key", "")
 
     async def send_scan_completed(
         self,
@@ -71,13 +71,13 @@ class NotificationDispatcher:
         scan_id: str,
         org_id: str,
         project_id: str,
-        finding_title: str,
+        finding_title: str = "Secret detected",
     ) -> None:
         await self._create_notification(
             user_id=user_id,
             notification_type="secret_found",
             title="Secret detected in repository",
-            body=f"A secret exposure was detected: {finding_title}. This is a critical security risk.",
+            body="A secret exposure was detected. Review the redacted finding in ScanForge.",
             link=self._scan_link(org_id, project_id, scan_id),
             target_type="scan",
             target_id=scan_id,
@@ -134,7 +134,7 @@ class NotificationDispatcher:
                 await client.post(
                     f"{self.api_base_url}/api/v1/internal/notifications",
                     json=payload,
-                    headers={"X-Service-Key": self.internal_api_key},
+                    headers={"X-Worker-Credential": self.worker_credential},
                     timeout=15.0,
                 )
         except Exception as e:

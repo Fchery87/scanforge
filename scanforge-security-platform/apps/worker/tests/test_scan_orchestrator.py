@@ -20,21 +20,18 @@ class DummyQueue:
     async def requeue(self, job, delay_seconds: int = 0):
         self.requeued_jobs.append((job, delay_seconds))
 
-    async def enqueue_to_dlq(self, *_args, **_kwargs):
+    async def move_to_dlq(self, *_args, **_kwargs):
         return None
 
     async def ack(self, *_args, **_kwargs):
         return None
 
-    async def release(self, *_args, **_kwargs):
-        return None
-
 
 class DummyR2:
-    def upload_raw_output(self, scan_id: str, scanner_name: str, output_data: dict) -> str:
+    async def upload_raw_output(self, scan_id: str, scanner_name: str, output_data: dict, **kwargs) -> str:
         return f"https://cdn.example/scans/{scan_id}/{scanner_name}/raw_output.json"
 
-    def upload_file(self, file_path: Path, key: str) -> dict:
+    async def upload_file(self, file_path: Path, key: str, **kwargs) -> dict:
         return {"storage_uri": f"https://cdn.example/{key}"}
 
 
@@ -58,6 +55,7 @@ async def test_upload_artifacts_returns_scanner_run_updates(tmp_path: Path):
         branch="main",
         commit_sha=None,
         job_id="job-1",
+        repo_path=tmp_path,
     )
     context.scanner_results = {
         "trivy": ScannerResult(
@@ -71,22 +69,12 @@ async def test_upload_artifacts_returns_scanner_run_updates(tmp_path: Path):
 
     uploads = await orchestrator._execution.upload_artifacts(context)
 
-    assert uploads["trivy_raw"] == "https://cdn.example/scans/scan-1/trivy/raw_output.json"
+    assert uploads["trivy_raw"] == "https://cdn.example/scan-artifacts/org-1/scan-1/trivy/trivy-results.json"
     assert (
-        uploads["scanner_runs"]["trivy"]["artifact_uri"] == "https://cdn.example/scans/scan-1/trivy/trivy-results.json"
+        uploads["scanner_runs"]["trivy"]["artifact_uri"]
+        == "https://cdn.example/scan-artifacts/org-1/scan-1/trivy/trivy-results.json"
     )
-    assert updates == [
-        (
-            "run-1",
-            {
-                "artifact_uri": "https://cdn.example/scans/scan-1/trivy/trivy-results.json",
-                "metadata_json": {
-                    "raw_output_uri": "https://cdn.example/scans/scan-1/trivy/raw_output.json",
-                    "artifact_uri": "https://cdn.example/scans/scan-1/trivy/trivy-results.json",
-                },
-            },
-        )
-    ]
+    assert updates == []
 
 
 def test_scan_summary_uses_duration_ms():
@@ -244,7 +232,7 @@ async def test_load_scan_context_fetches_authoritative_context(monkeypatch):
         async def __aexit__(self, exc_type, exc, tb):
             return None
 
-        async def get(self, url, headers, timeout):
+        async def post(self, url, headers, timeout):
             requests.append({"url": url, "headers": headers, "timeout": timeout})
             return Response()
 
@@ -265,7 +253,7 @@ async def test_load_scan_context_fetches_authoritative_context(monkeypatch):
         "commit_sha": "deadbeef",
         "scan_type": "dependencies",
     }
-    assert requests[0]["url"] == "http://api.local/api/v1/internal/scans/scan-1/execution-context"
+    assert requests[0]["url"] == "http://api.local/api/v1/internal/scans/scan-1/claim"
 
 
 @pytest.mark.asyncio
@@ -274,3 +262,21 @@ async def test_load_scan_context_rejects_payload_without_scan_id():
 
     with pytest.raises(ValidationError, match="scan_id"):
         QueueJob(job_type="scan.repo.full", job_id="job-1", payload={}, created_at="now")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["completed", "canceled"])
+async def test_recovered_terminal_delivery_is_acknowledged_without_rescanning(status):
+    from unittest.mock import AsyncMock
+    from app.clients.queue import QueueJob
+    queue = DummyQueue()
+    queue.ack = AsyncMock()
+    orchestrator = ScanOrchestrator(queue=queue, r2=DummyR2())
+    orchestrator._load_scan_context = AsyncMock(return_value=ScanContext(
+        "scan", "org", "repo", "project", "main", None, "job", initial_status=status,
+    ))
+    orchestrator._execution.prepare_repository = AsyncMock()
+    job = QueueJob(job_type="scan.repo.full", job_id="job", payload={"scan_id": "scan"}, created_at="now")
+    assert await orchestrator.process_job(job) is True
+    queue.ack.assert_awaited_once_with(job)
+    orchestrator._execution.prepare_repository.assert_not_awaited()

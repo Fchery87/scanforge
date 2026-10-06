@@ -1,0 +1,28 @@
+{
+  "url": "http://localhost:3011",
+  "artifact": "apps/web/.next, aggregate private-beta gate webpack production build",
+  "browser": "T3 collaborative preview tab_1",
+  "signin": {
+    "title": "ScanForge \u2014 Repository Security Platform",
+    "invitation_text_visible": true,
+    "email_input_present": true,
+    "signup_links": 0,
+    "screenshot": "signin-invitation.png"
+  },
+  "signup_page": {
+    "http_status": 404,
+    "visible_text": "404\nThis page could not be found.",
+    "forms": 0,
+    "screenshot": "signup-denied.png"
+  },
+  "signup_post": {
+    "path": "/api/auth/sign-up/email",
+    "http_status": 403,
+    "body": {
+      "error": "Private beta access is by invitation"
+    }
+  },
+  "authenticated_flows": "unverified",
+  "session_request": "GET /api/auth/get-session returned 500 without configured local auth secrets",
+  "hosted_provider_registration": "unverified"
+}

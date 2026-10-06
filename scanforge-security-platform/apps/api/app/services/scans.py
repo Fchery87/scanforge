@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 from app.db.enums import ScanStatus as ScanStatusEnum
 from app.db.models import Organization, OrganizationMember, Project, Repository, Scan, ScannerRun
 from app.schemas.scans import ScanCreate
+from app.services.github_checks import GitHubCheckPublisher
 
 
 class ScanService:
@@ -37,6 +38,9 @@ class ScanService:
             branch_name=data.branch_name or repo.default_branch,
             commit_sha=data.commit_sha,
             pull_request_number=data.pull_request_number,
+            base_commit_sha=data.base_commit_sha,
+            head_commit_sha=data.head_commit_sha,
+            github_check_pending=data.trigger_type == "pull_request",
             requested_by_user_id=user_id,
         )
         self.db.add(scan)
@@ -146,8 +150,14 @@ class ScanService:
         scan = await self.db.get(Scan, scan_id)
         if not scan:
             return None
+        if scan.status in (ScanStatusEnum.CANCELED, ScanStatusEnum.COMPLETED):
+            raise ValueError("Terminal scan state cannot be overwritten")
+        if status == ScanStatusEnum.COMPLETED:
+            raise ValueError("Use atomic completion to complete a scan")
 
         scan.status = status
+        if scan.trigger_type == "pull_request":
+            scan.github_check_pending = True
         if error_message:
             scan.error_message = error_message
         if summary_json:
@@ -155,6 +165,8 @@ class ScanService:
 
         await self.db.commit()
         await self.db.refresh(scan)
+        if scan.trigger_type == "pull_request":
+            await GitHubCheckPublisher(self.db).publish(scan.id)
         return scan
 
     async def cancel(self, scan_id: UUID, reason: str | None = None, user_id: UUID | None = None) -> Scan | None:
@@ -169,11 +181,15 @@ class ScanService:
             raise ValueError("Can only cancel queued or running scans")
 
         scan.status = ScanStatusEnum.CANCELED
+        if scan.trigger_type == "pull_request":
+            scan.github_check_pending = True
         if reason:
             scan.error_message = reason
 
         await self.db.commit()
         await self.db.refresh(scan)
+        if scan.trigger_type == "pull_request":
+            await GitHubCheckPublisher(self.db).publish(scan.id)
         return scan
 
     async def delete(

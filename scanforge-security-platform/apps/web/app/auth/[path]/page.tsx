@@ -1,12 +1,12 @@
 import { AuthViewClient } from "@/components/auth/auth-view-client";
 import { ScanForgeLogo } from "@/components/scanforge/logo";
 import { getAuthPageTitle, getAuthPageDescription } from "@/lib/page-surface/auth-titles";
+import { notFound } from "next/navigation";
 
 export const dynamicParams = false;
 
 const AUTH_PATHS = [
   "sign-in",
-  "sign-up",
   "forgot-password",
   "reset-password",
   "email-otp",
@@ -24,6 +24,7 @@ export default async function AuthPage({
   params: Promise<{ path: string }>;
 }) {
   const { path } = await params;
+  if (path === "sign-up") notFound();
   const title = getAuthPageTitle(path);
   const description = getAuthPageDescription(path);
 
@@ -51,6 +52,9 @@ export default async function AuthPage({
           <h1 className="font-display text-[2.4rem] leading-none tracking-[-0.05em] text-text-primary">{title}</h1>
         </div>
         <AuthViewClient path={path} />
+        {path === "sign-in" && <p className="mt-4 text-sm text-text-secondary">
+          Private beta access is by invitation. Contact your ScanForge administrator to request access.
+        </p>}
       </section>
     </main>
   );

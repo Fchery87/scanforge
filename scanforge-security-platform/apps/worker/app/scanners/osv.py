@@ -9,6 +9,38 @@ class OsvAdapter(ScannerAdapter):
     name = "osv"
     binary_name = "osv-scanner"
     binary_env_var = "OSV_SCANNER_BINARY"
+    report_filename = "osv-results.json"
+    accepted_exit_codes = frozenset({0, 1})
+
+    def runtime_arguments(self) -> tuple[str, ...]:
+        return (
+            "scan",
+            "source",
+            "--offline",
+            "--no-resolve",
+            "--format",
+            "json",
+            "--output",
+            "/workspace/output/osv-results.json",
+            "--recursive",
+            "/workspace/source",
+        )
+
+    def parse_runtime_result(self, completed, output_directory: Path) -> ScannerResult:
+        return self._parse_report(
+            completed,
+            output_directory,
+            lambda report: (
+                isinstance(report, dict)
+                and isinstance(report.get("results"), list)
+                and all(
+                    isinstance(item, dict)
+                    and isinstance(item.get("packages"), list)
+                    and all(isinstance(package, dict) for package in item["packages"])
+                    for item in report["results"]
+                )
+            ),
+        )
 
     def run(self, repo_path: Path) -> ScannerResult:
         import time

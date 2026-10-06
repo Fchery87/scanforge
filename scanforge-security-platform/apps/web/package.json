@@ -11,10 +11,10 @@
     "test": "vitest run",
     "gen:types": "openapi-typescript ../api/openapi.json -o lib/api-types.ts",
     "test:node": "node --test \"**/*.test.ts\"",
-    "test:vitest": "vitest run components/scanforge/finding-drawer.spec.tsx"
+    "test:vitest": "vitest run"
   },
   "dependencies": {
-    "@neondatabase/auth": "^0.2.0-beta.1",
+    "@neondatabase/auth": "0.5.0-beta",
     "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-checkbox": "^1.3.3",
     "@radix-ui/react-context-menu": "^2.2.16",
@@ -47,7 +47,7 @@
     "zod": "^3.25.76"
   },
   "overrides": {
-    "better-auth": "1.5.6"
+    "better-auth": "1.7.7"
   },
   "devDependencies": {
     "@eslint/js": "^9.25.0",
@@ -68,6 +68,6 @@
     "typescript": "^5.8.0",
     "typescript-eslint": "^8.30.1",
     "vite-tsconfig-paths": "^6.1.1",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.11"
   }
 }

@@ -4,7 +4,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Export, OrganizationMember, Project
+from app.db.models import Export, OrganizationMember, Project, User
 from app.schemas.exports import ExportCreate
 
 
@@ -20,6 +20,18 @@ class ExportService:
     ) -> Export:
         project = await self.db.get(Project, str(project_id))
         if not project:
+            raise ValueError("Project not found")
+
+        membership = await self.db.execute(
+            select(OrganizationMember)
+            .join(User, User.id == OrganizationMember.user_id)
+            .where(
+                OrganizationMember.organization_id == project.organization_id,
+                OrganizationMember.user_id == str(user_id),
+                User.is_active.is_(True),
+            )
+        )
+        if membership.scalar_one_or_none() is None:
             raise ValueError("Project not found")
 
         export = Export(
@@ -59,14 +71,10 @@ class ExportService:
 
         base_query = select(Export).where(Export.project_id == str(project_id))
 
-        count_result = await self.db.execute(
-            select(func.count()).select_from(base_query.subquery())
-        )
+        count_result = await self.db.execute(select(func.count()).select_from(base_query.subquery()))
         total = count_result.scalar_one()
 
-        result = await self.db.execute(
-            base_query.order_by(Export.created_at.desc()).offset(skip).limit(limit)
-        )
+        result = await self.db.execute(base_query.order_by(Export.created_at.desc()).offset(skip).limit(limit))
 
         return list(result.scalars().all()), total
 

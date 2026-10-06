@@ -14,7 +14,6 @@ test("keeps global workspace destinations available without an org context", () 
       { label: "Findings", disabled: true },
       { label: "Scans", disabled: true },
       { label: "Repositories", disabled: true },
-      { label: "Exports", disabled: true },
       { label: "Scorecard", disabled: true },
       { label: "Suppressions", disabled: true },
     ]

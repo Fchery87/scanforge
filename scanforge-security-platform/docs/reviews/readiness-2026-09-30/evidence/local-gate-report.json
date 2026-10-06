@@ -1,0 +1,187 @@
+{
+  "contract_version": 1,
+  "mode": "local",
+  "commit_sha": "f008a507cf2855210eaa92af38bf9680149a2e87",
+  "dirty": true,
+  "observed_at": "2026-10-02T02:12:56.579197+00:00",
+  "release_ready": false,
+  "checks": [
+    {
+      "name": "api-lint",
+      "status": "passed",
+      "detail": "exit 0",
+      "log": "api-lint.log",
+      "log_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    {
+      "name": "worker-lint",
+      "status": "passed",
+      "detail": "exit 0",
+      "log": "worker-lint.log",
+      "log_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    {
+      "name": "generated-contracts",
+      "status": "passed",
+      "detail": "exit 0",
+      "log": "generated-contracts.log",
+      "log_sha256": "c42be4ef40c392b267d7219b8a7a019a180ef24518456b723d40a4522edb7b81"
+    },
+    {
+      "name": "migration-single-head",
+      "status": "passed",
+      "detail": "exit 0",
+      "log": "migration-single-head.log",
+      "log_sha256": "8f09e62f5a9db2a845c587dc2aafcbbc721847088706d0491f97d00dcf2ac090"
+    },
+    {
+      "name": "api-tests",
+      "status": "passed",
+      "detail": "exit 0",
+      "log": "api-tests.log",
+      "log_sha256": "5ab7dc4f5b222591c630f65d691169060e743eb239efa954cac6e44a2a453bcb"
+    },
+    {
+      "name": "worker-tests",
+      "status": "passed",
+      "detail": "exit 0",
+      "log": "worker-tests.log",
+      "log_sha256": "599bd0c28f150de6f02103d2136b40ca7a34291d2ecd30917bfa4c1f6ec803e9"
+    },
+    {
+      "name": "web-lint",
+      "status": "passed",
+      "detail": "exit 0",
+      "log": "web-lint.log",
+      "log_sha256": "9fb68e622ba2f239f1ef71b95b56fe809dae6e938aa3d2ab3cde18e62b0a98ca"
+    },
+    {
+      "name": "web-types",
+      "status": "passed",
+      "detail": "exit 0",
+      "log": "web-types.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "web-node-tests",
+      "status": "passed",
+      "detail": "exit 0",
+      "log": "web-node-tests.log",
+      "log_sha256": "d0216351f7c7b50e7b14b4c135270d13237470fc262f672648f219e24a2158a6"
+    },
+    {
+      "name": "web-component-tests",
+      "status": "passed",
+      "detail": "exit 0",
+      "log": "web-component-tests.log",
+      "log_sha256": "af51b043ebf9701d9e005a39163a17ed7d1914361edc336d3ead9daa1cb9bc9f"
+    },
+    {
+      "name": "web-build",
+      "status": "passed",
+      "detail": "exit 0",
+      "log": "web-build.log",
+      "log_sha256": "9f36441e210cb4571207bb8705d707bff09e5429965702016a5e3acdb9233c92"
+    },
+    {
+      "name": "api-dependency-audit",
+      "status": "passed",
+      "detail": "exit 0",
+      "log": "api-dependency-audit.log",
+      "log_sha256": "fdeae5e7ae52a8d4cdc6fbae050473d5efd8e74aca1e94a7a0161332b8a1a404"
+    },
+    {
+      "name": "worker-dependency-audit",
+      "status": "passed",
+      "detail": "exit 0",
+      "log": "worker-dependency-audit.log",
+      "log_sha256": "127e196dad42e7ed692434de681bdec572b0d8be829a0cceca2919dc348fc099"
+    },
+    {
+      "name": "web-dependency-audit",
+      "status": "passed",
+      "detail": "exit 0",
+      "log": "web-dependency-audit.log",
+      "log_sha256": "6d8c5c8f3d7684adb070417bd608d01ae90aa3dc26a65af03ffda4955f38d9a3"
+    },
+    {
+      "name": "postgres-completion",
+      "status": "passed",
+      "detail": "exit 0",
+      "log": "postgres-completion.log",
+      "log_sha256": "76b0c0c6f17e39ed53fdf43a15ac50a3ee9c4f34c136c721ff4bbe113ac5b977"
+    },
+    {
+      "name": "native-redis-recovery",
+      "status": "passed",
+      "detail": "exit 0",
+      "log": "native-redis-recovery.log",
+      "log_sha256": "785dbb8730b2870d755e60546bb8bd49464238821b3f5841000dbbcfac4a045c"
+    },
+    {
+      "name": "live-docker",
+      "status": "unverified",
+      "detail": "SCANFORGE_LIVE_DOCKER not configured"
+    },
+    {
+      "name": "postgres-full-suite",
+      "status": "unverified",
+      "detail": "evidence directory not supplied"
+    },
+    {
+      "name": "migration-empty-and-upgrade",
+      "status": "unverified",
+      "detail": "evidence directory not supplied"
+    },
+    {
+      "name": "staging-deployment",
+      "status": "unverified",
+      "detail": "evidence directory not supplied"
+    },
+    {
+      "name": "upstash-recovery",
+      "status": "unverified",
+      "detail": "evidence directory not supplied"
+    },
+    {
+      "name": "github-triggers-and-check",
+      "status": "unverified",
+      "detail": "evidence directory not supplied"
+    },
+    {
+      "name": "authenticated-browser",
+      "status": "unverified",
+      "detail": "evidence directory not supplied"
+    },
+    {
+      "name": "canary-boundaries",
+      "status": "unverified",
+      "detail": "evidence directory not supplied"
+    },
+    {
+      "name": "operational-drills",
+      "status": "unverified",
+      "detail": "evidence directory not supplied"
+    },
+    {
+      "name": "monitoring-alerts",
+      "status": "unverified",
+      "detail": "evidence directory not supplied"
+    },
+    {
+      "name": "beta-load",
+      "status": "unverified",
+      "detail": "evidence directory not supplied"
+    },
+    {
+      "name": "scanner-image-offline-assets",
+      "status": "unverified",
+      "detail": "evidence directory not supplied"
+    },
+    {
+      "name": "committed-source",
+      "status": "unverified",
+      "detail": "working tree has uncommitted changes"
+    }
+  ]
+}

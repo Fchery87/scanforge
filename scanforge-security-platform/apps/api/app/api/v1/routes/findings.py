@@ -125,7 +125,10 @@ async def suppress_finding(
     await _require_finding_mutation_role(db, org_id, current_user.user_id)
 
     service = FindingService(db)
-    finding = await service.suppress(finding_id, current_user.user_id, data.reason, data.rule_id)
+    try:
+        finding = await service.suppress(finding_id, current_user.user_id, data.reason, data.rule_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not finding or finding.project_id != project_id:
         raise HTTPException(status_code=404, detail="Finding not found")
 
@@ -145,7 +148,10 @@ async def resolve_finding(
     await _require_finding_mutation_role(db, org_id, current_user.user_id)
 
     service = FindingService(db)
-    finding = await service.resolve(finding_id, current_user.user_id, data.fixed_version, data.reason)
+    try:
+        finding = await service.resolve(finding_id, current_user.user_id, data.fixed_version, data.reason)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not finding or finding.project_id != project_id:
         raise HTTPException(status_code=404, detail="Finding not found")
 
@@ -164,7 +170,10 @@ async def reopen_finding(
     await _require_finding_mutation_role(db, org_id, current_user.user_id)
 
     service = FindingService(db)
-    finding = await service.reopen(finding_id, current_user.user_id)
+    try:
+        finding = await service.reopen(finding_id, current_user.user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not finding or finding.project_id != project_id:
         raise HTTPException(status_code=404, detail="Finding not found")
 
@@ -184,7 +193,10 @@ async def accept_risk_finding(
     await _require_finding_mutation_role(db, org_id, current_user.user_id)
 
     service = FindingService(db)
-    finding = await service.accept_risk(finding_id, current_user.user_id, data.reason)
+    try:
+        finding = await service.accept_risk(finding_id, current_user.user_id, data.reason)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not finding or finding.project_id != project_id:
         raise HTTPException(status_code=404, detail="Finding not found")
 
@@ -204,7 +216,10 @@ async def mark_duplicate_finding(
     await _require_finding_mutation_role(db, org_id, current_user.user_id)
 
     service = FindingService(db)
-    finding = await service.mark_duplicate(finding_id, current_user.user_id, data.reason)
+    try:
+        finding = await service.mark_duplicate(finding_id, current_user.user_id, data.reason)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not finding or finding.project_id != project_id:
         raise HTTPException(status_code=404, detail="Finding not found")
 
@@ -285,7 +300,7 @@ async def bulk_finding_action(
     if data.action == "suppress":
         await service.bulk_suppress(data.finding_ids, current_user.user_id, data.reason)
     elif data.action == "resolve":
-        await service.bulk_resolve(data.finding_ids, current_user.user_id)
+        await service.bulk_resolve(data.finding_ids, current_user.user_id, reason=data.reason)
     elif data.action == "accept_risk":
         await service.bulk_accept_risk(data.finding_ids, current_user.user_id, data.reason)
     elif data.action == "mark_duplicate":

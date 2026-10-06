@@ -19,7 +19,7 @@ class _FakeDB:
         self.rolled_back = False
         self.committed = False
 
-    async def get(self, model, value):
+    async def get(self, model, _value):
         if model is webhooks.Repository:
             return self.repo
         if model is webhooks.Project:
@@ -28,6 +28,9 @@ class _FakeDB:
 
     async def scalar(self, _query):
         return self.integration
+
+    async def scalars(self, _query):
+        return SimpleNamespace(all=lambda: [SimpleNamespace(scan_type="full")])
 
     def add(self, obj):
         self.added.append(obj)
@@ -142,12 +145,12 @@ async def test_github_webhook_queues_scan_for_matching_payload(monkeypatch):
             "installation": {"id": 99},
         }
     )
-    fake_scan = SimpleNamespace(id=uuid4())
-    scan_service = SimpleNamespace(create=AsyncMock(return_value=(fake_scan, repo, project)))
+    fake_scan = SimpleNamespace(id=uuid4(), status="queued")
+    lifecycle = SimpleNamespace(create_manual_scan=AsyncMock(return_value=fake_scan))
     audit_service = SimpleNamespace(create=AsyncMock())
 
     monkeypatch.setattr(webhooks, "verify_github_webhook_async", AsyncMock(return_value=True))
-    monkeypatch.setattr(webhooks, "ScanService", lambda _db: scan_service)
+    monkeypatch.setattr(webhooks, "ScanLifecycleService", lambda _db: lifecycle)
     monkeypatch.setattr(webhooks, "AuditLogService", lambda _db: audit_service)
 
     response = await webhooks.github_webhook(
@@ -159,7 +162,7 @@ async def test_github_webhook_queues_scan_for_matching_payload(monkeypatch):
     )
 
     assert response == {"status": "queued", "scan_id": str(fake_scan.id)}
-    scan_service.create.assert_awaited_once()
+    lifecycle.create_manual_scan.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -178,14 +181,15 @@ async def test_github_pull_request_webhook_queues_advisory_diff_scan(monkeypatch
             "action": "synchronize",
             "pull_request": {
                 "number": 17,
-                "head": {"sha": "cafebabe", "ref": "feature/security"},
+                "head": {"sha": "b" * 40, "ref": "feature/security"},
+                "base": {"sha": "a" * 40},
             },
             "repository": {"full_name": "scanforge/platform", "id": 42},
             "installation": {"id": 99},
         },
         event="pull_request",
     )
-    fake_scan = SimpleNamespace(id=uuid4())
+    fake_scan = SimpleNamespace(id=uuid4(), status="queued")
     lifecycle = SimpleNamespace(create_manual_scan=AsyncMock(return_value=fake_scan))
     audit_service = SimpleNamespace(create=AsyncMock())
 
@@ -208,7 +212,7 @@ async def test_github_pull_request_webhook_queues_advisory_diff_scan(monkeypatch
             "scan_id": str(fake_scan.id),
             "state": "neutral",
             "blocking": False,
-            "summary": "Advisory policy evaluation passed",
+            "summary": "Advisory policy evaluation pending",
         },
     }
     lifecycle.create_manual_scan.assert_awaited_once()
@@ -216,3 +220,78 @@ async def test_github_pull_request_webhook_queues_advisory_diff_scan(monkeypatch
     assert created_data.scan_type == "diff"
     assert created_data.trigger_type == "pull_request"
     assert created_data.pull_request_number == 17
+
+    assert created_data.base_commit_sha == "a" * 40
+    assert created_data.head_commit_sha == "b" * 40
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ignored", ["no_schedule", "deleted", "tag"])
+async def test_push_does_not_scan_without_active_trigger(monkeypatch, ignored):
+    org_id, project_id, repository_id = uuid4(), uuid4(), uuid4()
+    repo = SimpleNamespace(id=repository_id, project_id=project_id, full_name="owner/repo", external_repo_id="42")
+    db = _FakeDB(
+        repo=repo,
+        project=SimpleNamespace(id=project_id, organization_id=org_id),
+        integration=SimpleNamespace(installation_id="99"),
+    )
+    if ignored == "no_schedule":
+        db.scalars = AsyncMock(return_value=SimpleNamespace(all=list))
+    lifecycle = SimpleNamespace(create_manual_scan=AsyncMock())
+    monkeypatch.setattr(webhooks, "ScanLifecycleService", lambda _db: lifecycle)
+    monkeypatch.setattr(webhooks, "verify_github_webhook_async", AsyncMock(return_value=True))
+    payload = {
+        "repository": {"full_name": "owner/repo", "id": 42},
+        "installation": {"id": 99},
+        "ref": "refs/tags/v1" if ignored == "tag" else "refs/heads/main",
+        "after": "b" * 40,
+        "deleted": ignored == "deleted",
+    }
+    response = await webhooks.github_webhook(
+        org_id=org_id, project_id=project_id, repository_id=repository_id, request=_FakeRequest(payload), db=db
+    )
+    assert response == {"status": "ignored", "event": "push"}
+    lifecycle.create_manual_scan.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_push_uses_unique_configured_scan_types(monkeypatch):
+    org_id, project_id, repository_id = uuid4(), uuid4(), uuid4()
+    repo = SimpleNamespace(id=repository_id, project_id=project_id, full_name="owner/repo", external_repo_id="42")
+    db = _FakeDB(
+        repo=repo,
+        project=SimpleNamespace(id=project_id, organization_id=org_id),
+        integration=SimpleNamespace(installation_id="99"),
+    )
+    db.scalars = AsyncMock(
+        return_value=SimpleNamespace(
+            all=lambda: [
+                SimpleNamespace(scan_type="secrets"),
+                SimpleNamespace(scan_type="dependencies"),
+                SimpleNamespace(scan_type="secrets"),
+            ]
+        )
+    )
+    lifecycle = SimpleNamespace(create_manual_scan=AsyncMock(return_value=SimpleNamespace(id=uuid4(), status="queued")))
+    monkeypatch.setattr(webhooks, "ScanLifecycleService", lambda _db: lifecycle)
+    monkeypatch.setattr(webhooks, "AuditLogService", lambda _db: SimpleNamespace(create=AsyncMock()))
+    monkeypatch.setattr(webhooks, "verify_github_webhook_async", AsyncMock(return_value=True))
+    response = await webhooks.github_webhook(
+        org_id=org_id,
+        project_id=project_id,
+        repository_id=repository_id,
+        request=_FakeRequest(
+            {
+                "repository": {"full_name": "owner/repo", "id": 42},
+                "installation": {"id": 99},
+                "ref": "refs/heads/main",
+                "after": "b" * 40,
+            }
+        ),
+        db=db,
+    )
+    assert response["status"] == "queued"
+    assert [call.kwargs["data"].scan_type for call in lifecycle.create_manual_scan.await_args_list] == [
+        "dependencies",
+        "secrets",
+    ]

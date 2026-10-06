@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { AlertTriangle, CheckCircle, Shield } from "lucide-react";
 
 import { api } from "@/lib/api";
+import type { Project, Scorecard } from "@/lib/api-schemas";
 import { PageHeader } from "@/components/scanforge/page-header";
 import { ScorecardRing } from "@/components/scanforge/scorecard-ring";
 import { Badge } from "@/components/ui/badge";
@@ -14,8 +15,8 @@ import { derivePageState } from "@/lib/page-surface/page-state";
 
 export default function ScorecardDashboardPage() {
   const { org_id } = useParams<{ org_id: string }>();
-  const [projects, setProjects] = useState<any[]>([]);
-  const [scorecards, setScorecards] = useState<Record<string, any>>({});
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [scorecards, setScorecards] = useState<Record<string, Scorecard>>({});
   const [failedProjectIds, setFailedProjectIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,12 +27,12 @@ export default function ScorecardDashboardPage() {
       .then(async (res) => {
         const projectList = res.items ?? [];
         setProjects(projectList);
-        const cards: Record<string, any> = {};
+        const cards: Record<string, Scorecard> = {};
         const failed: string[] = [];
         await Promise.allSettled(
-          projectList.map((project: any) =>
+          projectList.map((project) =>
             api.scorecard.get(org_id, project.id)
-              .then((scorecard: any) => {
+              .then((scorecard) => {
                 cards[project.id] = scorecard;
               })
               .catch(() => {
@@ -59,7 +60,7 @@ export default function ScorecardDashboardPage() {
   const unavailableCount = failedProjectIds.length;
   const avgScore = availableCount
     ? Math.round(
-        Object.values(scorecards).reduce((sum: number, scorecard: any) => sum + (scorecard.overall_score || 0), 0) /
+        Object.values(scorecards).reduce((sum, scorecard) => sum + (scorecard.overall_score || 0), 0) /
         availableCount
       )
     : null;

@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { Search, Download, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +18,6 @@ import {
   parseFindingsFilters,
   serializeFindingsFilters,
   hasActiveFilters,
-  formatExportScope,
 } from "@/lib/findings/filter-state";
 import { canBulkAction } from "@/lib/findings/triage-policy";
 
@@ -383,23 +382,6 @@ function FindingsContent() {
       .catch(console.error);
   };
 
-  const handleExportFiltered = async (format: "csv" | "json") => {
-    const filters = { severity, category, status, repositoryId, scanner, search };
-    const scope = formatExportScope(filters, total);
-    if (!confirm(`Export: ${scope} as ${format.toUpperCase()}?`)) return;
-    try {
-      await api.exports.create(org_id as string, project_id as string, {
-        export_type: "findings",
-        format,
-        title: `Filtered findings - ${new Date().toISOString().slice(0, 10)}`,
-        filters: serializeFindingsFilters(filters),
-      });
-      alert(`Export started. Check the Exports page for download.`);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
   const filters = { severity, category, status, repositoryId, scanner, search };
   const isActive = hasActiveFilters(filters);
 
@@ -435,12 +417,6 @@ function FindingsContent() {
         eyebrow="Triage"
         title="Security Findings"
         description="Review, filter, and bulk-manage the normalized findings detected across repositories in this project."
-        actions={
-          <Button onClick={() => handleExportFiltered("csv")}>
-            <Download className="h-4 w-4" />
-            Download Report
-          </Button>
-        }
       />
 
       {/* Bulk action bar */}

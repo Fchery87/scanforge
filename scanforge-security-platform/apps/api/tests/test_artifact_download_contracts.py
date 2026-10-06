@@ -1,7 +1,7 @@
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
-from datetime import datetime, UTC
 
 import pytest
 
@@ -91,7 +91,8 @@ async def test_download_scan_artifact_uses_presigned_url(monkeypatch):
     current_user = SimpleNamespace(user_id=uuid4())
     scan = SimpleNamespace(
         project_id=project_id,
-        scanner_runs=[SimpleNamespace(id=run_id, artifact_uri="scans/123/trivy/output.json")],
+        scanner_runs=[SimpleNamespace(id=run_id, scanner_name="trivy",
+                                     artifact_uri=f"scan-artifacts/{org_id}/{scan_id}/trivy/output.json")],
     )
 
     monkeypatch.setattr(scans, "get_project_in_org_or_404", AsyncMock())
@@ -111,4 +112,18 @@ async def test_download_scan_artifact_uses_presigned_url(monkeypatch):
         db=object(),
     )
 
-    assert response.headers["location"] == "https://signed.example/scans/123/trivy/output.json"
+    assert response.headers["location"] == f"https://signed.example/scan-artifacts/{org_id}/{scan_id}/trivy/output.json"
+
+
+@pytest.mark.asyncio
+async def test_download_rejects_cross_organization_artifact_even_in_owned_run(monkeypatch):
+    from fastapi import HTTPException
+    org_id, project_id, scan_id, run_id = uuid4(), uuid4(), uuid4(), uuid4()
+    scan = SimpleNamespace(project_id=project_id, scanner_runs=[SimpleNamespace(
+        id=run_id, scanner_name="trivy", artifact_uri=f"scan-artifacts/{uuid4()}/{scan_id}/trivy/output.json",
+    )])
+    monkeypatch.setattr(scans, "get_project_in_org_or_404", AsyncMock())
+    monkeypatch.setattr(scans, "ScanService", lambda _db: SimpleNamespace(get_by_id=AsyncMock(return_value=scan)))
+    with pytest.raises(HTTPException) as error:
+        await scans.download_scan_artifact(org_id, project_id, scan_id, run_id, SimpleNamespace(user_id=uuid4()), object())
+    assert error.value.status_code == 404

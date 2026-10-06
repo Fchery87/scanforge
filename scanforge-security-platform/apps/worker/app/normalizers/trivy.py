@@ -1,5 +1,7 @@
 import hashlib
 
+from app.security.secret_evidence import sanitize_trivy_output
+
 SEVERITY_MAP = {
     "CRITICAL": "critical",
     "HIGH": "high",
@@ -25,6 +27,7 @@ def compute_vulnerability_fingerprint(
 
 
 def normalize_trivy_output(raw_output: dict, repository_id: str) -> list[dict]:
+    raw_output = sanitize_trivy_output(raw_output)
     findings = []
 
     results = raw_output.get("Results", [])
@@ -79,9 +82,9 @@ def normalize_trivy_output(raw_output: dict, repository_id: str) -> list[dict]:
             findings.append(finding)
 
         for secret in result.get("Secrets", []) or []:
-            rule_id = secret.get("RuleID", "unknown")
-            file_path = secret.get("File", "")
-            line = secret.get("StartLine", 1)
+            rule_id = secret.get("rule_id", secret.get("RuleID", "unknown"))
+            file_path = secret.get("path", secret.get("File", target))
+            line = secret.get("line_start", secret.get("StartLine", 1))
 
             fingerprint = hashlib.sha256(
                 f"{rule_id}|{repository_id}|{file_path}|{line}".encode()
@@ -91,7 +94,7 @@ def normalize_trivy_output(raw_output: dict, repository_id: str) -> list[dict]:
                 "category": "secret",
                 "severity": "high",
                 "title": f"Exposed secret: {rule_id}",
-                "description": secret.get("Match", ""),
+                "description": "A secret was detected by the scanner.",
                 "canonical_fingerprint": fingerprint,
                 "primary_scanner": "trivy",
                 "confidence_score": 0.85,

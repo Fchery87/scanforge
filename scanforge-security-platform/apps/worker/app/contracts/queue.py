@@ -1,6 +1,5 @@
 from datetime import UTC, datetime
 from typing import Literal
-from uuid import uuid4
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -13,6 +12,7 @@ class QueueJob(BaseModel):
     job_id: str
     payload: dict = Field(default_factory=dict)
     created_at: str
+    stream_entry_id: str | None = Field(default=None, exclude=True)
 
     @field_validator("payload")
     @classmethod
@@ -24,9 +24,12 @@ class QueueJob(BaseModel):
 
     @classmethod
     def create(cls, job_type: ScanJobType, payload: dict) -> "QueueJob":
+        scan_id = payload.get("scan_id", "")
         return cls(
             job_type=job_type,
-            job_id=str(uuid4()),
+            # A scan can be delivered more than once by Redis Streams.  The scan ID
+            # remains the stable idempotency key across those deliveries.
+            job_id=scan_id,
             payload=payload,
             created_at=datetime.now(UTC).isoformat(),
         )

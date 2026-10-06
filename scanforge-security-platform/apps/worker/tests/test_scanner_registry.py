@@ -1,3 +1,5 @@
+import pytest
+
 from app.scanners.registry import SCAN_MODE_REGISTRY, SCANNER_REGISTRY, scanners_for_scan_type
 
 
@@ -13,4 +15,5 @@ def test_every_scan_mode_scanner_has_adapter_and_normalizer_registration():
 
 
 def test_scanners_for_unknown_scan_type_defaults_to_full_scan():
-    assert scanners_for_scan_type("unknown") == SCAN_MODE_REGISTRY["scan.repo.full"]
+    with pytest.raises(ValueError, match="unsupported scan type"):
+        scanners_for_scan_type("unknown")

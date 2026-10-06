@@ -1,5 +1,6 @@
 import json
 from datetime import UTC, datetime
+from uuid import UUID
 
 import httpx
 
@@ -7,10 +8,6 @@ from app.contracts.queue import QueueJob, ScanJobType
 
 
 class QueueClient:
-    SCAN_QUEUE = "queue:scans"
-    DLQ = "queue:scans:dlq"
-    SCAN_TIMEOUT = 1800
-
     def __init__(self, redis_url: str, redis_token: str):
         self.redis_url = redis_url
         self.redis_token = redis_token
@@ -29,12 +26,17 @@ class QueueClient:
                 timeout=30.0,
             )
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+            if result.get("error"):
+                raise RuntimeError("Redis command failed: " + str(result["error"]).split()[0])
+            return result
 
     async def enqueue(
         self,
         job_type: ScanJobType,
         payload: dict,
+        *,
+        organization_id: UUID | str,
         delay_seconds: int = 0,
     ) -> str:
         if delay_seconds > 0:
@@ -42,26 +44,20 @@ class QueueClient:
 
         job = QueueJob.create(job_type, payload)
         job_json = job.model_dump_json()
-
-        await self._command("LPUSH", self.SCAN_QUEUE, job_json)
+        dedupe_key = f"queue:scans:{organization_id}:dedupe:{job.job_id}"
+        await self._command(
+            "EVAL",
+            "if redis.call('EXISTS', KEYS[1]) == 1 then return 0 end "
+            "local entry = redis.call('XADD', KEYS[2], '*', 'job', ARGV[1], 'job_id', ARGV[2]) "
+            "redis.call('SET', KEYS[1], entry, 'EX', 86400) return entry",
+            2, dedupe_key, self._scan_queue_key(organization_id), job_json, job.job_id,
+        )
 
         return job.job_id
 
-    async def dequeue(self, timeout_seconds: int = 5) -> QueueJob | None:
-        try:
-            result = await self._command("BRPOP", self.SCAN_QUEUE, timeout_seconds)
-
-            if result and result.get("result"):
-                # BRPOP returns [key, value]
-                _, value = result["result"]
-                return QueueJob.model_validate_json(value)
-        except httpx.HTTPStatusError:
-            pass
-        return None
-
-    async def enqueue_to_dlq(self, job: QueueJob) -> None:
-        job_json = job.model_dump_json()
-        await self._command("LPUSH", self.DLQ, job_json)
+    @staticmethod
+    def _scan_queue_key(organization_id: UUID | str) -> str:
+        return f"queue:scans:{organization_id}"
 
     async def get_job_status(self, job_id: str) -> dict | None:
         result = await self._command("GET", f"job:{job_id}:status")
@@ -89,7 +85,3 @@ class QueueClient:
     async def get_retry_count(self, job_id: str) -> int:
         result = await self._command("GET", f"job:{job_id}:retries")
         return int(result.get("result") or 0)
-
-    async def get_queue_length(self) -> int:
-        result = await self._command("LLEN", self.SCAN_QUEUE)
-        return int(result.get("result", 0))

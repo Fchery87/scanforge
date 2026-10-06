@@ -31,14 +31,14 @@ async def test_trigger_due_scan_schedules_calls_internal_api(monkeypatch):
 
     result = await scheduler.trigger_due_scan_schedules(
         api_base_url="http://api.local/",
-        internal_api_key="secret",
+        scheduler_api_key="secret",
     )
 
     assert result == {"found": 2, "queued": 1, "failed": 1}
     assert requests == [
         {
             "url": "http://api.local/api/v1/internal/scan-schedules/run-due",
-            "headers": {"X-Service-Key": "secret"},
+            "headers": {"X-Scheduler-Key": "secret"},
             "timeout": 60.0,
         }
     ]
@@ -49,6 +49,19 @@ async def test_run_scheduled_scans_uses_trigger_adapter(monkeypatch):
     trigger = AsyncMock(return_value={"found": 1, "queued": 1, "failed": 0})
     monkeypatch.setattr(scheduler, "trigger_due_scan_schedules", trigger)
 
+    retry = AsyncMock(return_value={"published": 1})
+    monkeypatch.setattr(scheduler, "retry_github_checks", retry)
+
     await scheduler.run_scheduled_scans()
 
     trigger.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_scheduler_retries_checks_even_when_schedules_fail(monkeypatch):
+    monkeypatch.setattr(scheduler, "trigger_due_scan_schedules", AsyncMock(side_effect=RuntimeError("outage")))
+    retry = AsyncMock(return_value={"published": 1})
+    monkeypatch.setattr(scheduler, "retry_github_checks", retry)
+    with pytest.raises(RuntimeError, match="maintenance failed"):
+        await scheduler.run_scheduled_scans()
+    retry.assert_awaited_once_with()

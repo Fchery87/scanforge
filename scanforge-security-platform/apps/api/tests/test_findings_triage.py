@@ -117,7 +117,7 @@ async def test_update_triage_sets_assignee_and_due_date_and_records_event():
     )
 
     assert result is finding
-    assert finding.assignee_user_id == assignee_user_id
+    assert finding.assignee_user_id == str(assignee_user_id)
     assert finding.due_date == due_date
     event = db.add.call_args.args[0]
     assert isinstance(event, FindingEvent)
@@ -190,9 +190,13 @@ async def test_accept_risk_returns_none_when_user_cannot_access_finding():
 
 
 @pytest.mark.asyncio
-async def test_mark_not_observed_updates_absent_findings_only_with_complete_scanner_coverage():
-    seen = SimpleNamespace(id=uuid4(), canonical_fingerprint="seen", primary_scanner="trivy", status="open", metadata_json=None)
-    absent = SimpleNamespace(id=uuid4(), canonical_fingerprint="absent", primary_scanner="trivy", status="open", metadata_json=None)
+async def test_mark_not_observed_blocks_partial_scanner_coverage():
+    seen = SimpleNamespace(
+        id=uuid4(), canonical_fingerprint="seen", primary_scanner="trivy", status="open", metadata_json=None
+    )
+    absent = SimpleNamespace(
+        id=uuid4(), canonical_fingerprint="absent", primary_scanner="trivy", status="open", metadata_json=None
+    )
     failed_scanner = SimpleNamespace(
         id=uuid4(),
         canonical_fingerprint="failed",
@@ -205,6 +209,26 @@ async def test_mark_not_observed_updates_absent_findings_only_with_complete_scan
 
     service = FindingService(db)
     service._list_open_findings_for_repository = AsyncMock(return_value=[seen, absent, failed_scanner])
+
+    db.get.return_value = SimpleNamespace(
+        id="scan-1",
+        scan_type="full",
+        branch_name="refs/heads/main",
+        commit_sha="a" * 40,
+        summary_json={
+            "scanner_health": {
+                "expected": ["trivy", "gitleaks"],
+                "completed": ["trivy"],
+                "failed": ["gitleaks"],
+                "missing": [],
+                "complete": False,
+            },
+            "coverage_comparable": False,
+        },
+    )
+    db.execute.side_effect = [
+        Mock(scalars=Mock(return_value=Mock(all=Mock(return_value=["completed", "failed"]))),),
+    ]
 
     updated = await service.mark_not_observed_after_scan(
         repository_id="repo-1",
@@ -221,20 +245,16 @@ async def test_mark_not_observed_updates_absent_findings_only_with_complete_scan
         },
     )
 
-    assert updated == 1
+    assert updated == 0
     assert seen.status == "open"
-    assert absent.status == "not_observed"
+    assert absent.status == "open"
     assert failed_scanner.status == "open"
-    event = db.add.call_args.args[0]
-    assert isinstance(event, FindingEvent)
-    assert event.finding_id == absent.id
-    assert event.event_type == "marked_not_observed"
-    assert event.metadata_json == {"scan_id": "scan-1", "not_observed_count": 1}
-    db.commit.assert_awaited_once()
+    db.add.assert_not_called()
+    db.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_mark_not_observed_promotes_repeated_absence_to_fixed():
+async def test_mark_not_observed_requires_persisted_scan_context():
     finding = SimpleNamespace(
         id=uuid4(),
         canonical_fingerprint="absent",
@@ -248,6 +268,7 @@ async def test_mark_not_observed_promotes_repeated_absence_to_fixed():
     service = FindingService(db)
     service._list_open_findings_for_repository = AsyncMock(return_value=[finding])
 
+    db.get.return_value = None
     updated = await service.mark_not_observed_after_scan(
         repository_id="repo-1",
         scan_id="scan-2",
@@ -255,10 +276,7 @@ async def test_mark_not_observed_promotes_repeated_absence_to_fixed():
         scan_summary={"scanner_health": {"completed": ["trivy"]}},
     )
 
-    assert updated == 1
-    assert finding.status == "fixed"
-    assert finding.metadata_json["not_observed_count"] == 2
-    event = db.add.call_args.args[0]
-    assert event.event_type == "fixed"
-    assert event.metadata_json == {"scan_id": "scan-2", "not_observed_count": 2}
-    db.commit.assert_awaited_once()
+    assert updated == 0
+    assert finding.status == "not_observed"
+    db.add.assert_not_called()
+    db.commit.assert_not_awaited()

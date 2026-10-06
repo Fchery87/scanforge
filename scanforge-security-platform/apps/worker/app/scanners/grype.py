@@ -9,6 +9,33 @@ class GrypeAdapter(ScannerAdapter):
     name = "grype"
     binary_name = "grype"
     binary_env_var = "GRYPE_BINARY"
+    report_filename = "grype-results.json"
+
+    def runtime_arguments(self) -> tuple[str, ...]:
+        return (
+            "dir:/workspace/source",
+            "--quiet",
+            "--output",
+            "json",
+            "--file",
+            "/workspace/output/grype-results.json",
+        )
+
+    def parse_runtime_result(self, completed, output_directory: Path) -> ScannerResult:
+        return self._parse_report(
+            completed,
+            output_directory,
+            lambda report: (
+                isinstance(report, dict)
+                and isinstance(report.get("matches"), list)
+                and all(
+                    isinstance(item, dict)
+                    and isinstance(item.get("artifact"), dict)
+                    and isinstance(item.get("vulnerability"), dict)
+                    for item in report["matches"]
+                )
+            ),
+        )
 
     def run(self, repo_path: Path) -> ScannerResult:
         import time

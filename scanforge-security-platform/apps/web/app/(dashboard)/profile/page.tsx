@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { AlertCircle, Mail, User } from "lucide-react";
 
 import { api } from "@/lib/api";
+import type { User as ApiUser } from "@/lib/api-schemas";
 import { authClient } from "@/lib/auth/client";
 import { resolveProfileAuthState } from "@/lib/auth/profile-session";
 import { PageHeader } from "@/components/scanforge/page-header";
@@ -13,7 +14,7 @@ import { derivePageState } from "@/lib/page-surface/page-state";
 export default function ProfilePage() {
   const { data: session, isPending: isSessionPending } = authClient.useSession();
   const hasSession = Boolean(session);
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<ApiUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
