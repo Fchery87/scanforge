@@ -151,6 +151,13 @@ web-test:
 	cd apps/web && npm run test:node
 	cd apps/web && npm run test:vitest
 
+.PHONY: private-beta-gate private-beta-gate-local
+private-beta-gate:
+	python3 scripts/private_beta_gate.py --mode release $(GATE_ARGS)
+
+private-beta-gate-local:
+	python3 scripts/private_beta_gate.py --mode local $(GATE_ARGS)
+
 # ─── API ─────────────────────────────────────────────────────────────
 
 api-install:
