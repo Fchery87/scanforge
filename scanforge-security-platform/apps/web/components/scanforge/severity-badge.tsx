@@ -77,7 +77,7 @@ export function SeverityBadge({
   if (!config) {
     return (
       <span className={cn(
-        "inline-flex items-center gap-1.5 rounded-[6px] border border-border bg-surface-elevated font-mono font-medium uppercase tracking-[0.12em] text-text-secondary",
+        "inline-flex items-center gap-1.5 rounded-[6px] border border-border bg-surface-elevated font-mono font-medium text-text-secondary",
         size === "sm" ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs",
         className
       )}>
@@ -91,7 +91,7 @@ export function SeverityBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-[6px] border font-mono font-medium uppercase tracking-[0.12em] transition-all duration-200",
+        "inline-flex items-center gap-1.5 rounded-[6px] border font-mono font-medium",
         size === "sm" ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs",
         config.borderColor,
         config.bgColor,

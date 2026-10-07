@@ -64,7 +64,7 @@ export default function ScheduleSection({ orgId, projectId, repoId, repoName }: 
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h4 className="text-sm font-semibold font-display text-text-primary flex items-center gap-2">
+        <h4 className="text-sm text-text-tertiary flex items-center gap-2">
           <Calendar className="h-4 w-4" /> Schedules for {repoName}
         </h4>
         <Button variant="outline" size="sm" onClick={() => setShowCreate(true)}>
@@ -81,7 +81,7 @@ export default function ScheduleSection({ orgId, projectId, repoId, repoName }: 
           {schedules.map((sched) => (
             <div key={sched.id} className="flex items-center gap-3 rounded-lg border border-border bg-surface p-3">
               <button
-                className="text-text-tertiary hover:text-text-primary transition-colors"
+                className="text-text-tertiary hover-fine:text-text-primary transition-colors"
                 onClick={() => toggleActive(sched)}
                 title={sched.is_active ? "Disable" : "Enable"}
               >
@@ -128,16 +128,16 @@ export default function ScheduleSection({ orgId, projectId, repoId, repoName }: 
                 <SelectContent>
                   <SelectItem value="daily">Daily</SelectItem>
                   <SelectItem value="weekly">Weekly</SelectItem>
-                  <SelectItem value="on_push">On Push</SelectItem>
+                  <SelectItem value="on_push">On push</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Scan Type</Label>
+              <Label>Scan type</Label>
               <Select value={form.scan_type} onValueChange={(val) => setForm({ ...form, scan_type: val })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="full">Full Scan</SelectItem>
+                  <SelectItem value="full">Full</SelectItem>
                   <SelectItem value="dependencies">Dependencies</SelectItem>
                   <SelectItem value="secrets">Secrets</SelectItem>
                 </SelectContent>

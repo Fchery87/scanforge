@@ -131,13 +131,12 @@ export default function ScansPage() {
   return (
     <div>
       <PageHeader
-        eyebrow="Operations"
         title="Scans"
-        description={`${total} total scan runs with execution state, timing, and scanner coverage for this project.`}
+        description={`${total} scans for this project.`}
         actions={
           <Button onClick={() => setShowModal(true)}>
             <Plus className="h-4 w-4" />
-            Trigger Scan
+            Start scan
           </Button>
         }
       />
@@ -147,7 +146,7 @@ export default function ScansPage() {
       ) : listError ? (
         <EmptyState icon={Activity} title="Scans unavailable" description={listError} />
       ) : scans.length === 0 ? (
-        <EmptyState icon={Activity} title="No scans yet" description="Connect a repository and trigger your first scan." />
+        <EmptyState icon={Activity} title="No scans yet" description="Connect a repository, then start a scan." />
       ) : (
         <>
           {uniqueRepos.length > 1 && (
@@ -167,7 +166,7 @@ export default function ScansPage() {
             </div>
           )}
 
-          <div className="card-serif overflow-hidden">
+          <div className="divide-y divide-border border-y border-border">
             {filteredScans.map((scan) => {
               const phase = deriveScanPhase(scan);
               const isFailedOrStale = phase === "failed" || phase === "stale";
@@ -175,10 +174,8 @@ export default function ScansPage() {
                 <div
                   key={scan.id}
                   onClick={() => router.push(`/dashboard/${org_id}/projects/${project_id}/scans/${scan.id}`)}
-                  className={`flex cursor-pointer items-center justify-between gap-4 border-b border-border/60 px-4 py-4 transition-colors last:border-0 ${
-                    isFailedOrStale
-                      ? "hover:bg-danger/[0.03] border-l-2 border-l-danger/30 bg-danger/[0.02]"
-                      : "hover:bg-surface-hover/45"
+                  className={`flex cursor-pointer items-center justify-between gap-4 px-1 py-3 ${
+                    isFailedOrStale ? "bg-danger/[0.04]" : "hover-fine:bg-surface"
                   }`}
                 >
                   <div className="min-w-0 flex-1">
@@ -188,15 +185,15 @@ export default function ScansPage() {
                       <span className="text-xs text-text-tertiary">{scan.trigger_type}</span>
                       {phase === "stale" ? <Badge variant="danger">stale</Badge> : null}
                     </div>
-                    <p className="mt-2 text-sm text-text-secondary">
-                      {scan.branch_name ?? "default branch"} · created {formatRelativeTime(scan.created_at)}
+                    <p className="mt-1 text-sm text-text-secondary">
+                      {scan.repository_name || "Repository"} · {formatRelativeTime(scan.created_at)}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
                     {(scan.scanner_runs ?? []).slice(0, 3).map((run: any) => (
                       <Badge key={run.id} variant="outline">{run.scanner_name}</Badge>
                     ))}
-                    <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+                    <span className="font-mono text-xs text-text-tertiary">
                       {formatScanDuration(scan.summary_json ?? {})}
                     </span>
                     {canCancelScan(scan.status) ? (
@@ -244,8 +241,8 @@ export default function ScansPage() {
       <Dialog open={showModal} onOpenChange={setShowModal}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Trigger Scan</DialogTitle>
-            <DialogDescription>Start a new security scan for a connected repository.</DialogDescription>
+            <DialogTitle>Start scan</DialogTitle>
+            <DialogDescription>Pick a repository and start a scan.</DialogDescription>
           </DialogHeader>
           {error ? <p className="text-sm text-danger">{error}</p> : null}
           {reposError ? <p className="text-sm text-danger">{reposError}</p> : null}
@@ -270,19 +267,19 @@ export default function ScansPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Scan Type</Label>
+              <Label>Scan type</Label>
               <Select value={scanForm.scan_type} onValueChange={(val) => setScanForm({ ...scanForm, scan_type: val })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="full">Full Scan</SelectItem>
-                  <SelectItem value="dependencies">Dependencies Only</SelectItem>
-                  <SelectItem value="secrets">Secrets Only</SelectItem>
+                  <SelectItem value="full">Full</SelectItem>
+                  <SelectItem value="dependencies">Dependencies</SelectItem>
+                  <SelectItem value="secrets">Secrets</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="ghost" onClick={() => setShowModal(false)}>Cancel</Button>
-              <Button type="submit" disabled={submitting}>{submitting ? "Triggering…" : "Start Scan"}</Button>
+              <Button type="submit" disabled={submitting}>{submitting ? "Starting" : "Start scan"}</Button>
             </div>
           </form>
         </DialogContent>

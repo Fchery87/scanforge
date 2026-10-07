@@ -47,17 +47,14 @@ export function Breadcrumb({ orgName, projectName, className }: BreadcrumbProps)
   return (
     <nav className={cn("flex items-center gap-1 text-sm", className)}>
       {crumbs.map((crumb, idx) => (
-        <span key={idx} className="flex items-center gap-1">
-          {idx > 0 && <ChevronRight className="h-3.5 w-3.5 text-text-tertiary" />}
+        <span key={idx} className="flex min-w-0 items-center gap-1">
+          {idx > 0 && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-text-tertiary" />}
           {crumb.href && idx < crumbs.length - 1 ? (
-            <Link
-              href={crumb.href}
-              className="text-text-tertiary hover:text-text-primary transition-colors hover:underline"
-            >
+            <Link href={crumb.href} className="truncate text-text-tertiary hover-fine:text-text-primary">
               {crumb.label}
             </Link>
           ) : (
-            <span className={idx === crumbs.length - 1 ? "text-text-primary font-bold" : "text-text-tertiary"}>
+            <span className={idx === crumbs.length - 1 ? "truncate font-medium text-text-primary" : "truncate text-text-tertiary"}>
               {crumb.label}
             </span>
           )}

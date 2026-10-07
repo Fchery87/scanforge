@@ -23,11 +23,10 @@ export default async function AccountPage({
           <ScanForgeLogo className="h-5 w-5" />
         </div>
         <div>
-          <p className="section-title mb-1">Account</p>
-          <h1 className="font-display text-[2rem] leading-none tracking-[-0.04em] text-text-primary">Manage your account</h1>
+          <h1 className="text-2xl font-semibold text-text-primary">Account</h1>
         </div>
       </div>
-      <div className="card-serif p-6 md:p-8">
+      <div className="rounded-md border border-border p-6 md:p-8">
         <AccountViewClient path={path} />
       </div>
     </main>

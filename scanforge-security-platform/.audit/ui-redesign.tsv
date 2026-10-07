@@ -1,0 +1,8 @@
+ts	phase	decision	why	evidence	result
+2026-10-06T00:00:00Z	start	started the UI redesign run	no earlier rows exist in this log	apps/web	open
+2026-10-06T00:10:00Z	frame	framed done as an operator reaching open findings in one click, with the old editorial kit removed	the eight-item nav hid Findings until a project id was already in the URL	apps/web/lib/dashboard-navigation.ts	framed
+2026-10-06T00:20:00Z	nav	regrouped the nav into Work and Setup, and resolve the last project so findings stay reachable	a disabled Findings item on the org page was the broken loop	apps/web/lib/dashboard-navigation.test.ts	tests pass
+2026-10-06T00:30:00Z	theme	replaced the copper and serif theme with a field palette, one sans, and one signal color	the previous theme was the generic dark editorial kit	apps/web/lib/design-system.ts apps/web/app/globals.css	tests pass
+2026-10-06T00:40:00Z	pages	rewrote the org page and the project page so open critical and high findings are the first thing	stat cards and a risk gauge sat ahead of the work	apps/web/app/(dashboard)/dashboard/[org_id]/page.tsx	tsc clean
+2026-10-06T00:55:00Z	pages	restyled the remaining dashboard pages to lists and sentence case	display headlines and uppercase labels were still shipping	49 files, git diff --stat	76 tests, tsc clean
+2026-10-06T01:00:00Z	verify	confirmed sign-in in a browser and re-ran the suite myself	the dashboard needs an account, so the signed-in loop is unobserved	.audit/ui-signin-final.png	INCONCLUSIVE for the signed-in loop

@@ -73,7 +73,7 @@ export function FindingDrawer({ finding, onClose, onResolve, onSuppress, classNa
               <SeverityBadge severity={finding.severity} />
               <StatusBadge status={finding.status} showIcon={false} />
             </div>
-            <h2 id="finding-drawer-title" className="text-base font-semibold font-display text-text-primary leading-snug">
+            <h2 id="finding-drawer-title" className="text-base font-semibold text-text-primary leading-snug">
               {finding.title}
             </h2>
           </div>
@@ -101,7 +101,7 @@ export function FindingDrawer({ finding, onClose, onResolve, onSuppress, classNa
           <ScrollArea className="flex-1">
             <TabsContent value="details" className="p-5 space-y-4 mt-0">
               <div>
-                <h4 className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-2">Description</h4>
+                <h4 className="text-xs text-text-tertiary mb-2">Description</h4>
                 <p className="text-sm text-text-secondary leading-relaxed">
                   {finding.description || "No description available."}
                 </p>
@@ -111,21 +111,21 @@ export function FindingDrawer({ finding, onClose, onResolve, onSuppress, classNa
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <span className="text-xs font-semibold text-text-tertiary uppercase tracking-wider">Category</span>
+                  <span className="text-xs text-text-tertiary">Category</span>
                   <p className="text-sm text-text-primary capitalize mt-1">{finding.category?.replace(/_/g, " ")}</p>
                 </div>
                 <div>
-                  <span className="text-xs font-semibold text-text-tertiary uppercase tracking-wider">Scanner</span>
+                  <span className="text-xs text-text-tertiary">Scanner</span>
                   <p className="text-sm text-text-primary mt-1">{finding.scanner || "—"}</p>
                 </div>
                 <div>
-                  <span className="text-xs font-semibold text-text-tertiary uppercase tracking-wider">First Seen</span>
+                  <span className="text-xs text-text-tertiary">First seen</span>
                   <p className="text-sm text-text-primary mt-1 font-mono">
                     {finding.first_seen_at ? new Date(finding.first_seen_at).toLocaleString() : "—"}
                   </p>
                 </div>
                 <div>
-                  <span className="text-xs font-semibold text-text-tertiary uppercase tracking-wider">Last Seen</span>
+                  <span className="text-xs text-text-tertiary">Last seen</span>
                   <p className="text-sm text-text-primary mt-1 font-mono">
                     {finding.last_seen_at ? new Date(finding.last_seen_at).toLocaleString() : "—"}
                   </p>
@@ -136,7 +136,7 @@ export function FindingDrawer({ finding, onClose, onResolve, onSuppress, classNa
                 <>
                   <Separator />
                   <div>
-                    <h4 className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-2">Location</h4>
+                    <h4 className="text-xs text-text-tertiary mb-2">Location</h4>
                     <div className="flex items-center gap-2 rounded-lg bg-surface-elevated px-3 py-2">
                       <FileText className="h-4 w-4 text-text-tertiary flex-shrink-0" />
                       <span className="text-sm font-mono text-text-primary truncate">

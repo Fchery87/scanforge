@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { AlertCircle, Plus, Save, Settings, Shield, Trash2, Users } from "lucide-react";
+import { AlertCircle, Plus, Save, Trash2 } from "lucide-react";
 
 import { api } from "@/lib/api";
 import { normalizeGithubIntegrationState, type GithubIntegrationState } from "@/lib/page-surface/contracts";
@@ -195,20 +195,18 @@ function OrgSettingsContent() {
   return (
     <div>
       <PageHeader
-        eyebrow="Governance"
         title="Settings"
-        description="Manage organization identity, integrations, access, and destructive actions."
+        description="Name, people, GitHub, and the actions that delete this organization."
       />
 
       <div className="space-y-6">
-        <section className="card-serif p-6">
-          <div className="mb-4 flex items-center gap-2">
-            <Settings className="h-5 w-5 text-text-secondary" />
-            <h2 className="text-lg font-semibold font-display text-text-primary">General</h2>
+        <section className="rounded-md border border-border p-6">
+          <div className="mb-4">
+            <h2 className="text-base font-semibold text-text-primary">General</h2>
           </div>
           <form onSubmit={handleSave} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="org-name">Organization Name</Label>
+              <Label htmlFor="org-name">Name</Label>
               <Input id="org-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </div>
             <div className="space-y-2">
@@ -217,12 +215,12 @@ function OrgSettingsContent() {
             </div>
             {saveError ? <p className="text-sm text-danger">{saveError}</p> : null}
             <Button type="submit" disabled={saving}>
-              {saved ? <><Save className="h-4 w-4" /> Saved</> : "Save Changes"}
+              {saved ? <><Save className="h-4 w-4" /> Saved</> : "Save changes"}
             </Button>
           </form>
         </section>
 
-        <section className="card-serif p-6" id="integrations">
+        <section className="rounded-md border border-border p-6" id="integrations">
           <IntegrationStatusCard
             rawIntegration={githubLoading ? null : githubIntegration}
             onConnect={handleConnectGitHub}
@@ -232,11 +230,10 @@ function OrgSettingsContent() {
           />
         </section>
 
-        <section className="card-serif p-6">
+        <section className="rounded-md border border-border p-6">
           <div className="mb-4 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-text-secondary" />
-              <h2 className="text-lg font-semibold font-display text-text-primary">Members & Invitations</h2>
+            <div>
+              <h2 className="text-base font-semibold text-text-primary">Members</h2>
             </div>
             <Button size="sm" onClick={() => setShowInvite(true)}>
               <Plus className="h-4 w-4" />
@@ -268,7 +265,7 @@ function OrgSettingsContent() {
                     <SelectContent>
                       <SelectItem value="owner">Owner</SelectItem>
                       <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="security_reviewer">Security Reviewer</SelectItem>
+                      <SelectItem value="security_reviewer">Security reviewer</SelectItem>
                       <SelectItem value="developer">Developer</SelectItem>
                       <SelectItem value="viewer">Viewer</SelectItem>
                     </SelectContent>
@@ -282,10 +279,9 @@ function OrgSettingsContent() {
           </div>
         </section>
 
-        <section className="card-serif p-6">
-          <div className="mb-4 flex items-center gap-2">
-            <Shield className="h-5 w-5 text-text-secondary" />
-            <h2 className="text-lg font-semibold font-display text-text-primary">Security</h2>
+        <section className="rounded-md border border-border p-6">
+          <div className="mb-4">
+            <h2 className="text-base font-semibold text-text-primary">Security</h2>
           </div>
           <div className="flex items-start gap-3 rounded-[10px] border border-border bg-background p-4">
             <AlertCircle className="mt-0.5 h-4 w-4 text-text-secondary" />
@@ -295,22 +291,21 @@ function OrgSettingsContent() {
           </div>
         </section>
 
-        <section className="rounded-[12px] border border-danger/30 bg-danger/5 p-6">
-          <div className="mb-3 flex items-center gap-2">
-            <Shield className="h-5 w-5 text-danger" />
-            <h2 className="text-lg font-semibold font-display text-danger">Danger Zone</h2>
+        <section className="rounded-md border border-danger/30 p-6">
+          <div className="mb-3">
+            <h2 className="text-base font-semibold text-danger">Danger zone</h2>
           </div>
           <p className="mb-4 text-sm text-text-secondary">
             Permanently delete this organization and all of its projects, repositories, and findings. This action cannot be undone.
           </p>
-          <Button variant="destructive" onClick={handleDeleteOrg}>Delete Organization</Button>
+          <Button variant="destructive" onClick={handleDeleteOrg}>Delete organization</Button>
         </section>
       </div>
 
       <Dialog open={showInvite} onOpenChange={setShowInvite}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Invite Member</DialogTitle>
+            <DialogTitle>Invite member</DialogTitle>
             <DialogDescription>Send an invitation to join this organization.</DialogDescription>
           </DialogHeader>
           {inviteError ? <p className="text-sm text-danger">{inviteError}</p> : null}

@@ -36,7 +36,7 @@ export function ScanTimeline({ runs, scanStatus, className }: ScanTimelineProps)
         ? "Initializing scanner runs…"
         : "No scanner runs recorded.";
     return (
-      <div className={cn("card-serif px-4 py-8 text-sm text-text-tertiary text-center", className)}>
+      <div className={cn("border-y border-border px-4 py-8 text-sm text-text-tertiary text-center", className)}>
         <AlertCircle className="h-5 w-5 mx-auto mb-2 opacity-50" />
         {emptyMessage}
       </div>
@@ -44,18 +44,18 @@ export function ScanTimeline({ runs, scanStatus, className }: ScanTimelineProps)
   }
 
   return (
-    <div className={cn("space-y-3", className)}>
+    <div className={cn("divide-y divide-border border-y border-border", className)}>
       {runs.map((run, _idx) => {
         const statusInfo = getScannerRunStatus(run);
         return (
-          <div key={run.id} className="card-serif p-4">
+          <div key={run.id} className="py-3">
             <div className="flex items-center gap-3">
               {STATUS_ICONS[statusInfo.variant]}
               <span className="text-sm font-medium text-text-primary">{run.scanner_name}</span>
               {run.scanner_version && (
                 <span className="text-xs font-mono text-text-tertiary">v{run.scanner_version}</span>
               )}
-              <span className="ml-auto font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+              <span className="ml-auto font-mono text-xs text-text-tertiary">
                 {run.duration_ms ? `${(run.duration_ms / 1000).toFixed(1)}s` : "—"}
               </span>
             </div>

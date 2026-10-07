@@ -195,7 +195,7 @@ export default function FindingDrawer({
                   <SeverityBadge severity={finding.severity} />
                   <StatusBadge status={finding.status} showIcon={false} />
                 </div>
-                <h2 className="text-base font-semibold font-display text-text-primary leading-snug">
+                <h2 className="text-base font-semibold text-text-primary leading-snug">
                   {finding.title}
                 </h2>
                 <div className="flex items-center gap-3 mt-2 text-xs text-text-tertiary">
@@ -249,7 +249,7 @@ export default function FindingDrawer({
                 <TabsContent value="details" className="p-5 space-y-4 mt-0">
                   {finding.description && (
                     <div>
-                      <h4 className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-2">
+                      <h4 className="text-xs text-text-tertiary mb-2">
                         Description
                       </h4>
                       <p className="text-sm text-text-secondary leading-relaxed">
@@ -262,7 +262,7 @@ export default function FindingDrawer({
                     <>
                       <Separator />
                       <div>
-                        <h4 className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-2">
+                        <h4 className="text-xs text-text-tertiary mb-2">
                           Remediation
                         </h4>
                         <p className="text-sm text-text-secondary">
@@ -278,12 +278,12 @@ export default function FindingDrawer({
                   <Separator />
                   <div className="space-y-3">
                     <div>
-                      <h4 className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-2">
+                      <h4 className="text-xs text-text-tertiary mb-2">
                         Triage
                       </h4>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <label className="space-y-1.5">
-                          <span className="text-[11px] font-medium text-text-tertiary uppercase tracking-wider">
+                          <span className="text-xs text-text-tertiary">
                             Owner
                           </span>
                           <select
@@ -306,8 +306,8 @@ export default function FindingDrawer({
                         </label>
 
                         <label className="space-y-1.5">
-                          <span className="text-[11px] font-medium text-text-tertiary uppercase tracking-wider">
-                            Due Date
+                          <span className="text-xs text-text-tertiary">
+                            Due date
                           </span>
                           <Input
                             type="date"
@@ -338,7 +338,7 @@ export default function FindingDrawer({
                         onClick={handleSaveTriage}
                         disabled={savingTriage}
                       >
-                        {savingTriage ? "Saving…" : "Save Triage"}
+                        {savingTriage ? "Saving" : "Save"}
                       </Button>
                     </div>
                   </div>
@@ -347,13 +347,13 @@ export default function FindingDrawer({
                     <>
                       <Separator />
                       <div>
-                        <h4 className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-2">
+                        <h4 className="text-xs text-text-tertiary mb-2">
                           References
                         </h4>
                         <ul className="space-y-1.5">
                           {finding.references.map((ref: any) => (
                             <li key={ref.id} className="flex items-center gap-2 text-sm">
-                              <span className="text-[10px] uppercase font-semibold text-text-tertiary px-1.5 py-0.5 rounded bg-surface-elevated">
+                              <span className="text-xs text-text-tertiary px-1.5 py-0.5 rounded bg-surface-elevated">
                                 {ref.reference_type}
                               </span>
                               {ref.url ? (
@@ -383,7 +383,7 @@ export default function FindingDrawer({
                       <>
                         <Separator />
                         <div>
-                          <h4 className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-2">
+                          <h4 className="text-xs text-text-tertiary mb-2">
                             Metadata
                           </h4>
                           <pre className="text-xs font-mono text-text-secondary bg-surface-elevated rounded-lg p-3 overflow-x-auto">
@@ -395,7 +395,7 @@ export default function FindingDrawer({
 
                   <Separator />
                   <div>
-                    <h4 className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-2">
+                    <h4 className="text-xs text-text-tertiary mb-2">
                       Fingerprint
                     </h4>
                     <code className="text-xs font-mono text-text-tertiary">
@@ -517,7 +517,7 @@ export default function FindingDrawer({
                       onClick={() =>
                         onSelectFinding && onSelectFinding(f.id)
                       }
-                      className="w-full flex items-center gap-3 rounded-lg border border-border bg-surface-elevated p-3 text-left hover:bg-surface-hover transition-colors"
+                      className="w-full flex items-center gap-3 rounded-lg border border-border bg-surface-elevated p-3 text-left hover-fine:bg-surface-hover transition-colors"
                     >
                       <SeverityBadge severity={f.severity} showDot={false} />
                       <div className="flex-1 min-w-0">
@@ -567,7 +567,7 @@ export default function FindingDrawer({
                         }
                         className="flex-1 gap-1.5"
                       >
-                        <Shield className="h-4 w-4" /> Accept Risk
+                        <Shield className="h-4 w-4" /> Accept risk
                       </Button>
                       <Button
                         variant="outline"
@@ -591,7 +591,7 @@ export default function FindingDrawer({
                           : actionForm.action === "suppress"
                           ? "Suppress Finding"
                           : actionForm.action === "accept_risk"
-                          ? "Accept Risk"
+                          ? "Accept risk"
                           : "Mark Duplicate"}
                       </h5>
                       {actionForm.action === "resolve" && (

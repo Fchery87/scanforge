@@ -3,47 +3,55 @@ import assert from "node:assert/strict";
 
 import { buildDashboardNavigation } from "./dashboard-navigation.ts";
 
-test("keeps global workspace destinations available without an org context", () => {
+test("keeps work destinations present and closed until an org and project exist", () => {
   const navigation = buildDashboardNavigation("/dashboard");
 
   assert.deepEqual(
-    navigation.primary.map((item) => ({ label: item.label, disabled: item.disabled })),
+    navigation.work.map((item) => ({ label: item.label, disabled: item.disabled })),
     [
       { label: "Overview", disabled: false },
-      { label: "Organizations", disabled: false },
-      { label: "Findings", disabled: true },
+      { label: "Organization", disabled: false },
+      { label: "Open findings", disabled: true },
       { label: "Scans", disabled: true },
-      { label: "Repositories", disabled: true },
-      { label: "Exports", disabled: true },
-      { label: "Scorecard", disabled: true },
-      { label: "Suppressions", disabled: true },
     ]
   );
+  assert.deepEqual(navigation.setup, []);
 });
 
-test("enables project destinations when the route contains org and project context", () => {
-  const navigation = buildDashboardNavigation(
-    "/dashboard/acme/projects/platform/findings"
-  );
+test("opens the work loop from an org route when a project is already known", () => {
+  const navigation = buildDashboardNavigation("/dashboard/acme", "platform");
 
   assert.equal(navigation.context.orgId, "acme");
   assert.equal(navigation.context.projectId, "platform");
   assert.equal(
-    navigation.primary.find((item) => item.label === "Findings")?.href,
+    navigation.work.find((item) => item.label === "Open findings")?.href,
     "/dashboard/acme/projects/platform/findings"
   );
   assert.equal(
-    navigation.primary.find((item) => item.label === "Suppressions")?.disabled,
+    navigation.work.find((item) => item.label === "Open findings")?.disabled,
     false
   );
 });
 
-test("adds organization governance links when an org is selected", () => {
-  const navigation = buildDashboardNavigation("/dashboard/acme/settings");
+test("keeps the project in the URL ahead of a remembered project", () => {
+  const navigation = buildDashboardNavigation(
+    "/dashboard/acme/projects/live/findings",
+    "remembered"
+  );
+
+  assert.equal(navigation.context.projectId, "live");
+  assert.equal(
+    navigation.work.find((item) => item.label === "Scans")?.href,
+    "/dashboard/acme/projects/live/scans"
+  );
+});
+
+test("groups setup destinations separately from daily work", () => {
+  const navigation = buildDashboardNavigation("/dashboard/acme/settings", "platform");
 
   assert.deepEqual(
-    navigation.secondary.map((item) => item.label),
-    ["Audit Log", "Settings"]
+    navigation.setup.map((item) => item.label),
+    ["Repositories", "Suppressions", "Exports", "Audit log", "Settings"]
   );
-  assert.equal(navigation.secondary[0]?.href, "/dashboard/acme/audit-logs");
+  assert.equal(navigation.setup[3]?.href, "/dashboard/acme/audit-logs");
 });

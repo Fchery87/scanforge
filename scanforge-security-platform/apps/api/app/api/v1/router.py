@@ -10,6 +10,7 @@ from app.api.v1.routes import (
     internal,
     memberships,
     notifications,
+    onboarding,
     org_stats,
     organizations,
     projects,
@@ -33,6 +34,7 @@ api_router.include_router(memberships.router, prefix="/organizations", tags=["me
 api_router.include_router(org_stats.router, tags=["organizations"])
 api_router.include_router(audit_logs.router, tags=["audit"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
+api_router.include_router(onboarding.router, tags=["onboarding"])
 api_router.include_router(users.router, prefix="/users", tags=["users"])
 api_router.include_router(projects.router, prefix="/organizations/{org_id}/projects", tags=["projects"])
 api_router.include_router(

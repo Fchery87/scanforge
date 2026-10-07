@@ -39,7 +39,7 @@ export function FilterBar({
   const activeFilterCount = filters.filter((f) => f.value).length + (searchValue ? 1 : 0);
 
   return (
-    <div className={cn("card-serif p-4", className)}>
+    <div className={cn("rounded-md border border-border p-4", className)}>
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[220px] max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-tertiary" />

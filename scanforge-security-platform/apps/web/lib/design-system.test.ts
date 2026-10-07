@@ -9,7 +9,7 @@ import {
   scanForgeTokens,
 } from "./design-system.ts";
 
-test("defines the editorial-industrial surface palette for the app shell", () => {
+test("defines the field palette used by the operator shell", () => {
   assert.deepEqual(
     {
       canvas: scanForgeTokens.canvas,
@@ -17,43 +17,43 @@ test("defines the editorial-industrial surface palette for the app shell", () =>
       elevated: scanForgeTokens.elevated,
       border: scanForgeTokens.border,
       primaryText: scanForgeTokens.textPrimary,
-      accent: scanForgeTokens.brandPrimary,
+      signal: scanForgeTokens.brandPrimary,
     },
     {
-      canvas: "#141414",
-      panel: "#22211f",
-      elevated: "#1b1b1a",
-      border: "#3a3631",
-      primaryText: "#f3eee7",
-      accent: "#b66a2c",
+      canvas: "#101210",
+      panel: "#1c221e",
+      elevated: "#171b18",
+      border: "#2a332c",
+      primaryText: "#e7eee6",
+      signal: "#d45a38",
     }
   );
 });
 
-test("keeps the body shell classes aligned with the new visual direction", () => {
+test("keeps the body classes on the document without decorative overlays", () => {
   assert.match(scanForgeBodyClassName, /\bmin-h-screen\b/);
   assert.match(scanForgeBodyClassName, /\bbg-background\b/);
   assert.match(scanForgeBodyClassName, /\btext-text-primary\b/);
-  assert.match(scanForgeBodyClassName, /\bscanforge-noise\b/);
-  assert.match(scanForgeBodyClassName, /\bscanforge-vignette\b/);
+  assert.doesNotMatch(scanForgeBodyClassName, /scanforge-noise/);
+  assert.doesNotMatch(scanForgeBodyClassName, /scanforge-vignette/);
 });
 
-test("exposes shared motion and radius tokens for page-level reuse", () => {
+test("exposes short motion and tight radii for controls", () => {
   assert.deepEqual(scanForgeMotion, {
-    fast: "160ms",
-    base: "220ms",
-    slow: "320ms",
-    ease: "cubic-bezier(0.22, 1, 0.36, 1)",
+    fast: "120ms",
+    base: "160ms",
+    slow: "220ms",
+    ease: "cubic-bezier(0.2, 0, 0, 1)",
   });
 
   assert.deepEqual(scanForgeRadii, {
     sm: "4px",
-    md: "8px",
-    lg: "12px",
-    xl: "18px",
+    md: "6px",
+    lg: "8px",
+    xl: "10px",
   });
 });
 
-test("sets a theme color that matches the darker application canvas", () => {
-  assert.equal(scanForgeMetaThemeColor, "#141414");
+test("sets the theme color to the field canvas", () => {
+  assert.equal(scanForgeMetaThemeColor, "#101210");
 });

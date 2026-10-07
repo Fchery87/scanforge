@@ -7,12 +7,10 @@ import { Building2, Plus, Search, Settings } from "lucide-react";
 
 import { api } from "@/lib/api";
 import { getSlugAdjustmentNotice, getSlugPreviewMessage } from "@/lib/organizations/slug-feedback";
-import { deriveRiskGrade } from "@/lib/scanforge-ui";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/scanforge/empty-state";
 import { PageHeader } from "@/components/scanforge/page-header";
 import { SkeletonCards } from "@/components/scanforge/loading-skeleton";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -126,13 +124,12 @@ export default function OrganizationsPage() {
   return (
     <div>
       <PageHeader
-        eyebrow="Workspace"
         title="Organizations"
-        description="Manage the workspaces that hold projects, repositories, findings, and governance settings."
+        description="The organizations you can open. Each one holds projects and the findings inside them."
         actions={
           <Button onClick={() => setShowCreate(true)}>
             <Plus className="h-4 w-4" />
-            New Organization
+            New organization
           </Button>
         }
       />
@@ -144,7 +141,7 @@ export default function OrganizationsPage() {
       ) : null}
 
       {orgs.length > 0 ? (
-        <div className="card-serif mb-6 p-4">
+        <div className="mb-6">
           <div className="relative max-w-md">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary" />
             <Input
@@ -160,12 +157,12 @@ export default function OrganizationsPage() {
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create Organization</DialogTitle>
-            <DialogDescription>Add a new team workspace.</DialogDescription>
+            <DialogTitle>New organization</DialogTitle>
+            <DialogDescription>A name and a slug. The slug is the URL.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreate} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="org-name">Organization Name</Label>
+              <Label htmlFor="org-name">Name</Label>
               <Input
                 id="org-name"
                 value={form.name}
@@ -229,106 +226,58 @@ export default function OrganizationsPage() {
         <EmptyState
           icon={Building2}
           title="No organizations found"
-          description="Try a different search term or create a new workspace."
+          description="Try a different search term."
         />
       ) : filteredOrgs.length === 0 ? (
         <EmptyState
           icon={Building2}
           title="No organizations yet"
-          description="Create your first organization to start structuring projects and connecting repositories."
+          description="Create an organization, then add a project and a repository."
           action={
             <Button onClick={() => setShowCreate(true)}>
               <Plus className="h-4 w-4" />
-              Create Organization
+              New organization
             </Button>
           }
         />
       ) : (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {filteredOrgs.map((org, index) => {
+        <ul className="divide-y divide-border border-y border-border">
+          {filteredOrgs.map((org) => {
             const stats = orgStats[org.id];
-            const grade = deriveRiskGrade(stats);
+            const open = stats?.open_findings;
 
             return (
-              <Link
-                key={org.id}
-                href={`/dashboard/${org.id}`}
-                className="card-serif card-interactive animate-fade-up group relative flex min-h-[210px] flex-col justify-between p-6"
-                style={{ animationDelay: `${index * 80}ms` }}
-              >
-                <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
-
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0 flex-1">
-                    <p className="section-title mb-3">Organization</p>
-                    <div className="mb-2 flex items-center gap-2">
-                      <h2 className="truncate font-display text-[1.45rem] font-semibold tracking-[-0.03em] text-text-primary">
-                        {org.name}
-                      </h2>
-                      {grade ? (
-                        <span
-                          className={cn(
-                            "inline-flex h-7 min-w-[2rem] items-center justify-center rounded-[6px] border px-2 font-mono text-[11px] font-semibold uppercase tracking-[0.12em]",
-                            grade.startsWith("A")
-                              ? "border-success/30 bg-success/10 text-success"
-                              : grade === "B"
-                                ? "border-primary/30 bg-primary/10 text-primary"
-                                : grade === "C"
-                                  ? "border-warning/30 bg-warning/10 text-warning"
-                                  : "border-danger/30 bg-danger/10 text-danger"
-                          )}
-                        >
-                          {grade}
-                        </span>
-                      ) : null}
-                    </div>
-                    <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-tertiary">
-                      {org.slug}
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    aria-label={`Settings for ${org.name}`}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      router.push(`/dashboard/${org.id}/settings`);
-                    }}
-                    className="flex h-10 w-10 items-center justify-center rounded-[10px] border border-border bg-background text-text-secondary transition-colors hover:border-border-strong hover:text-text-primary"
-                  >
-                    <Settings className="h-4 w-4" />
-                  </button>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-[10px] border border-border bg-background px-4 py-3">
-                      <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">Projects</p>
-                      <p className="mt-2 font-display text-[1.6rem] leading-none text-text-primary">
-                        {stats?.project_count ?? 0}
-                      </p>
-                    </div>
-                    <div className="rounded-[10px] border border-border bg-background px-4 py-3">
-                      <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">Open Findings</p>
-                      <p className="mt-2 font-display text-[1.6rem] leading-none text-text-primary">
-                        {stats?.open_findings ?? 0}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between border-t border-border pt-4">
-                    <Badge variant="outline" className="rounded-[6px] px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.12em]">
-                      <Building2 className="h-3.5 w-3.5" />
-                      Workspace
-                    </Badge>
-                    <span className="text-sm font-medium text-primary">Open workspace</span>
-                  </div>
-                </div>
-              </Link>
+              <li key={org.id}>
+                <Link
+                  href={`/dashboard/${org.id}`}
+                  className="flex items-baseline justify-between gap-4 py-3 hover-fine:bg-surface"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm text-text-primary">{org.name}</span>
+                    <span className="block truncate text-xs text-text-tertiary">{org.slug}</span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-3">
+                    <span className={open > 0 ? "font-mono text-sm text-primary" : "font-mono text-sm text-text-tertiary"}>
+                      {stats === undefined ? "" : open ?? "—"}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`Settings for ${org.name}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        router.push(`/dashboard/${org.id}/settings`);
+                      }}
+                      className="text-text-tertiary hover-fine:text-text-primary"
+                    >
+                      <Settings className="h-4 w-4" />
+                    </button>
+                  </span>
+                </Link>
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
     </div>
   );

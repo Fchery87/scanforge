@@ -39,7 +39,7 @@ export function MobileFilterSheet({
           <h3 className="text-lg font-semibold font-display text-text-primary">{title}</h3>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-surface-hover rounded-lg transition-colors touch-target"
+            className="p-2 hover-fine:bg-surface-hover rounded-lg transition-colors touch-target"
           >
             <X className="h-5 w-5 text-text-secondary" />
           </button>

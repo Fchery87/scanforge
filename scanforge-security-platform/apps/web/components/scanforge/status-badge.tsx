@@ -28,7 +28,7 @@ export function StatusBadge({ status, className, showIcon = true }: StatusBadgeP
   const config = STATUS_CONFIG[meta.key as Status];
   if (!config) {
     return (
-      <span className={cn("inline-flex items-center gap-1.5 rounded-[6px] border border-border bg-surface-elevated px-2.5 py-1 font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-text-secondary", className)}>
+      <span className={cn("inline-flex items-center gap-1.5 rounded-[6px] border border-border bg-surface-elevated px-2.5 py-1 font-mono text-[11px] font-medium text-text-secondary", className)}>
         {meta.label}
       </span>
     );
@@ -40,7 +40,7 @@ export function StatusBadge({ status, className, showIcon = true }: StatusBadgeP
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-[6px] border px-2.5 py-1 font-mono text-[11px] font-medium uppercase tracking-[0.12em]",
+        "inline-flex items-center gap-1.5 rounded-[6px] border px-2.5 py-1 font-mono text-[11px] font-medium",
         config.borderColor,
         config.bgColor,
         config.color,

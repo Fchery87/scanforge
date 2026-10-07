@@ -26,10 +26,10 @@ export function IntegrationStatusCard({
   const health = getIntegrationHealth(rawIntegration);
 
   return (
-    <div className={cn("card-serif p-6", className)}>
+    <div className={cn("rounded-md border border-border p-6", className)}>
       <div className="mb-4 flex items-center gap-2">
         <Github className="h-5 w-5 text-text-secondary" />
-        <h2 className="text-lg font-semibold font-display text-text-primary">Integrations</h2>
+        <h2 className="text-base font-semibold text-text-primary">Integrations</h2>
       </div>
       {message && (
         <p className={cn("mb-3 text-sm", message.type === "success" ? "text-success" : "text-danger")}>

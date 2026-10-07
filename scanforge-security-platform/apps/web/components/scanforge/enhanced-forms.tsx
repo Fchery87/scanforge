@@ -101,17 +101,17 @@ export function LoadingButton({
     ],
     variant === "secondary" && [
       "bg-surface-elevated text-text-primary border border-border",
-      "hover:bg-surface-hover",
+      "hover-fine:bg-surface-hover",
       "focus:ring-border-strong/50"
     ],
     variant === "outline" && [
       "bg-transparent text-text-primary border border-border",
-      "hover:bg-surface-hover",
+      "hover-fine:bg-surface-hover",
       "focus:ring-border-strong/50"
     ],
     variant === "ghost" && [
       "bg-transparent text-text-secondary",
-      "hover:bg-surface-hover hover:text-text-primary",
+      "hover-fine:bg-surface-hover hover-fine:text-text-primary",
       "focus:ring-border-strong/50"
     ],
     variant === "danger" && [

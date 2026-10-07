@@ -1,0 +1,5 @@
+ts	phase	decision	why	evidence	result
+2026-10-06T00:00:00Z	start	started the private-beta release commit from the investigation	the operator asked to follow the strongest recommendation at full confidence	session investigation of docs/plans/2026-09-13-evidence-first-readiness-plan.md	predicate open
+2026-10-06T23:31:46Z	release-sha	committed the dirty private-beta tree and opened PR 27	the release gate rejects an uncommitted SHA	commit f10a290 PR 27	predicate moved, CI pending
+2026-10-06T23:37:25Z	ci	aborted the rebase onto main after a large conflict set	both pull requests on f10a290 produced no Actions run, and guessing 70 file resolutions would change the scan contract	commit f10a290 PR 27	predicate not met
+2026-10-07T00:31:38Z	local-proof	migration rehearsal and postgres completion and local redis recovery passed	these are disposable local proofs and do not approve hosted release	scripts/rehearse_migrations.sh scripts/rehearse_queue_recovery.sh test_r04_postgres_completion_red.py	local pass, release still blocked

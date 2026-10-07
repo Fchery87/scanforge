@@ -5,17 +5,14 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowRight,
-  BarChart3,
   Building2,
   CheckCircle2,
-  FileSearch,
   FolderKanban,
   Github,
   GitBranch,
+  FileSearch,
   Scan,
-  Settings,
   Shield,
-  Users,
   X,
 } from "lucide-react";
 
@@ -29,7 +26,6 @@ import { Input } from "@/components/ui/input";
 import { OnboardingNextActions } from "@/components/scanforge/onboarding-next-actions";
 import { Progress } from "@/components/ui/progress";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 interface OnboardingStep {
   id: string;
@@ -103,9 +99,7 @@ function OnboardingContent() {
   useEffect(() => {
     async function loadChecklist() {
       try {
-        const res = await fetch(`${API_BASE}/api/v1/onboarding?org_id=${orgId || ""}`, { credentials: "include" });
-        if (res.ok) setChecklist(await res.json());
-        else setChecklist(null);
+        setChecklist(await api.onboarding.get(orgId));
       } catch {
         setChecklist(null);
       } finally {
@@ -186,15 +180,14 @@ function OnboardingContent() {
             <Shield size={26} />
           </div>
           <div>
-            <p className="section-title mb-2">Onboarding</p>
-            <h1 className="font-display text-[2.2rem] leading-none tracking-[-0.04em] text-text-primary">Welcome to ScanForge</h1>
+            <h1 className="text-2xl font-semibold text-text-primary">Set up ScanForge</h1>
             <p className="mt-3 max-w-[52ch] text-sm leading-relaxed text-text-secondary">
-              Complete the setup steps below to connect your workspace, onboard repositories, and get to your first findings review.
+              Create an organization, connect GitHub, and open the first findings.
             </p>
           </div>
         </div>
         <button
-          className="flex h-10 w-10 items-center justify-center rounded-[10px] border border-border bg-surface text-text-tertiary transition-colors hover:text-text-primary"
+          className="flex h-10 w-10 items-center justify-center rounded-[10px] border border-border bg-surface text-text-tertiary transition-colors hover-fine:text-text-primary"
           onClick={handleDismiss}
           title="Dismiss"
         >
@@ -202,13 +195,13 @@ function OnboardingContent() {
         </button>
       </div>
 
-      <div className="card-serif mb-6 p-6">
+      <div className="mb-6 rounded-md border border-border p-6">
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm font-medium text-text-primary">Progress</span>
           <span className="text-sm text-text-secondary">{summary.completed} / {summary.total} completed</span>
         </div>
         <Progress value={summary.percentage} className="h-2" />
-        <p className="mt-2 text-right font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">{summary.percentage}% complete</p>
+        <p className="mt-2 text-right text-xs text-text-tertiary">{summary.percentage}% complete</p>
       </div>
 
       {githubConnected ? (
@@ -228,8 +221,8 @@ function OnboardingContent() {
           <div
             key={step.id}
             className={cn(
-              "card-serif p-5 transition-colors",
-              step.completed ? "border-success/25 bg-success/[0.04]" : "hover:bg-surface-elevated"
+              "rounded-md border border-border p-5",
+              step.completed ? "border-success/25 bg-success/[0.04]" : "hover-fine:bg-surface-elevated"
             )}
           >
             <div className="flex items-start gap-4">
@@ -315,49 +308,39 @@ function OnboardingContent() {
       </div>
 
       <div className="mt-8 flex items-center justify-between">
-        <Link href="/dashboard" className="text-sm text-text-secondary hover:text-text-primary">
-          Back to Dashboard
+        <Link href="/dashboard" className="text-sm text-text-secondary hover-fine:text-text-primary">
+          Back to dashboard
         </Link>
         {orgId ? (
           <Link href={`/dashboard/${orgId}`} className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline">
-            Go to Organization <ArrowRight size={16} />
+            Open organization <ArrowRight size={16} />
           </Link>
         ) : null}
       </div>
 
       {summary.isComplete ? (
         <div className="mt-10">
-          <h3 className="mb-4 font-display text-lg text-text-primary">What's Next?</h3>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Link href={`/dashboard/${orgId}/scorecard`} className="card-serif card-interactive flex items-start gap-3 p-4">
-              <BarChart3 size={20} className="mt-0.5 shrink-0 text-primary" />
-              <div>
-                <strong className="block text-sm text-text-primary">Security Scorecard</strong>
-                <span className="text-xs text-text-tertiary">Review your organization's security posture.</span>
-              </div>
-            </Link>
-            <Link href={`/dashboard/${orgId}/settings`} className="card-serif card-interactive flex items-start gap-3 p-4">
-              <Users size={20} className="mt-0.5 shrink-0 text-primary" />
-              <div>
-                <strong className="block text-sm text-text-primary">Invite Team Members</strong>
-                <span className="text-xs text-text-tertiary">Add collaborators to your organization.</span>
-              </div>
-            </Link>
-            <Link href={`/dashboard/${orgId}/audit-logs`} className="card-serif card-interactive flex items-start gap-3 p-4">
-              <FileSearch size={20} className="mt-0.5 shrink-0 text-primary" />
-              <div>
-                <strong className="block text-sm text-text-primary">Audit Logs</strong>
-                <span className="text-xs text-text-tertiary">Track all activity in your organization.</span>
-              </div>
-            </Link>
-            <Link href={`/dashboard/${orgId}/settings`} className="card-serif card-interactive flex items-start gap-3 p-4">
-              <Settings size={20} className="mt-0.5 shrink-0 text-primary" />
-              <div>
-                <strong className="block text-sm text-text-primary">Configure Notifications</strong>
-                <span className="text-xs text-text-tertiary">Set up alerts and team access patterns.</span>
-              </div>
-            </Link>
-          </div>
+          <h3 className="mb-1 text-sm text-text-tertiary">Next</h3>
+          <ul className="divide-y divide-border border-y border-border">
+            <li>
+              <Link href={`/dashboard/${orgId}/scorecard`} className="flex items-baseline justify-between gap-4 py-3 hover-fine:bg-surface">
+                <span className="text-sm text-text-primary">Scorecard</span>
+                <span className="text-xs text-text-tertiary">Grades for each project</span>
+              </Link>
+            </li>
+            <li>
+              <Link href={`/dashboard/${orgId}/settings`} className="flex items-baseline justify-between gap-4 py-3 hover-fine:bg-surface">
+                <span className="text-sm text-text-primary">Invite people</span>
+                <span className="text-xs text-text-tertiary">Add someone to the organization</span>
+              </Link>
+            </li>
+            <li>
+              <Link href={`/dashboard/${orgId}/audit-logs`} className="flex items-baseline justify-between gap-4 py-3 hover-fine:bg-surface">
+                <span className="text-sm text-text-primary">Audit log</span>
+                <span className="text-xs text-text-tertiary">What happened in the organization</span>
+              </Link>
+            </li>
+          </ul>
         </div>
       ) : (
         <OnboardingNextActions actions={nextActions} />

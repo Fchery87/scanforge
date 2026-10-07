@@ -111,13 +111,12 @@ export default function SuppressionsPage() {
   return (
     <div>
       <PageHeader
-        eyebrow="Governance"
-        title="Suppression Rules"
-        description="Manage rules that intentionally suppress classes of findings at project or organization scope."
+        title="Suppression rules"
+        description="Rules that hide matching findings for this project or the whole organization."
         actions={
           <Button onClick={() => setShowCreate(true)}>
             <Plus className="h-4 w-4" />
-            Create Rule
+            New rule
           </Button>
         }
       />
@@ -125,19 +124,19 @@ export default function SuppressionsPage() {
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create Suppression Rule</DialogTitle>
-            <DialogDescription>Define a rule to suppress matching findings.</DialogDescription>
+            <DialogTitle>New suppression rule</DialogTitle>
+            <DialogDescription>Findings that match stay hidden until the rule expires or you turn it off.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreate} className="space-y-4">
             <div className="space-y-2">
-              <Label>Rule Type</Label>
+              <Label>Rule type</Label>
               <Select value={form.rule_type} onValueChange={(val) => setForm({ ...form, rule_type: val, match_key: val === "category" ? "category" : "severity" })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>{RULE_TYPES.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Match On</Label>
+              <Label>Match on</Label>
               <Select value={form.match_key} onValueChange={(val) => setForm({ ...form, match_key: val })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -148,7 +147,7 @@ export default function SuppressionsPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Match Value</Label>
+              <Label>Match value</Label>
               {form.match_key === "severity" ? (
                 <Select value={form.match_value} onValueChange={(val) => setForm({ ...form, match_value: val })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -171,7 +170,7 @@ export default function SuppressionsPage() {
             />
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="ghost" onClick={() => setShowCreate(false)}>Cancel</Button>
-              <Button type="submit" disabled={creating || !form.reason}>{creating ? "Creating..." : "Create Rule"}</Button>
+              <Button type="submit" disabled={creating || !form.reason}>{creating ? "Creating" : "Create rule"}</Button>
             </div>
           </form>
         </DialogContent>
@@ -182,15 +181,15 @@ export default function SuppressionsPage() {
       ) : rules.length === 0 ? (
         <EmptyState icon={Shield} title="No suppression rules" description="Create rules to suppress findings across your organization." />
       ) : (
-        <div className="space-y-3">
+        <div className="divide-y divide-border border-y border-border">
           {sortedRules.map((rule) => {
             const scope = describeSuppressionScope(rule);
             const expiry = formatExpiryDisplay(rule.expires_at);
             const summary = formatRuleSummary(rule);
             const needsApproval = requiresApproval(rule);
             return (
-              <div key={rule.id} className="card-serif flex items-center gap-4 p-4">
-                <button className="text-text-tertiary transition-colors hover:text-text-primary" onClick={() => toggleActive(rule)}>
+              <div key={rule.id} className="flex items-center gap-4 py-3">
+                <button className="text-text-tertiary transition-colors hover-fine:text-text-primary" onClick={() => toggleActive(rule)}>
                   {rule.is_active ? <ToggleRight className="h-6 w-6 text-success" /> : <ToggleLeft className="h-6 w-6" />}
                 </button>
                 <div className="min-w-0 flex-1">
@@ -206,7 +205,7 @@ export default function SuppressionsPage() {
                       <Badge variant="outline" className="text-xs">Inactive</Badge>
                     )}
                     {needsApproval && (
-                      <Badge variant="warning" className="text-xs">Needs Approval</Badge>
+                      <Badge variant="warning" className="text-xs">Needs approval</Badge>
                     )}
                   </div>
                   <p className="text-sm text-text-secondary">{summary}</p>

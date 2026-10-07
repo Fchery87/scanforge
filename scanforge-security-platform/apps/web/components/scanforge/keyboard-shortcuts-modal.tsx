@@ -61,7 +61,7 @@ export function KeyboardShortcutsModal() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors text-xs font-mono font-bold"
+        className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface text-text-secondary hover-fine:bg-surface-hover hover-fine:text-text-primary transition-colors text-xs font-mono font-bold"
         aria-label="Keyboard shortcuts"
       >
         ?
@@ -69,12 +69,12 @@ export function KeyboardShortcutsModal() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Keyboard Shortcuts</DialogTitle>
+            <DialogTitle>Keyboard shortcuts</DialogTitle>
           </DialogHeader>
           <div className="space-y-5 pt-2">
             {SHORTCUTS.map((group) => (
               <div key={group.category}>
-                <h3 className="text-[10px] font-semibold text-text-tertiary uppercase tracking-widest mb-2">
+                <h3 className="text-xs text-text-tertiary mb-2">
                   {group.category}
                 </h3>
                 <div className="space-y-1">

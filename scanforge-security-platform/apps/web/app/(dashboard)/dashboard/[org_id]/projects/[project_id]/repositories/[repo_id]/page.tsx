@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, ArrowLeft, Database, ExternalLink, GitBranch, Unlink } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Database, ExternalLink, Unlink } from "lucide-react";
 
 import { api } from "@/lib/api";
 import { formatRelativeTime } from "@/lib/project-surface";
@@ -65,13 +65,12 @@ export default function RepoDetailPage() {
     <div>
       <Button variant="ghost" className="mb-4 gap-2" onClick={() => router.back()}>
         <ArrowLeft className="h-4 w-4" />
-        Back to Repositories
+        Back to repositories
       </Button>
 
       <PageHeader
-        eyebrow="Repository"
         title={repo.full_name}
-        description="Inspect scan history, findings volume, scheduling, and repository-level health for this codebase."
+        description="Open findings first, then the scans that produced them."
         actions={
           repo.html_url ? (
             <a href={repo.html_url} target="_blank" rel="noopener noreferrer">
@@ -84,35 +83,32 @@ export default function RepoDetailPage() {
         }
       />
 
-      <div className="mb-8 grid gap-4 md:grid-cols-4">
-        <div className="card-serif p-4">
-          <p className="section-title">Provider</p>
-          <p className="mt-3 text-sm text-text-primary">{repo.provider}</p>
-        </div>
-        <div className="card-serif p-4">
-          <p className="section-title">Default Branch</p>
-          <p className="mt-3 inline-flex items-center gap-2 text-sm text-text-primary">
-            <GitBranch className="h-4 w-4 text-text-tertiary" />
-            {repo.default_branch ?? "main"}
+      <div className="mb-8 grid grid-cols-2 gap-px overflow-hidden rounded-md border border-border bg-border md:grid-cols-4">
+        <div className="bg-background px-4 py-4">
+          <p className="text-xs text-text-tertiary">Open findings</p>
+          <p className={`mt-1 font-mono text-[1.7rem] leading-none ${(repoStats?.open ?? 0) > 0 && !repoStatsUnavailable ? "text-primary" : "text-text-primary"}`}>
+            {repoStatsUnavailable ? "—" : repoStats?.open ?? 0}
           </p>
         </div>
-        <div className="card-serif p-4">
-          <p className="section-title">Open Findings</p>
-          <p className="mt-3 font-display text-[1.8rem] leading-none text-text-primary">
-            {repoStatsUnavailable ? "N/A" : repoStats?.open ?? 0}
+        <div className="bg-background px-4 py-4">
+          <p className="text-xs text-text-tertiary">Last scan</p>
+          <p className="mt-1 text-sm text-text-primary">
+            {scans[0]?.created_at ? formatRelativeTime(scans[0].created_at) : "None yet"}
           </p>
         </div>
-        <div className="card-serif p-4">
-          <p className="section-title">Recent Activity</p>
-          <p className="mt-3 text-sm text-text-primary">
-            {scans[0]?.created_at ? formatRelativeTime(scans[0].created_at) : "No scans yet"}
-          </p>
+        <div className="bg-background px-4 py-4">
+          <p className="text-xs text-text-tertiary">Default branch</p>
+          <p className="mt-1 text-sm text-text-primary">{repo.default_branch ?? "main"}</p>
+        </div>
+        <div className="bg-background px-4 py-4">
+          <p className="text-xs text-text-tertiary">Provider</p>
+          <p className="mt-1 text-sm text-text-primary">{repo.provider}</p>
         </div>
       </div>
 
       <div className="mb-6">
-        <Link href={`/dashboard/${org_id}/projects/${project_id}/findings?repositoryId=${repo_id}`} className="text-sm text-primary hover:underline">
-          View filtered findings for this repository →
+        <Link href={`/dashboard/${org_id}/projects/${project_id}/findings?repositoryId=${repo_id}`} className="text-sm text-text-secondary hover-fine:text-text-primary">
+          Findings in this repository
         </Link>
       </div>
 
@@ -124,27 +120,27 @@ export default function RepoDetailPage() {
 
       <div className="mb-8">
         <div className="mb-3 flex items-center justify-between">
-          <p className="section-title">Scan History</p>
+          <h2 className="text-sm text-text-tertiary">Scan history</h2>
           <Badge variant="outline">{scans.length} recorded</Badge>
         </div>
         {scans.length === 0 ? (
           <EmptyState icon={Database} title="No scans recorded" description="Trigger a scan to begin repository-level monitoring." />
         ) : (
-          <div className="space-y-3">
+          <ul className="divide-y divide-border border-y border-border">
             {scans.slice(0, 10).map((scan) => (
-              <Link
-                key={scan.id}
-                href={`/dashboard/${org_id}/projects/${project_id}/scans/${scan.id}`}
-                className="card-serif card-interactive flex items-center gap-4 p-4"
-              >
-                <StatusBadge status={scan.status} />
-                <code className="font-mono text-sm text-text-primary">{scan.id.slice(0, 8)}</code>
-                <span className="flex-1 text-sm text-text-secondary">
-                  {scan.trigger_type} · {scan.branch_name ?? "default"} · {new Date(scan.created_at).toLocaleDateString()}
-                </span>
-              </Link>
+              <li key={scan.id}>
+                <Link
+                  href={`/dashboard/${org_id}/projects/${project_id}/scans/${scan.id}`}
+                  className="flex items-center gap-4 py-3 hover-fine:bg-surface"
+                >
+                  <StatusBadge status={scan.status} />
+                  <span className="flex-1 text-sm text-text-secondary">
+                    {scan.branch_name ?? "default"} · {formatRelativeTime(scan.created_at)}
+                  </span>
+                </Link>
+              </li>
             ))}
-          </div>
+          </ul>
         )}
       </div>
 
@@ -156,13 +152,13 @@ export default function RepoDetailPage() {
         <div className="flex items-start gap-3">
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-danger" />
           <div>
-            <p className="text-sm font-semibold text-danger">Danger Zone</p>
+            <p className="text-sm font-semibold text-danger">Danger zone</p>
             <p className="mt-1 text-sm text-text-secondary">
               Disconnecting will stop future scans but preserve existing findings and audit history.
             </p>
             <Button variant="destructive" size="sm" className="mt-4" onClick={handleDisconnect}>
               <Unlink className="h-4 w-4" />
-              Disconnect Repository
+              Disconnect repository
             </Button>
           </div>
         </div>

@@ -93,19 +93,18 @@ export default function ScanDetailPage() {
     <div>
       <Button variant="ghost" className="mb-4 gap-2" onClick={() => router.back()}>
         <ArrowLeft className="h-4 w-4" />
-        Back to Scans
+        Back to scans
       </Button>
 
       <PageHeader
-        eyebrow="Scan"
         title={`Scan ${scan.id?.slice(0, 8)}`}
-        description={`Run status, scanner breakdown, and artifacts for the scan created ${formatRelativeTime(scan.created_at)}.`}
+        description={`Started ${formatRelativeTime(scan.created_at)}.`}
         actions={
           <div className="flex items-center gap-2">
             {canRerunScan(scan.status) ? (
               <Button onClick={handleRerun}>
                 <RefreshCw className="h-4 w-4" />
-                Re-run
+                Run again
               </Button>
             ) : null}
             {canDeleteScan(scan.status) ? (

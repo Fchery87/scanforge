@@ -1,34 +1,24 @@
 import type { Metadata, Viewport } from 'next';
-import { Cormorant_Garamond, IBM_Plex_Sans, IBM_Plex_Mono } from 'next/font/google';
+import { Geist, Geist_Mono } from 'next/font/google';
 import { AppProvider } from '@/components/providers/app-provider';
 import { scanForgeBodyClassName, scanForgeMetaThemeColor } from '@/lib/design-system';
 import './globals.css';
 
-const cormorantGaramond = Cormorant_Garamond({
-  weight: ['500', '600'],
+const geistSans = Geist({
   subsets: ['latin'],
-  variable: '--font-cormorant-garamond',
+  variable: '--font-geist-sans',
   display: 'swap',
 });
 
-const ibmPlexSans = IBM_Plex_Sans({
-  weight: ['400', '500', '600'],
+const geistMono = Geist_Mono({
   subsets: ['latin'],
-  variable: '--font-ibm-plex-sans',
-  display: 'swap',
-});
-
-const ibmPlexMono = IBM_Plex_Mono({
-  weight: ['400', '500'],
-  subsets: ['latin'],
-  variable: '--font-ibm-plex-mono',
+  variable: '--font-geist-mono',
   display: 'swap',
 });
 
 export const metadata: Metadata = {
-  title: 'ScanForge — Repository Security Platform',
-  description:
-    'Automated security scanning and vulnerability management for your code repositories.',
+  title: 'ScanForge',
+  description: 'Find open security issues in your repositories and decide what to do with each one.',
 };
 
 export const viewport: Viewport = {
@@ -40,11 +30,11 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-      <html
-        lang='en'
-        suppressHydrationWarning
-        className={`${cormorantGaramond.variable} ${ibmPlexSans.variable} ${ibmPlexMono.variable}`}
-      >
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${geistSans.variable} ${geistMono.variable}`}
+    >
       <body className={scanForgeBodyClassName}>
         <AppProvider>{children}</AppProvider>
       </body>

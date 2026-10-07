@@ -80,13 +80,12 @@ export default function ExportsPage() {
   return (
     <div>
       <PageHeader
-        eyebrow="Reports"
         title="Exports"
-        description="Generate downloadable findings, pipeline, and summary reports for audit, remediation, and sharing."
+        description="Download findings, pipeline, or summary reports."
         actions={
           <Button onClick={() => setShowCreate(true)}>
             <Plus className="h-4 w-4" />
-            New Export
+            New export
           </Button>
         }
       />
@@ -94,13 +93,13 @@ export default function ExportsPage() {
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Generate Export</DialogTitle>
-            <DialogDescription>Configure and generate a new data export.</DialogDescription>
+            <DialogTitle>New export</DialogTitle>
+            <DialogDescription>Pick a type and a format, then generate the file.</DialogDescription>
           </DialogHeader>
           {createError ? <p className="text-sm text-danger">{createError}</p> : null}
           <form onSubmit={handleCreate} className="space-y-4">
             <div className="space-y-2">
-              <Label>Export Type</Label>
+              <Label>Export type</Label>
               <Select value={form.export_type} onValueChange={(val) => setForm({ ...form, export_type: val })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>{TYPES.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
@@ -132,14 +131,11 @@ export default function ExportsPage() {
       ) : exportsList.length === 0 ? (
         <EmptyState icon={FileText} title="No exports yet" description="Generate your first export to download findings data." />
       ) : (
-        <div className="space-y-3">
+        <div className="divide-y divide-border border-y border-border">
           {exportsList.map((exp) => {
             const size = summarizeExportSize(exp.size_bytes);
             return (
-              <div key={exp.id} className="card-serif flex items-center gap-4 p-4">
-                <div className="flex h-11 w-11 items-center justify-center rounded-[10px] border border-border bg-background text-primary">
-                  <FileText className="h-5 w-5" />
-                </div>
+              <div key={exp.id} className="flex items-center gap-4 py-3">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-text-primary">{exp.title ?? `${exp.export_type} export`}</p>
                   <p className="mt-1 text-xs text-text-tertiary">

@@ -63,18 +63,17 @@ export default function NotificationsPage() {
   return (
     <div>
       <PageHeader
-        eyebrow="Inbox"
         title="Notifications"
-        description={`${total} total notification${total !== 1 ? "s" : ""} across scan activity, findings, exports, and member changes.`}
+        description={`${total} notification${total !== 1 ? "s" : ""}.`}
         actions={
           <Button variant="outline" size="sm" onClick={markAllRead}>
-            <CheckCheck className="h-3.5 w-3.5" /> Mark All Read
+            <CheckCheck className="h-3.5 w-3.5" /> Mark all read
           </Button>
         }
       />
 
       {!loading && groups.length > 0 && (
-        <div className="card-serif mb-6 flex flex-wrap gap-3 p-4">
+        <div className="mb-6 flex flex-wrap gap-3">
           {groups.map((g) => (
             <div key={g.type} className="flex items-center gap-2 rounded-[8px] border border-border bg-background px-3 py-2 text-sm">
               <span className="font-medium">{getNotificationTypeLabel(g.type)}</span>
@@ -91,7 +90,7 @@ export default function NotificationsPage() {
         </div>
       )}
 
-      <div className="card-serif mb-6 flex flex-wrap items-center gap-3 p-4">
+      <div className="mb-6 flex flex-wrap items-center gap-3">
         <Select value={typeFilter} onValueChange={(v) => { setTypeFilter(v === "all" ? "" : v); setPage(0); }}>
           <SelectTrigger className="h-11 w-44 bg-background">
             <SelectValue placeholder="All types" />
@@ -126,7 +125,7 @@ export default function NotificationsPage() {
           description="You have no notifications"
         />
       ) : (
-        <div className="card-serif overflow-hidden">
+        <div className="overflow-hidden border-y border-border">
           {notifications.map((n) => (
             <NotificationItem
               key={n.id}

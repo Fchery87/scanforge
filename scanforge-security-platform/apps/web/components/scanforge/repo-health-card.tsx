@@ -16,7 +16,7 @@ export function RepoHealthCard({ repoName, openFindings, criticalCount, href, cl
     <Link
       href={href}
       className={cn(
-        "rounded-lg border border-border bg-surface p-3 transition-all duration-200 hover:border-border-strong hover:bg-surface-hover group",
+        "rounded-lg border border-border bg-surface p-3 transition-all duration-200 hover:border-border-strong hover-fine:bg-surface-hover group",
         className
       )}
     >

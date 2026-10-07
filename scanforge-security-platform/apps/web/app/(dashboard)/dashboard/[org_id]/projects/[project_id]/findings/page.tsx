@@ -86,7 +86,7 @@ function Pagination({ page, total, limit, onPageChange }: PaginationProps) {
             "h-8 w-8 rounded-lg text-xs font-medium flex items-center justify-center transition-colors",
             page === 0
               ? "text-text-tertiary opacity-40 cursor-not-allowed"
-              : "text-text-secondary hover:bg-surface-hover"
+              : "text-text-secondary hover-fine:bg-surface-hover"
           )}
         >
           <ChevronLeft className="h-4 w-4" />
@@ -110,7 +110,7 @@ function Pagination({ page, total, limit, onPageChange }: PaginationProps) {
                 "h-8 w-8 rounded-lg text-xs font-medium flex items-center justify-center transition-colors",
                 p === page
                   ? "bg-primary text-white shadow-sm"
-                  : "text-text-secondary hover:bg-surface-hover"
+                  : "text-text-secondary hover-fine:bg-surface-hover"
               )}
             >
               {(p as number) + 1}
@@ -126,7 +126,7 @@ function Pagination({ page, total, limit, onPageChange }: PaginationProps) {
             "h-8 w-8 rounded-lg text-xs font-medium flex items-center justify-center transition-colors",
             (page + 1) * limit >= total
               ? "text-text-tertiary opacity-40 cursor-not-allowed"
-              : "text-text-secondary hover:bg-surface-hover"
+              : "text-text-secondary hover-fine:bg-surface-hover"
           )}
         >
           <ChevronRight className="h-4 w-4" />
@@ -147,7 +147,7 @@ function FindingsContent() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string[]>([]);
-  const [selectedFinding, setSelectedFinding] = useState<string | null>(null);
+  const [selectedFinding, setSelectedFinding] = useState<string | null>(searchParamsObj.get("finding"));
   const initialFilters = parseFindingsFilters(searchParamsObj);
   const [severity, setSeverity] = useState(initialFilters.severity ?? "");
   const [category, setCategory] = useState(initialFilters.category ?? "");
@@ -432,20 +432,19 @@ function FindingsContent() {
     <div>
       {/* Page header */}
       <PageHeader
-        eyebrow="Triage"
-        title="Security Findings"
-        description="Review, filter, and bulk-manage the normalized findings detected across repositories in this project."
+        title={status === "" || status === "open" ? "Open findings" : "Findings"}
+        description="Filter the list, then resolve, suppress, or accept the ones you select."
         actions={
           <Button onClick={() => handleExportFiltered("csv")}>
             <Download className="h-4 w-4" />
-            Download Report
+            Download CSV
           </Button>
         }
       />
 
       {/* Bulk action bar */}
       {selected.length > 0 && (
-        <div className="card-serif mb-4 flex items-center gap-3 px-4 py-3 animate-fade-up">
+        <div className="mb-4 flex items-center gap-3 border-y border-border px-1 py-3">
           <Badge variant="primary" className="text-xs">
             {selected.length} selected
           </Badge>
@@ -471,7 +470,7 @@ function FindingsContent() {
             }
             className="gap-1.5"
           >
-            Accept Risk
+            Accept risk
           </Button>
           <Button
             variant="outline"
@@ -576,7 +575,7 @@ function FindingsContent() {
         />
       ) : (
         <>
-          <div className="card-serif overflow-hidden">
+          <div className="overflow-hidden rounded-md border border-border">
             <FindingsTable
               findings={sortedFindings}
               repos={repos}

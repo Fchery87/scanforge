@@ -1,6 +1,6 @@
 import { AuthViewClient } from "@/components/auth/auth-view-client";
 import { ScanForgeLogo } from "@/components/scanforge/logo";
-import { getAuthPageTitle, getAuthPageDescription } from "@/lib/page-surface/auth-titles";
+import { getAuthPageDescription } from "@/lib/page-surface/auth-titles";
 
 export const dynamicParams = false;
 
@@ -18,38 +18,18 @@ export function generateStaticParams() {
   return AUTH_PATHS.map((path) => ({ path }));
 }
 
-export default async function AuthPage({
-  params,
-}: {
-  params: Promise<{ path: string }>;
-}) {
+export default async function AuthPage({ params }: { params: Promise<{ path: string }> }) {
   const { path } = await params;
-  const title = getAuthPageTitle(path);
   const description = getAuthPageDescription(path);
 
   return (
-    <main className="mx-auto grid min-h-screen max-w-6xl items-center gap-10 px-6 py-10 lg:grid-cols-[0.95fr_0.75fr]">
-      <section className="card-serif hidden p-10 lg:block">
-        <div className="mb-8 flex h-14 w-14 items-center justify-center rounded-[12px] border border-border bg-surface-elevated text-primary">
-          <ScanForgeLogo className="h-6 w-6" />
+    <main className="flex min-h-screen items-center justify-center px-5 py-10">
+      <section className="w-full max-w-sm">
+        <div className="mb-6 flex items-center gap-2 text-text-primary">
+          <ScanForgeLogo className="h-4 w-4" />
+          <span className="text-sm font-medium">ScanForge</span>
         </div>
-        <p className="section-title mb-3">{title}</p>
-        <h1 className="max-w-[10ch] font-display text-[3.5rem] leading-[0.95] tracking-[-0.05em] text-text-primary">
-          {description}
-        </h1>
-        <p className="mt-5 max-w-[48ch] text-sm leading-relaxed text-text-secondary">
-          Sign in to manage repositories, review findings, run scans, and govern access across your ScanForge workspace.
-        </p>
-      </section>
-
-      <section className="card-serif mx-auto w-full max-w-md p-6 md:p-8">
-        <div className="mb-6 lg:hidden">
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-[12px] border border-border bg-surface-elevated text-primary">
-            <ScanForgeLogo className="h-5 w-5" />
-          </div>
-          <p className="section-title mb-2">{title}</p>
-          <h1 className="font-display text-[2.4rem] leading-none tracking-[-0.05em] text-text-primary">{title}</h1>
-        </div>
+        <p className="mb-5 max-w-[36ch] text-sm leading-relaxed text-text-secondary">{description}</p>
         <AuthViewClient path={path} />
       </section>
     </main>

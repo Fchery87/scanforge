@@ -76,7 +76,7 @@ export function NotificationItem({
         onMouseLeave={() => setIsHovered(false)}
         className={cn(
           "group relative flex items-start gap-3 border-b border-border/60 px-4 py-4 transition-all duration-200",
-          !isRead ? "bg-primary/[0.04]" : "hover:bg-surface-hover/45",
+          !isRead ? "bg-primary/[0.04]" : "hover-fine:bg-surface-hover/45",
           onClick && "cursor-pointer",
           className
         )}
@@ -95,7 +95,7 @@ export function NotificationItem({
           {body && (
             <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-text-tertiary">{body}</p>
           )}
-          <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-tertiary">
+          <p className="mt-2 text-xs text-text-tertiary">
             <TimeAgo date={createdAt} />
           </p>
         </div>
@@ -115,7 +115,7 @@ export function NotificationItem({
                     e.stopPropagation();
                     onMarkRead();
                   }}
-                  className="p-1.5 hover:bg-surface-hover rounded-md transition-colors"
+                  className="p-1.5 hover-fine:bg-surface-hover rounded-md transition-colors"
                 >
                   <Check className="h-3.5 w-3.5 text-text-tertiary hover:text-success" />
                 </button>
@@ -132,7 +132,7 @@ export function NotificationItem({
                     e.stopPropagation();
                     onArchive();
                   }}
-                  className="p-1.5 hover:bg-surface-hover rounded-md transition-colors"
+                  className="p-1.5 hover-fine:bg-surface-hover rounded-md transition-colors"
                 >
                   <Archive className="h-3.5 w-3.5 text-text-tertiary hover:text-primary" />
                 </button>

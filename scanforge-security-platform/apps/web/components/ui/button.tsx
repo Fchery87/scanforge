@@ -6,30 +6,23 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 touch-target",
+  "pressable inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-[background-color,color,border-color,opacity] duration-150 ease-[var(--ease-out)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {
-        default:
-          "bg-primary text-white hover:bg-primary-hover shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0",
-        destructive:
-          "bg-red-900 text-white hover:bg-red-900/90 shadow-sm",
-        outline:
-          "border border-foreground bg-transparent text-foreground hover:bg-surface-hover hover:border-primary hover:text-primary",
-        secondary:
-          "bg-surface text-primary hover:bg-surface-hover border border-border",
-        ghost:
-          "text-text-secondary hover:text-foreground hover:underline decoration-primary underline-offset-4",
-        link:
-          "text-primary underline-offset-4 hover:underline",
-        success:
-          "bg-green-800 text-white hover:bg-green-800/90 shadow-sm",
+        default: "bg-primary text-white hover-fine:bg-primary-hover",
+        destructive: "bg-danger text-white hover-fine:bg-danger/90",
+        outline: "border border-border bg-transparent text-text-primary hover-fine:bg-surface-hover",
+        secondary: "border border-border bg-surface text-text-primary hover-fine:bg-surface-hover",
+        ghost: "text-text-secondary hover-fine:bg-surface-hover hover-fine:text-text-primary",
+        link: "text-primary underline-offset-4 hover-fine:underline",
+        success: "bg-success text-white hover-fine:bg-success/90",
       },
       size: {
-        default: "h-12 px-6 py-2",
-        sm: "h-10 px-4 text-xs",
-        lg: "h-14 px-8 text-base",
-        icon: "h-12 w-12",
+        default: "h-9 px-3.5",
+        sm: "h-8 px-3 text-[0.8125rem]",
+        lg: "h-11 px-5",
+        icon: "h-9 w-9",
       },
     },
     defaultVariants: {
@@ -48,13 +41,7 @@ export interface ButtonProps
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, ...props }, ref) => {
     const Comp = asChild ? Slot : "button";
-    return (
-      <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
-        ref={ref}
-        {...props}
-      />
-    );
+    return <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />;
   }
 );
 Button.displayName = "Button";

@@ -214,7 +214,7 @@ export function FindingsTable({
                           e.stopPropagation();
                           onSelectFinding(f.id);
                         }}
-                        className="rounded-md p-1.5 transition-colors hover:bg-surface-hover"
+                        className="rounded-md p-1.5 transition-colors hover-fine:bg-surface-hover"
                       >
                         <Eye className="h-3.5 w-3.5 text-text-tertiary hover:text-primary" />
                       </button>
@@ -228,7 +228,7 @@ export function FindingsTable({
                           e.stopPropagation();
                           onToggleSelect(f.id);
                         }}
-                        className="rounded-md p-1.5 transition-colors hover:bg-surface-hover"
+                        className="rounded-md p-1.5 transition-colors hover-fine:bg-surface-hover"
                       >
                         <Check className="h-3.5 w-3.5 text-text-tertiary hover:text-success" />
                       </button>

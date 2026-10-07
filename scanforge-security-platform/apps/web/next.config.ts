@@ -12,6 +12,9 @@ loadEnvConfig(workspaceRoot);
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  turbopack: {
+    root: currentDir,
+  },
 };
 
 export default nextConfig;

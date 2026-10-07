@@ -2,6 +2,16 @@ import { z } from "zod";
 
 // ── Core entity schemas (passthrough to tolerate API additions) ─────
 
+export const userSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  name: z.string().nullable().optional(),
+  avatar_url: z.string().nullable().optional(),
+  is_active: z.boolean(),
+  created_at: z.string(),
+  updated_at: z.string(),
+}).passthrough();
+
 export const organizationSchema = z.object({
   id: z.string(),
   name: z.string(),

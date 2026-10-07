@@ -3,11 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { Database, FolderGit2, Plus, Search } from "lucide-react";
+import { Database, Plus, Search } from "lucide-react";
 
 import { api } from "@/lib/api";
 import { formatRelativeTime } from "@/lib/project-surface";
-import { deriveRiskGrade } from "@/lib/scanforge-ui";
 import { EmptyState } from "@/components/scanforge/empty-state";
 import { PageHeader } from "@/components/scanforge/page-header";
 import { SkeletonCards } from "@/components/scanforge/loading-skeleton";
@@ -134,13 +133,12 @@ export default function RepositoriesPage() {
   return (
     <div>
       <PageHeader
-        eyebrow="Repositories"
-        title="Connected Repositories"
-        description="Inspect repository coverage, review readiness, and connect additional codebases to this project."
+        title="Repositories"
+        description="Repositories connected to this project."
         actions={
           <Button onClick={handleOpenModal}>
             <Plus className="h-4 w-4" />
-            Connect Repository
+            Connect repository
           </Button>
         }
       />
@@ -151,17 +149,17 @@ export default function RepositoriesPage() {
         <EmptyState
           icon={Database}
           title="No repositories connected"
-          description="Connect your first repository to start scanning."
+          description="Connect a repository, then start a scan."
           action={
             <Button onClick={handleOpenModal}>
               <Plus className="h-4 w-4" />
-              Connect Repository
+              Connect repository
             </Button>
           }
         />
       ) : (
         <>
-          <div className="card-serif mb-6 p-4">
+          <div className="mb-6">
             <div className="relative max-w-md">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary" />
               <Input
@@ -173,46 +171,32 @@ export default function RepositoriesPage() {
             </div>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <ul className="divide-y divide-border border-y border-border">
             {filteredConnectedRepos.map((repo) => {
               const stats = repoStats[repo.id];
-              const grade = deriveRiskGrade(stats) ?? "—";
               const statsUnavailable = repoStatsUnavailable[repo.id] ?? false;
+              const open = stats?.open ?? 0;
 
               return (
-                <Link
-                  key={repo.id}
-                  href={`/dashboard/${org_id}/projects/${project_id}/repositories/${repo.id}`}
-                  className="card-serif card-interactive flex items-start gap-4 p-5"
-                >
-                  <div className="flex h-12 w-12 items-center justify-center rounded-[10px] border border-border bg-background text-primary">
-                    <FolderGit2 className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-text-primary">{repo.full_name ?? repo.repo_name}</p>
-                        <p className="mt-1 text-xs text-text-tertiary">
-                          Last update {formatRelativeTime(repo.updated_at ?? repo.created_at)}
-                          {statsUnavailable ? " · stats unavailable" : ""}
-                        </p>
-                      </div>
-                      <span className="inline-flex min-w-[42px] items-center justify-center rounded-[6px] border border-border bg-surface-elevated px-2 py-1 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-text-primary">
-                        {statsUnavailable ? "?" : grade}
+                <li key={repo.id}>
+                  <Link
+                    href={`/dashboard/${org_id}/projects/${project_id}/repositories/${repo.id}`}
+                    className="flex items-baseline justify-between gap-4 py-3 hover-fine:bg-surface"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm text-text-primary">{repo.full_name ?? repo.repo_name}</span>
+                      <span className="block truncate text-xs text-text-tertiary">
+                        {repo.default_branch ?? "default branch"} · updated {formatRelativeTime(repo.updated_at ?? repo.created_at)}
                       </span>
-                    </div>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <Badge variant="outline">{repo.provider}</Badge>
-                      <Badge variant="default">{repo.default_branch ?? "default branch"}</Badge>
-                      <Badge variant={statsUnavailable ? "default" : (stats?.open ?? 0) > 0 ? "warning" : "success"}>
-                        {statsUnavailable ? "Findings unavailable" : `${stats?.open ?? 0} open findings`}
-                      </Badge>
-                    </div>
-                  </div>
-                </Link>
+                    </span>
+                    <span className={open > 0 ? "shrink-0 font-mono text-sm text-primary" : "shrink-0 font-mono text-sm text-text-tertiary"}>
+                      {statsUnavailable ? "—" : open}
+                    </span>
+                  </Link>
+                </li>
               );
             })}
-          </div>
+          </ul>
 
           {filteredConnectedRepos.length === 0 && repoFilter ? (
             <div className="mt-8 text-center text-sm text-text-tertiary">
@@ -225,7 +209,7 @@ export default function RepositoriesPage() {
       <Dialog open={showModal} onOpenChange={setShowModal}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Connect Repository</DialogTitle>
+            <DialogTitle>Connect repository</DialogTitle>
             <DialogDescription>Select GitHub repositories to connect to this project.</DialogDescription>
           </DialogHeader>
 
@@ -251,7 +235,7 @@ export default function RepositoriesPage() {
               ) : (
                 <div className="max-h-64 space-y-1 overflow-y-auto rounded-[10px] border border-border bg-background p-2">
                   {filteredGithubRepos.map((repo) => (
-                    <label key={repo.external_repo_id} className="flex items-center gap-3 rounded-[8px] px-3 py-2 hover:bg-surface-elevated">
+                    <label key={repo.external_repo_id} className="flex items-center gap-3 rounded-[8px] px-3 py-2 hover-fine:bg-surface-elevated">
                       <Checkbox
                         checked={selectedRepos.has(repo.external_repo_id)}
                         onCheckedChange={(checked) => {

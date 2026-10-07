@@ -34,9 +34,8 @@ export default function AuditLogPage() {
   return (
     <div>
       <PageHeader
-        eyebrow="Governance"
-        title="Audit Log"
-        description="Review organization activity, ownership changes, and operational history."
+        title="Audit log"
+        description="Who did what in this organization."
       />
 
       {loading && !logs ? (
@@ -47,11 +46,11 @@ export default function AuditLogPage() {
         <EmptyState
           icon={FileText}
           title="No audit logs yet"
-          description="Activity will appear here as actions are taken across the organization."
+          description="Actions in this organization show up here."
         />
       ) : (
         <>
-          <div className="card-serif overflow-hidden">
+          <div className="overflow-hidden rounded-md border border-border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -59,7 +58,7 @@ export default function AuditLogPage() {
                   <TableHead>Action</TableHead>
                   <TableHead>Actor</TableHead>
                   <TableHead>Target</TableHead>
-                  <TableHead>IP Address</TableHead>
+                  <TableHead>IP address</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

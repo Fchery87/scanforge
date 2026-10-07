@@ -13,6 +13,7 @@ import {
   memberSchema,
   notificationSchema,
   organizationSchema,
+  userSchema,
   paginated,
   projectSchema,
   repositorySchema,
@@ -24,6 +25,23 @@ import {
 } from "@/lib/api-schemas";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+
+interface OnboardingStep {
+  id: string;
+  label: string;
+  description: string;
+  completed: boolean;
+  action_url: string | null;
+}
+
+interface OnboardingChecklist {
+  user_id: string;
+  organization_id: string | null;
+  steps: OnboardingStep[];
+  completion_percentage: number;
+  is_complete: boolean;
+}
+
 
 export class ApiError extends Error {
   status: number;
@@ -346,7 +364,12 @@ export const api = {
   },
 
   users: {
-    me: () => request(`/users/me`, {}, organizationSchema),
+    me: () => request(`/users/me`, {}, userSchema),
+  },
+
+  onboarding: {
+    get: (orgId?: string) =>
+      request<OnboardingChecklist>(`/onboarding${orgId ? `?org_id=${orgId}` : ""}`),
   },
 };
 

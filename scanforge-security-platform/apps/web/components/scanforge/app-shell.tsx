@@ -1,7 +1,6 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-
 import { type DashboardNavigationModel } from "@/lib/dashboard-navigation";
 
 import { SidebarNav } from "./sidebar-nav";
@@ -29,15 +28,12 @@ export function AppShell({
   onToggleSidebar,
   onCloseMobile,
 }: AppShellProps) {
-  const sidebarWidth = isMobile ? 0 : sidebarOpen ? 286 : 88;
+  const sidebarWidth = isMobile ? 0 : sidebarOpen ? 220 : 64;
 
   return (
     <div className="min-h-screen bg-background">
       {isMobile && sidebarOpen ? (
-        <div
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
-          onClick={onCloseMobile}
-        />
+        <div className="fixed inset-0 z-40 bg-black/50" onClick={onCloseMobile} />
       ) : null}
 
       <SidebarNav
@@ -49,12 +45,7 @@ export function AppShell({
         onCloseMobile={onCloseMobile}
       />
 
-      <div
-        className={cn(
-          "flex min-h-screen flex-col transition-[margin] duration-[var(--duration-base)] ease-[var(--ease-out-expo)]"
-        )}
-        style={{ marginLeft: sidebarWidth }}
-      >
+      <div className={cn("flex min-h-screen flex-col")} style={{ marginLeft: sidebarWidth }}>
         <TopBar
           isMobile={isMobile}
           sidebarOpen={sidebarOpen}
