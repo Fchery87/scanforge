@@ -43,7 +43,7 @@ def make_request(tmp_path: Path, **overrides) -> ScanRuntimeRequest:
 def _proc_state(pid: int) -> str | None:
     try:
         stat = Path(f"/proc/{pid}/stat").read_text()
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError):
         return None
     return stat.rsplit(")", 1)[1].split()[0]
 
