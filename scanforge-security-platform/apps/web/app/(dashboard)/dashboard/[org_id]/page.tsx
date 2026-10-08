@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { AlertCircle, Folder, Plus } from "lucide-react";
+import { Folder, Plus } from "lucide-react";
 
 import { api } from "@/lib/api";
 import { EmptyState } from "@/components/scanforge/empty-state";

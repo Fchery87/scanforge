@@ -73,19 +73,30 @@ async def get_onboarding(
     repositories = select(Repository.id).where(Repository.project_id.in_(projects)) if projects is not None else None
     has_repositories = await _exists(db, repositories) if repositories is not None else False
 
+    has_github = False
+    has_scans = False
+    has_findings = False
+    has_schedules = False
+    if org_id is not None:
+        has_github = await _exists(
+            db,
+            select(OrganizationIntegration.id).where(OrganizationIntegration.organization_id == org_id),
+        )
+        has_scans = await _exists(db, select(Scan.id).where(Scan.project_id.in_(projects)))
+        has_findings = await _exists(db, select(Finding.id).where(Finding.project_id.in_(projects)))
+        has_schedules = await _exists(
+            db,
+            select(ScanSchedule.id).where(ScanSchedule.repository_id.in_(repositories)),
+        )
+
     checklist = build_onboarding_checklist(
         user_id=str(current_user.user_id),
         org_id=str(org_id) if org_id else None,
-        has_github=await _exists(
-            db, select(OrganizationIntegration.id).where(OrganizationIntegration.organization_id == org_id)
-        ) if org_id else False,
+        has_github=has_github,
         has_projects=has_projects,
         has_repositories=has_repositories,
-        has_scans=await _exists(db, select(Scan.id).where(Scan.project_id.in_(projects))) if projects is not None else False,
-        has_findings=await _exists(db, select(Finding.id).where(Finding.project_id.in_(projects))) if projects is not None else False,
-        has_schedules=await _exists(
-            db,
-            select(ScanSchedule.id).where(ScanSchedule.repository_id.in_(repositories)),
-        ) if repositories is not None else False,
+        has_scans=has_scans,
+        has_findings=has_findings,
+        has_schedules=has_schedules,
     )
     return serialize_checklist(checklist)
