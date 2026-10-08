@@ -368,8 +368,10 @@ export const api = {
   },
 
   onboarding: {
-    get: (orgId?: string) =>
-      request<OnboardingChecklist>(`/onboarding${orgId ? `?org_id=${orgId}` : ""}`),
+    get: (orgId?: string) => {
+      const query = orgId ? `?${new URLSearchParams({ org_id: orgId }).toString()}` : "";
+      return request<OnboardingChecklist>(`/onboarding${query}`);
+    },
   },
 };
 

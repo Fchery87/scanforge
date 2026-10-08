@@ -587,6 +587,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Onboarding */
+        get: operations["get_onboarding_api_v1_onboarding_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/me": {
         parameters: {
             query?: never;
@@ -1781,6 +1798,32 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /** OnboardingChecklistResponse */
+        OnboardingChecklistResponse: {
+            /** User Id */
+            user_id: string;
+            /** Organization Id */
+            organization_id: string | null;
+            /** Steps */
+            steps: components["schemas"]["OnboardingStepResponse"][];
+            /** Completion Percentage */
+            completion_percentage: number;
+            /** Is Complete */
+            is_complete: boolean;
+        };
+        /** OnboardingStepResponse */
+        OnboardingStepResponse: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Completed */
+            completed: boolean;
+            /** Action Url */
+            action_url: string | null;
         };
         /** OrgStatsResponse */
         OrgStatsResponse: {
@@ -4014,6 +4057,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_onboarding_api_v1_onboarding_get: {
+        parameters: {
+            query?: {
+                org_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingChecklistResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
