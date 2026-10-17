@@ -19,11 +19,14 @@ from app.db.models import (
     Repository,
     Scan,
     ScannerRun,
+    User,
 )
 from app.schemas.canonical_findings import CanonicalFindingCandidate
 from app.schemas.findings import (
     FindingStats,
 )
+from app.services.access_policies import FINDING_MUTATION_ROLES
+from app.services.audit_logs import AuditLogService
 from app.services.finding_lifecycle import (
     ABSENCE_THRESHOLD,
     POLICY_VERSION,
@@ -46,9 +49,55 @@ from app.services.scans import ScanAuthorizationError
 from app.services.secret_safety import sanitize_secret_mapping
 
 
+class FindingAuthorizationError(PermissionError):
+    """Caller does not hold finding mutation authority in the owning organization."""
+
+    code = "finding_authorization_denied"
+
+
 class FindingService:
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    async def _get_for_mutation(
+        self,
+        finding_id: UUID,
+        user_id: UUID,
+        *,
+        project_id: UUID | None = None,
+        organization_id: UUID | None = None,
+    ) -> tuple[Finding, Project] | None:
+        result = await self.db.execute(
+            select(Finding, Project)
+            .join(Project, Finding.project_id == Project.id)
+            .where(Finding.id == str(finding_id))
+        )
+        row = result.first()
+        if row is None:
+            return None
+        finding, project = row
+        if project_id is not None and str(finding.project_id) != str(project_id):
+            return None
+        if organization_id is not None and str(project.organization_id) != str(organization_id):
+            return None
+
+        member_result = await self.db.execute(
+            select(OrganizationMember)
+            .join(User, User.id == OrganizationMember.user_id)
+            .where(
+                OrganizationMember.organization_id == str(project.organization_id),
+                OrganizationMember.user_id == str(user_id),
+                User.is_active.is_(True),
+            )
+        )
+        member = member_result.scalar_one_or_none()
+        if member is None:
+            return None
+        if str(member.role) not in FINDING_MUTATION_ROLES:
+            raise FindingAuthorizationError(
+                "Security reviewer, admin, or owner role required to modify findings"
+            )
+        return finding, project
 
     async def _set_status(
         self,
@@ -59,25 +108,51 @@ class FindingService:
         *,
         reason: str | None = None,
         metadata_json: dict | None = None,
+        project_id: UUID | None = None,
+        organization_id: UUID | None = None,
+        commit: bool = True,
     ) -> Finding | None:
-        finding = await self.get_by_id(finding_id, user_id)
-        if not finding:
+        authorized = await self._get_for_mutation(
+            finding_id,
+            user_id,
+            project_id=project_id,
+            organization_id=organization_id,
+        )
+        if not authorized:
             return None
+        finding, project = authorized
 
         next_state = validate_transition(finding.status, status)
         finding.status = next_state.value
+        resolved_event_type = event_type or transition_event_for_state(next_state.value)
 
         event = FindingEvent(
-            finding_id=finding_id,
-            event_type=event_type or transition_event_for_state(next_state.value),
-            actor_user_id=user_id,
+            finding_id=str(finding_id),
+            event_type=resolved_event_type,
+            actor_user_id=str(user_id),
             reason=reason,
             metadata_json=metadata_json,
         )
         self.db.add(event)
+        AuditLogService(self.db).record(
+            actor_user_id=user_id,
+            action=f"finding_{resolved_event_type}",
+            target_type="finding",
+            target_id=finding.id,
+            organization_id=project.organization_id,
+            metadata_json={
+                "project_id": str(project.id),
+                "status": next_state.value,
+                "reason": reason,
+                **(metadata_json or {}),
+            },
+        )
 
-        await self.db.commit()
-        await self.db.refresh(finding)
+        if commit:
+            await self.db.commit()
+            await self.db.refresh(finding)
+        else:
+            await self.db.flush()
         return finding
 
     async def list_for_project(
@@ -99,10 +174,12 @@ class FindingService:
             .join(Project, Finding.project_id == Project.id)
             .join(Organization, Project.organization_id == Organization.id)
             .join(OrganizationMember, OrganizationMember.organization_id == Organization.id)
+            .join(User, User.id == OrganizationMember.user_id)
             .options(selectinload(Finding.assignee))
             .where(
-                Finding.project_id == project_id,
-                OrganizationMember.user_id == user_id,
+                Finding.project_id == str(project_id),
+                OrganizationMember.user_id == str(user_id),
+                User.is_active.is_(True),
             )
         )
 
@@ -115,7 +192,7 @@ class FindingService:
         if scanner:
             base_query = base_query.where(Finding.primary_scanner == scanner)
         if repository_id:
-            base_query = base_query.where(Finding.repository_id == repository_id)
+            base_query = base_query.where(Finding.repository_id == str(repository_id))
         if search:
             search_term = f"%{search}%"
             base_query = base_query.where(
@@ -144,6 +221,7 @@ class FindingService:
             .join(Project, Finding.project_id == Project.id)
             .join(Organization, Project.organization_id == Organization.id)
             .join(OrganizationMember, OrganizationMember.organization_id == Organization.id)
+            .join(User, User.id == OrganizationMember.user_id)
             .options(
                 selectinload(Finding.instances),
                 selectinload(Finding.references),
@@ -151,8 +229,9 @@ class FindingService:
                 selectinload(Finding.assignee),
             )
             .where(
-                Finding.id == finding_id,
-                OrganizationMember.user_id == user_id,
+                Finding.id == str(finding_id),
+                OrganizationMember.user_id == str(user_id),
+                User.is_active.is_(True),
             )
         )
         return result.scalar_one_or_none()
@@ -163,10 +242,20 @@ class FindingService:
         user_id: UUID,
         assignee_user_id: UUID | None = None,
         due_date: date | None = None,
+        *,
+        project_id: UUID | None = None,
+        organization_id: UUID | None = None,
+        commit: bool = True,
     ) -> Finding | None:
-        finding = await self.get_by_id(finding_id, user_id)
-        if not finding:
+        authorized = await self._get_for_mutation(
+            finding_id,
+            user_id,
+            project_id=project_id,
+            organization_id=organization_id,
+        )
+        if not authorized:
             return None
+        finding, project = authorized
 
         if assignee_user_id is not None:
             member_exists = await self.db.scalar(
@@ -176,9 +265,11 @@ class FindingService:
                     OrganizationMember,
                     OrganizationMember.organization_id == Project.organization_id,
                 )
+                .join(User, User.id == OrganizationMember.user_id)
                 .where(
                     Project.id == finding.project_id,
-                    OrganizationMember.user_id == assignee_user_id,
+                    OrganizationMember.user_id == str(assignee_user_id),
+                    User.is_active.is_(True),
                 )
             )
             if not member_exists:
@@ -187,19 +278,32 @@ class FindingService:
         finding.assignee_user_id = str(assignee_user_id) if assignee_user_id else None
         finding.due_date = due_date
 
+        metadata = {
+            "project_id": str(project.id),
+            "assignee_user_id": str(assignee_user_id) if assignee_user_id else None,
+            "due_date": due_date.isoformat() if due_date else None,
+        }
         event = FindingEvent(
-            finding_id=finding_id,
+            finding_id=str(finding_id),
             event_type="triage_updated",
-            actor_user_id=user_id,
-            metadata_json={
-                "assignee_user_id": str(assignee_user_id) if assignee_user_id else None,
-                "due_date": due_date.isoformat() if due_date else None,
-            },
+            actor_user_id=str(user_id),
+            metadata_json=metadata,
         )
         self.db.add(event)
-        await self.db.commit()
+        AuditLogService(self.db).record(
+            actor_user_id=user_id,
+            action="finding_triage_updated",
+            target_type="finding",
+            target_id=finding.id,
+            organization_id=project.organization_id,
+            metadata_json=metadata,
+        )
+        if commit:
+            await self.db.commit()
+        else:
+            await self.db.flush()
         result = await self.db.execute(
-            select(Finding).options(selectinload(Finding.assignee)).where(Finding.id == finding_id)
+            select(Finding).options(selectinload(Finding.assignee)).where(Finding.id == str(finding_id))
         )
         return result.scalar_one()
 
@@ -516,6 +620,10 @@ class FindingService:
         user_id: UUID,
         reason: str,
         rule_id: UUID | None = None,
+        *,
+        project_id: UUID | None = None,
+        organization_id: UUID | None = None,
+        commit: bool = True,
     ) -> Finding | None:
         return await self._set_status(
             finding_id,
@@ -523,6 +631,9 @@ class FindingService:
             "false_positive",
             reason=reason,
             metadata_json={"rule_id": str(rule_id)} if rule_id else None,
+            project_id=project_id,
+            organization_id=organization_id,
+            commit=commit,
         )
 
     async def resolve(
@@ -531,6 +642,10 @@ class FindingService:
         user_id: UUID,
         fixed_version: str | None = None,
         reason: str | None = None,
+        *,
+        project_id: UUID | None = None,
+        organization_id: UUID | None = None,
+        commit: bool = True,
     ) -> Finding | None:
         finding = await self._set_status(
             finding_id,
@@ -538,13 +653,19 @@ class FindingService:
             "fixed",
             reason=reason,
             metadata_json={"fixed_version": fixed_version} if fixed_version else None,
+            project_id=project_id,
+            organization_id=organization_id,
+            commit=False,
         )
         if not finding:
             return None
         if fixed_version:
             finding.fixed_version = fixed_version
+        if commit:
             await self.db.commit()
             await self.db.refresh(finding)
+        else:
+            await self.db.flush()
         return finding
 
     async def accept_risk(
@@ -552,12 +673,19 @@ class FindingService:
         finding_id: UUID,
         user_id: UUID,
         reason: str,
+        *,
+        project_id: UUID | None = None,
+        organization_id: UUID | None = None,
+        commit: bool = True,
     ) -> Finding | None:
         return await self._set_status(
             finding_id,
             user_id,
             "accepted_risk",
             reason=reason,
+            project_id=project_id,
+            organization_id=organization_id,
+            commit=commit,
         )
 
     async def mark_duplicate(
@@ -565,12 +693,19 @@ class FindingService:
         finding_id: UUID,
         user_id: UUID,
         reason: str,
+        *,
+        project_id: UUID | None = None,
+        organization_id: UUID | None = None,
+        commit: bool = True,
     ) -> Finding | None:
         return await self._set_status(
             finding_id,
             user_id,
             "duplicate",
             reason=reason,
+            project_id=project_id,
+            organization_id=organization_id,
+            commit=commit,
         )
 
     async def reopen(
@@ -578,12 +713,19 @@ class FindingService:
         finding_id: UUID,
         user_id: UUID,
         reason: str | None = None,
+        *,
+        project_id: UUID | None = None,
+        organization_id: UUID | None = None,
+        commit: bool = True,
     ) -> Finding | None:
         finding = await self._set_status(
             finding_id,
             user_id,
             "open",
             reason=reason,
+            project_id=project_id,
+            organization_id=organization_id,
+            commit=False,
         )
         if not finding:
             return None
@@ -592,8 +734,11 @@ class FindingService:
         finding.metadata_json = record_manual_reopen_checkpoint(
             finding.metadata_json, checkpoint=datetime.now(UTC)
         )
-        await self.db.commit()
-        await self.db.refresh(finding)
+        if commit:
+            await self.db.commit()
+            await self.db.refresh(finding)
+        else:
+            await self.db.flush()
         return finding
 
     async def get_events(
@@ -612,15 +757,17 @@ class FindingService:
         user_id: UUID,
         repository_id: UUID | None = None,
     ) -> FindingStats:
-        repo_filter = [Finding.repository_id == repository_id] if repository_id else []
+        repo_filter = [Finding.repository_id == str(repository_id)] if repository_id else []
         base_where = (
             select(Finding)
             .join(Project, Finding.project_id == Project.id)
             .join(Organization, Project.organization_id == Organization.id)
             .join(OrganizationMember, OrganizationMember.organization_id == Organization.id)
+            .join(User, User.id == OrganizationMember.user_id)
             .where(
-                Finding.project_id == project_id,
-                OrganizationMember.user_id == user_id,
+                Finding.project_id == str(project_id),
+                OrganizationMember.user_id == str(user_id),
+                User.is_active.is_(True),
                 *repo_filter,
             )
         )
@@ -634,9 +781,11 @@ class FindingService:
                 .join(Project, Finding.project_id == Project.id)
                 .join(Organization, Project.organization_id == Organization.id)
                 .join(OrganizationMember, OrganizationMember.organization_id == Organization.id)
+                .join(User, User.id == OrganizationMember.user_id)
                 .where(
-                    Finding.project_id == project_id,
-                    OrganizationMember.user_id == user_id,
+                    Finding.project_id == str(project_id),
+                    OrganizationMember.user_id == str(user_id),
+                    User.is_active.is_(True),
                     Finding.status == "open",
                     *repo_filter,
                 )
@@ -651,9 +800,11 @@ class FindingService:
                 .join(Project, Finding.project_id == Project.id)
                 .join(Organization, Project.organization_id == Organization.id)
                 .join(OrganizationMember, OrganizationMember.organization_id == Organization.id)
+                .join(User, User.id == OrganizationMember.user_id)
                 .where(
-                    Finding.project_id == project_id,
-                    OrganizationMember.user_id == user_id,
+                    Finding.project_id == str(project_id),
+                    OrganizationMember.user_id == str(user_id),
+                    User.is_active.is_(True),
                     Finding.status == "fixed",
                     *repo_filter,
                 )
@@ -668,9 +819,11 @@ class FindingService:
                 .join(Project, Finding.project_id == Project.id)
                 .join(Organization, Project.organization_id == Organization.id)
                 .join(OrganizationMember, OrganizationMember.organization_id == Organization.id)
+                .join(User, User.id == OrganizationMember.user_id)
                 .where(
-                    Finding.project_id == project_id,
-                    OrganizationMember.user_id == user_id,
+                    Finding.project_id == str(project_id),
+                    OrganizationMember.user_id == str(user_id),
+                    User.is_active.is_(True),
                     Finding.status == "false_positive",
                     *repo_filter,
                 )
@@ -689,9 +842,11 @@ class FindingService:
                         OrganizationMember,
                         OrganizationMember.organization_id == Project.organization_id,
                     )
+                    .join(User, User.id == OrganizationMember.user_id)
                     .where(
-                        Finding.project_id == project_id,
-                        OrganizationMember.user_id == user_id,
+                        Finding.project_id == str(project_id),
+                        OrganizationMember.user_id == str(user_id),
+                        User.is_active.is_(True),
                         Finding.severity == sev,
                         Finding.status == "open",
                         *repo_filter,
@@ -713,9 +868,11 @@ class FindingService:
                         OrganizationMember,
                         OrganizationMember.organization_id == Project.organization_id,
                     )
+                    .join(User, User.id == OrganizationMember.user_id)
                     .where(
-                        Finding.project_id == project_id,
-                        OrganizationMember.user_id == user_id,
+                        Finding.project_id == str(project_id),
+                        OrganizationMember.user_id == str(user_id),
+                        User.is_active.is_(True),
                         Finding.category == cat,
                         Finding.status == "open",
                     )
@@ -733,17 +890,60 @@ class FindingService:
             by_category=category_counts,
         )
 
+    async def _validate_bulk_targets(
+        self,
+        finding_ids: list[UUID],
+        user_id: UUID,
+        target_status: str,
+        *,
+        project_id: UUID | None = None,
+        organization_id: UUID | None = None,
+    ) -> None:
+        for finding_id in finding_ids:
+            authorized = await self._get_for_mutation(
+                finding_id,
+                user_id,
+                project_id=project_id,
+                organization_id=organization_id,
+            )
+            if authorized is None:
+                raise ValueError(f"Finding {finding_id} was not found in the authorized scope")
+            finding, _project = authorized
+            validate_transition(finding.status, target_status)
+
     async def bulk_suppress(
         self,
         finding_ids: list[UUID],
         user_id: UUID,
         reason: str,
+        *,
+        project_id: UUID | None = None,
+        organization_id: UUID | None = None,
+        commit: bool = True,
     ) -> int:
+        if not finding_ids:
+            return 0
+        await self._validate_bulk_targets(
+            finding_ids,
+            user_id,
+            "false_positive",
+            project_id=project_id,
+            organization_id=organization_id,
+        )
         count = 0
         for finding_id in finding_ids:
-            result = await self.suppress(finding_id, user_id, reason)
+            result = await self.suppress(
+                finding_id,
+                user_id,
+                reason,
+                project_id=project_id,
+                organization_id=organization_id,
+                commit=False,
+            )
             if result:
                 count += 1
+        if commit:
+            await self.db.commit()
         return count
 
     async def bulk_resolve(
@@ -751,12 +951,34 @@ class FindingService:
         finding_ids: list[UUID],
         user_id: UUID,
         fixed_version: str | None = None,
+        *,
+        project_id: UUID | None = None,
+        organization_id: UUID | None = None,
+        commit: bool = True,
     ) -> int:
+        if not finding_ids:
+            return 0
+        await self._validate_bulk_targets(
+            finding_ids,
+            user_id,
+            "fixed",
+            project_id=project_id,
+            organization_id=organization_id,
+        )
         count = 0
         for finding_id in finding_ids:
-            result = await self.resolve(finding_id, user_id, fixed_version)
+            result = await self.resolve(
+                finding_id,
+                user_id,
+                fixed_version,
+                project_id=project_id,
+                organization_id=organization_id,
+                commit=False,
+            )
             if result:
                 count += 1
+        if commit:
+            await self.db.commit()
         return count
 
     async def bulk_accept_risk(
@@ -764,12 +986,34 @@ class FindingService:
         finding_ids: list[UUID],
         user_id: UUID,
         reason: str,
+        *,
+        project_id: UUID | None = None,
+        organization_id: UUID | None = None,
+        commit: bool = True,
     ) -> int:
+        if not finding_ids:
+            return 0
+        await self._validate_bulk_targets(
+            finding_ids,
+            user_id,
+            "accepted_risk",
+            project_id=project_id,
+            organization_id=organization_id,
+        )
         count = 0
         for finding_id in finding_ids:
-            result = await self.accept_risk(finding_id, user_id, reason)
+            result = await self.accept_risk(
+                finding_id,
+                user_id,
+                reason,
+                project_id=project_id,
+                organization_id=organization_id,
+                commit=False,
+            )
             if result:
                 count += 1
+        if commit:
+            await self.db.commit()
         return count
 
     async def bulk_mark_duplicate(
@@ -777,10 +1021,33 @@ class FindingService:
         finding_ids: list[UUID],
         user_id: UUID,
         reason: str,
+        *,
+        project_id: UUID | None = None,
+        organization_id: UUID | None = None,
+        commit: bool = True,
     ) -> int:
+        if not finding_ids:
+            return 0
+        await self._validate_bulk_targets(
+            finding_ids,
+            user_id,
+            "duplicate",
+            project_id=project_id,
+            organization_id=organization_id,
+        )
         count = 0
         for finding_id in finding_ids:
-            result = await self.mark_duplicate(finding_id, user_id, reason)
+            result = await self.mark_duplicate(
+                finding_id,
+                user_id,
+                reason,
+                project_id=project_id,
+                organization_id=organization_id,
+                commit=False,
+            )
             if result:
                 count += 1
+        if commit:
+            await self.db.commit()
         return count
+

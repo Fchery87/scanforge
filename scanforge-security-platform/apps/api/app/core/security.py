@@ -42,6 +42,9 @@ def _decode_without_verification(token: str) -> dict:
     )
 
 
+CUSTOMER_ENVIRONMENTS = {"beta", "private-beta", "managed-beta", "production"}
+
+
 async def decode_token(
     token: str,
     jwks_client: JWKSClient | None = None,
@@ -49,13 +52,17 @@ async def decode_token(
     if jwks_client is None:
         jwks_client = get_jwks_client()
 
-    if settings.APP_ENV.lower() in {"beta", "private-beta", "production"} and not settings.NEON_AUTH_AUDIENCE:
-        raise AuthenticationError("NEON_AUTH_AUDIENCE is not configured — cannot verify tokens")
+    env = settings.APP_ENV.lower()
+    if env in CUSTOMER_ENVIRONMENTS:
+        if not settings.NEON_AUTH_AUDIENCE:
+            raise AuthenticationError("NEON_AUTH_AUDIENCE is not configured — cannot verify tokens")
+        if not settings.NEON_AUTH_ISSUER:
+            raise AuthenticationError("NEON_AUTH_ISSUER is not configured — cannot verify tokens")
 
     signing_key = jwks_client.get_signing_key(token)
 
     try:
-        return jwt.decode(
+        decoded = jwt.decode(
             token,
             signing_key.key,
             algorithms=["EdDSA", "ES256", "RS256"],
@@ -67,16 +74,18 @@ async def decode_token(
             raise
 
         unverified_claims = _decode_without_verification(token)
-        if "aud" in unverified_claims or settings.APP_ENV.lower() in {"beta", "private-beta", "production"}:
+        if "aud" in unverified_claims or env in CUSTOMER_ENVIRONMENTS:
             raise
 
-        return jwt.decode(
+        decoded = jwt.decode(
             token,
             signing_key.key,
             algorithms=["EdDSA", "ES256", "RS256"],
             issuer=settings.NEON_AUTH_ISSUER or None,
             options={"verify_aud": False},
         )
+
+    return decoded
 
 
 class AuthenticationError(Exception):

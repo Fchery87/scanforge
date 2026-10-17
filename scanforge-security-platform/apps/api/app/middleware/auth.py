@@ -51,7 +51,12 @@ async def get_current_user(
 
     try:
         payload = await verify_token(credentials.credentials, _jwks_client)
-        await UserService(db).get_or_create_from_token(payload)
+        user = await UserService(db).get_or_create_from_token(payload)
+        if not getattr(user, "is_active", True):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account is deactivated",
+            )
 
         context = UserContext(
             sub=payload.get("sub", ""),

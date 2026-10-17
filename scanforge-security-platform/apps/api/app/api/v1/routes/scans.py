@@ -68,10 +68,10 @@ async def create_scan(
 
     org_service = OrganizationService(db)
     has_permission = await org_service.user_has_permission(
-        org_id, current_user.user_id, ["owner", "admin", "developer"]
+        org_id, current_user.user_id, ["owner", "admin", "security_reviewer", "developer"]
     )
     if not has_permission:
-        raise HTTPException(status_code=403, detail="Developer, admin, or owner role required to trigger scans")
+        raise HTTPException(status_code=403, detail="Developer, security reviewer, admin, or owner role required to trigger scans")
 
     await get_repository_in_project_or_404(
         db,
@@ -177,10 +177,10 @@ async def cancel_scan(
 
     org_service = OrganizationService(db)
     has_permission = await org_service.user_has_permission(
-        org_id, current_user.user_id, ["owner", "admin", "developer"]
+        org_id, current_user.user_id, ["owner", "admin", "security_reviewer", "developer"]
     )
     if not has_permission:
-        raise HTTPException(status_code=403, detail="Developer, admin, or owner role required to cancel scans")
+        raise HTTPException(status_code=403, detail="Developer, security reviewer, admin, or owner role required to cancel scans")
 
     scan_service = ScanService(db)
     scan = await scan_service.get_by_id(scan_id, current_user.user_id)
@@ -188,7 +188,12 @@ async def cancel_scan(
         raise HTTPException(status_code=404, detail="Scan not found")
 
     try:
-        canceled = await scan_service.cancel(scan_id, data.reason, user_id=current_user.user_id)
+        canceled = await scan_service.cancel(
+            scan_id,
+            data.reason,
+            user_id=current_user.user_id,
+            project_id=project_id,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
@@ -213,7 +218,11 @@ async def delete_scan(
     scan_service = ScanService(db)
 
     try:
-        deleted = await scan_service.delete(scan_id, current_user.user_id)
+        deleted = await scan_service.delete(
+            scan_id,
+            current_user.user_id,
+            project_id=project_id,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 

@@ -18,7 +18,7 @@ from app.schemas.findings import (
     FindingTriageUpdate,
 )
 from app.services.access_policies import get_project_in_org_for_user
-from app.services.findings import FindingService
+from app.services.findings import FindingAuthorizationError, FindingService
 from app.services.organizations import OrganizationService
 
 router = APIRouter()
@@ -107,7 +107,7 @@ async def get_finding(
 
     service = FindingService(db)
     finding = await service.get_by_id(finding_id, current_user.user_id)
-    if not finding or finding.project_id != project_id:
+    if not finding or str(finding.project_id) != str(project_id):
         raise HTTPException(status_code=404, detail="Finding not found")
 
     return FindingDetailResponse.model_validate(finding)
@@ -127,8 +127,18 @@ async def suppress_finding(
     await _require_finding_mutation_role(db, org_id, current_user.user_id)
 
     service = FindingService(db)
-    finding = await service.suppress(finding_id, current_user.user_id, data.reason, data.rule_id)
-    if not finding or finding.project_id != project_id:
+    try:
+        finding = await service.suppress(
+            finding_id,
+            current_user.user_id,
+            data.reason,
+            data.rule_id,
+            project_id=project_id,
+            organization_id=org_id,
+        )
+    except FindingAuthorizationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    if not finding or str(finding.project_id) != str(project_id):
         raise HTTPException(status_code=404, detail="Finding not found")
 
     return finding
@@ -148,8 +158,18 @@ async def resolve_finding(
     await _require_finding_mutation_role(db, org_id, current_user.user_id)
 
     service = FindingService(db)
-    finding = await service.resolve(finding_id, current_user.user_id, data.fixed_version, data.reason)
-    if not finding or finding.project_id != project_id:
+    try:
+        finding = await service.resolve(
+            finding_id,
+            current_user.user_id,
+            data.fixed_version,
+            data.reason,
+            project_id=project_id,
+            organization_id=org_id,
+        )
+    except FindingAuthorizationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    if not finding or str(finding.project_id) != str(project_id):
         raise HTTPException(status_code=404, detail="Finding not found")
 
     return finding
@@ -167,8 +187,16 @@ async def reopen_finding(
     await _require_finding_mutation_role(db, org_id, current_user.user_id)
 
     service = FindingService(db)
-    finding = await service.reopen(finding_id, current_user.user_id)
-    if not finding or finding.project_id != project_id:
+    try:
+        finding = await service.reopen(
+            finding_id,
+            current_user.user_id,
+            project_id=project_id,
+            organization_id=org_id,
+        )
+    except FindingAuthorizationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    if not finding or str(finding.project_id) != str(project_id):
         raise HTTPException(status_code=404, detail="Finding not found")
 
     return finding
@@ -188,8 +216,17 @@ async def accept_risk_finding(
     await _require_finding_mutation_role(db, org_id, current_user.user_id)
 
     service = FindingService(db)
-    finding = await service.accept_risk(finding_id, current_user.user_id, data.reason)
-    if not finding or finding.project_id != project_id:
+    try:
+        finding = await service.accept_risk(
+            finding_id,
+            current_user.user_id,
+            data.reason,
+            project_id=project_id,
+            organization_id=org_id,
+        )
+    except FindingAuthorizationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    if not finding or str(finding.project_id) != str(project_id):
         raise HTTPException(status_code=404, detail="Finding not found")
 
     return finding
@@ -209,8 +246,17 @@ async def mark_duplicate_finding(
     await _require_finding_mutation_role(db, org_id, current_user.user_id)
 
     service = FindingService(db)
-    finding = await service.mark_duplicate(finding_id, current_user.user_id, data.reason)
-    if not finding or finding.project_id != project_id:
+    try:
+        finding = await service.mark_duplicate(
+            finding_id,
+            current_user.user_id,
+            data.reason,
+            project_id=project_id,
+            organization_id=org_id,
+        )
+    except FindingAuthorizationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    if not finding or str(finding.project_id) != str(project_id):
         raise HTTPException(status_code=404, detail="Finding not found")
 
     return finding
@@ -236,10 +282,14 @@ async def update_finding_triage(
             current_user.user_id,
             assignee_user_id=data.assignee_user_id,
             due_date=data.due_date,
+            project_id=project_id,
+            organization_id=org_id,
         )
+    except FindingAuthorizationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if not finding or finding.project_id != project_id:
+    if not finding or str(finding.project_id) != str(project_id):
         raise HTTPException(status_code=404, detail="Finding not found")
 
     return finding
@@ -257,7 +307,7 @@ async def get_finding_events(
 
     service = FindingService(db)
     finding = await service.get_by_id(finding_id, current_user.user_id)
-    if not finding or finding.project_id != project_id:
+    if not finding or str(finding.project_id) != str(project_id):
         raise HTTPException(status_code=404, detail="Finding not found")
 
     return await service.get_events(finding_id, current_user.user_id)
@@ -276,23 +326,54 @@ async def bulk_finding_action(
 
     if data.finding_ids:
         result = await db.execute(
-            select(Finding).where(Finding.id.in_(data.finding_ids), Finding.project_id == project_id)
+            select(Finding).where(
+                Finding.id.in_([str(fid) for fid in data.finding_ids]),
+                Finding.project_id == str(project_id),
+            )
         )
         authorized_ids = {str(row.id) for row in result.scalars()}
         unauthorized = {str(fid) for fid in data.finding_ids if str(fid) not in authorized_ids}
         if unauthorized:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Some findings do not belong to this project: {', '.join(unauthorized)}",
+                detail=f"Some findings do not belong to this project: {', '.join(sorted(unauthorized))}",
             )
 
     service = FindingService(db)
+    try:
+        if data.action == "suppress":
+            await service.bulk_suppress(
+                data.finding_ids,
+                current_user.user_id,
+                data.reason,
+                project_id=project_id,
+                organization_id=org_id,
+            )
+        elif data.action == "resolve":
+            await service.bulk_resolve(
+                data.finding_ids,
+                current_user.user_id,
+                project_id=project_id,
+                organization_id=org_id,
+            )
+        elif data.action == "accept_risk":
+            await service.bulk_accept_risk(
+                data.finding_ids,
+                current_user.user_id,
+                data.reason,
+                project_id=project_id,
+                organization_id=org_id,
+            )
+        elif data.action == "mark_duplicate":
+            await service.bulk_mark_duplicate(
+                data.finding_ids,
+                current_user.user_id,
+                data.reason,
+                project_id=project_id,
+                organization_id=org_id,
+            )
+    except FindingAuthorizationError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-    if data.action == "suppress":
-        await service.bulk_suppress(data.finding_ids, current_user.user_id, data.reason)
-    elif data.action == "resolve":
-        await service.bulk_resolve(data.finding_ids, current_user.user_id)
-    elif data.action == "accept_risk":
-        await service.bulk_accept_risk(data.finding_ids, current_user.user_id, data.reason)
-    elif data.action == "mark_duplicate":
-        await service.bulk_mark_duplicate(data.finding_ids, current_user.user_id, data.reason)

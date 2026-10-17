@@ -50,3 +50,34 @@ async def test_repository_connect_returns_403_for_viewer_member(monkeypatch):
 
     assert response.status_code == 403
     assert response.json()["detail"] == "Only owners and admins can connect repositories"
+
+
+@pytest.mark.asyncio
+async def test_deactivated_user_with_valid_token_is_rejected_at_auth_boundary(monkeypatch):
+    from fastapi.security import HTTPAuthorizationCredentials
+    from fastapi import HTTPException
+    from app.middleware import auth as auth_module
+
+    async def fake_verify_token(_token: str, _jwks_client=None):
+        return {"sub": "auth0|deactivated-user", "email": "disabled@example.com"}
+
+    class DeactivatedUserService:
+        def __init__(self, _db):
+            pass
+
+        async def get_or_create_from_token(self, _payload):
+            return SimpleNamespace(id=str(uuid4()), is_active=False)
+
+    monkeypatch.setattr(auth_module, "verify_token", fake_verify_token)
+    monkeypatch.setattr(auth_module, "UserService", DeactivatedUserService)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await auth_module.get_current_user(
+            credentials=HTTPAuthorizationCredentials(scheme="Bearer", credentials="valid-jwt"),
+            _jwks_client=object(),
+            db=None,
+        )
+
+    assert exc_info.value.status_code == 403
+    assert "deactivated" in exc_info.value.detail.lower()
+

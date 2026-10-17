@@ -3,7 +3,13 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Organization, OrganizationMember, Project, Repository
+from app.db.models import Organization, OrganizationMember, Project, Repository, User
+
+READ_ROLES: list[str] = ["owner", "admin", "security_reviewer", "developer", "viewer"]
+SCAN_EXECUTION_ROLES: list[str] = ["owner", "admin", "security_reviewer", "developer"]
+FINDING_MUTATION_ROLES: list[str] = ["owner", "admin", "security_reviewer"]
+ORG_ADMIN_ROLES: list[str] = ["owner", "admin"]
+OWNER_ONLY_ROLES: list[str] = ["owner"]
 
 
 async def get_repository_for_user(
@@ -16,9 +22,11 @@ async def get_repository_for_user(
         .join(Project, Repository.project_id == Project.id)
         .join(Organization, Project.organization_id == Organization.id)
         .join(OrganizationMember, OrganizationMember.organization_id == Organization.id)
+        .join(User, User.id == OrganizationMember.user_id)
         .where(
-            Repository.id == repo_id,
-            OrganizationMember.user_id == user_id,
+            Repository.id == str(repo_id),
+            OrganizationMember.user_id == str(user_id),
+            User.is_active.is_(True),
         )
     )
     return result.scalar_one_or_none()
@@ -35,10 +43,12 @@ async def get_project_in_org_for_user(
         select(Project)
         .join(Organization, Project.organization_id == Organization.id)
         .join(OrganizationMember, OrganizationMember.organization_id == Organization.id)
+        .join(User, User.id == OrganizationMember.user_id)
         .where(
-            Project.id == project_id,
-            Project.organization_id == org_id,
-            OrganizationMember.user_id == user_id,
+            Project.id == str(project_id),
+            Project.organization_id == str(org_id),
+            OrganizationMember.user_id == str(user_id),
+            User.is_active.is_(True),
         )
     )
     return result.scalar_one_or_none()
@@ -56,10 +66,12 @@ async def get_repository_in_project_for_user(
         .join(Project, Repository.project_id == Project.id)
         .join(Organization, Project.organization_id == Organization.id)
         .join(OrganizationMember, OrganizationMember.organization_id == Organization.id)
+        .join(User, User.id == OrganizationMember.user_id)
         .where(
-            Repository.id == repo_id,
-            Repository.project_id == project_id,
-            OrganizationMember.user_id == user_id,
+            Repository.id == str(repo_id),
+            Repository.project_id == str(project_id),
+            OrganizationMember.user_id == str(user_id),
+            User.is_active.is_(True),
         )
     )
     return result.scalar_one_or_none()

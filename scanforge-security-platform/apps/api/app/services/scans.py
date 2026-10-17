@@ -176,10 +176,19 @@ class ScanService:
         await self.db.refresh(scan)
         return scan
 
-    async def cancel(self, scan_id: UUID, reason: str | None = None, user_id: UUID | None = None) -> Scan | None:
+    async def cancel(
+        self,
+        scan_id: UUID,
+        reason: str | None = None,
+        user_id: UUID | None = None,
+        *,
+        project_id: UUID | None = None,
+    ) -> Scan | None:
         if user_id is not None:
             scan = await self.get_by_id(scan_id, user_id)
             if scan is None:
+                return None
+            if project_id is not None and str(scan.project_id) != str(project_id):
                 return None
             # Re-read under the row lock so cancellation and completion serialize
             # on the same Scan lock and exactly one terminal winner exists.
@@ -193,6 +202,8 @@ class ScanService:
             )
             scan = locked.scalar_one_or_none()
         if not scan:
+            return None
+        if project_id is not None and str(scan.project_id) != str(project_id):
             return None
 
         if scan.status not in (ScanStatusEnum.QUEUED, ScanStatusEnum.RUNNING):
@@ -210,9 +221,13 @@ class ScanService:
         self,
         scan_id: UUID,
         user_id: UUID,
+        *,
+        project_id: UUID | None = None,
     ) -> Scan | None:
         scan = await self.get_by_id(scan_id, user_id)
         if not scan:
+            return None
+        if project_id is not None and str(scan.project_id) != str(project_id):
             return None
 
         if scan.status not in (

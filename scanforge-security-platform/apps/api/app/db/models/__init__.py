@@ -8,7 +8,12 @@ from app.db.models.finding import (
     FindingReference,
 )
 from app.db.models.notification import Notification
-from app.db.models.organization import Organization, OrganizationIntegration, OrganizationMember
+from app.db.models.organization import (
+    Organization,
+    OrganizationIntegration,
+    OrganizationInvitation,
+    OrganizationMember,
+)
 from app.db.models.policy import FindingSuppression, SuppressionRule
 from app.db.models.project import Project
 from app.db.models.repository import Repository, RepositoryIntegration
@@ -29,6 +34,7 @@ __all__ = [
     "Notification",
     "Organization",
     "OrganizationIntegration",
+    "OrganizationInvitation",
     "OrganizationMember",
     "Project",
     "Repository",

@@ -1,12 +1,16 @@
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
     AuditLog,
+    Finding,
     OrganizationMember,
     Project,
+    Repository,
+    Scan,
+    User,
 )
 
 
@@ -14,14 +18,14 @@ class AuditLogService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create(
+    def record(
         self,
-        actor_user_id: UUID | None,
+        actor_user_id: UUID | str | None,
         action: str,
         target_type: str,
-        target_id: UUID | None = None,
+        target_id: UUID | str | None = None,
         *,
-        organization_id: UUID | None = None,
+        organization_id: UUID | str | None = None,
         metadata_json: dict | None = None,
         ip_address: str | None = None,
         user_agent: str | None = None,
@@ -37,8 +41,36 @@ class AuditLogService:
             user_agent=user_agent,
         )
         self.db.add(log)
-        await self.db.commit()
-        await self.db.refresh(log)
+        return log
+
+    async def create(
+        self,
+        actor_user_id: UUID | str | None,
+        action: str,
+        target_type: str,
+        target_id: UUID | str | None = None,
+        *,
+        organization_id: UUID | str | None = None,
+        metadata_json: dict | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+        commit: bool = True,
+    ) -> AuditLog:
+        log = self.record(
+            actor_user_id=actor_user_id,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            organization_id=organization_id,
+            metadata_json=metadata_json,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+        if commit:
+            await self.db.commit()
+            await self.db.refresh(log)
+        else:
+            await self.db.flush()
         return log
 
     async def list_for_organization(
@@ -52,9 +84,12 @@ class AuditLogService:
         actor_user_id: UUID | None = None,
     ) -> tuple[list[AuditLog], int]:
         is_member = await self.db.execute(
-            select(OrganizationMember).where(
+            select(OrganizationMember)
+            .join(User, User.id == OrganizationMember.user_id)
+            .where(
                 OrganizationMember.organization_id == str(org_id),
                 OrganizationMember.user_id == str(user_id),
+                User.is_active.is_(True),
             )
         )
         if not is_member.scalar_one_or_none():
@@ -92,16 +127,31 @@ class AuditLogService:
             return [], 0
 
         is_member = await self.db.execute(
-            select(OrganizationMember).where(
+            select(OrganizationMember)
+            .join(User, User.id == OrganizationMember.user_id)
+            .where(
                 OrganizationMember.organization_id == project.organization_id,
                 OrganizationMember.user_id == str(user_id),
+                User.is_active.is_(True),
             )
         )
         if not is_member.scalar_one_or_none():
             return [], 0
 
+        pid = str(project_id)
+        repo_ids = select(Repository.id).where(Repository.project_id == pid)
+        scan_ids = select(Scan.id).where(Scan.project_id == pid)
+        finding_ids = select(Finding.id).where(Finding.project_id == pid)
+
         base_query = select(AuditLog).where(
-            AuditLog.organization_id == project.organization_id
+            AuditLog.organization_id == project.organization_id,
+            or_(
+                and_(AuditLog.target_type == "project", AuditLog.target_id == pid),
+                and_(AuditLog.target_type == "repository", AuditLog.target_id.in_(repo_ids)),
+                and_(AuditLog.target_type == "scan", AuditLog.target_id.in_(scan_ids)),
+                and_(AuditLog.target_type == "finding", AuditLog.target_id.in_(finding_ids)),
+                AuditLog.target_id == pid,
+            ),
         )
 
         if action:
@@ -117,3 +167,4 @@ class AuditLogService:
         )
 
         return list(result.scalars().all()), total
+

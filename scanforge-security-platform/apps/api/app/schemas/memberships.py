@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
@@ -16,3 +17,22 @@ class MemberUpdateRole(BaseModel):
 
 class MemberRemove(BaseModel):
     user_id: UUID
+
+
+class InvitationAccept(BaseModel):
+    token: str = Field(..., min_length=16)
+
+
+class OwnershipTransferRequest(BaseModel):
+    new_owner_user_id: UUID
+
+
+class InvitationResponse(BaseModel):
+    id: UUID
+    organization_id: UUID
+    email: str
+    role: str
+    status: str
+    expires_at: datetime
+    created_at: datetime
+

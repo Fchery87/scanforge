@@ -145,9 +145,9 @@ async def test_create_scan_requires_developer_or_higher(monkeypatch):
         )
 
     assert exc_info.value.status_code == 403
-    assert exc_info.value.detail == "Developer, admin, or owner role required to trigger scans"
+    assert exc_info.value.detail == "Developer, security reviewer, admin, or owner role required to trigger scans"
     org_service.user_has_permission.assert_awaited_once_with(
-        org_id, current_user.user_id, ["owner", "admin", "developer"]
+        org_id, current_user.user_id, ["owner", "admin", "security_reviewer", "developer"]
     )
 
 
@@ -196,6 +196,7 @@ async def test_create_export_requires_security_reviewer_or_higher(monkeypatch):
     current_user = _current_user(role="developer")
     project = SimpleNamespace(id=project_id, organization_id=org_id)
 
+    monkeypatch.setattr(exports, "require_beta_capability", lambda *_args, **_kwargs: None)
     _patch_project_access(monkeypatch, project)
     org_service = SimpleNamespace(user_has_permission=AsyncMock(return_value=False))
     monkeypatch.setattr(exports, "OrganizationService", lambda db: org_service)
@@ -225,6 +226,7 @@ async def test_download_export_rejects_project_outside_org_path(monkeypatch):
     current_user = _current_user()
     project = SimpleNamespace(id=project_id, organization_id=other_org_id)
 
+    monkeypatch.setattr(exports, "require_beta_capability", lambda *_args, **_kwargs: None)
     _patch_project_access(monkeypatch, None)
 
     with pytest.raises(HTTPException) as exc_info:
@@ -304,6 +306,7 @@ async def test_update_schedule_rejects_schedule_outside_repo_path(monkeypatch):
     repo = SimpleNamespace(id=repo_id, project_id=project_id)
     schedule = SimpleNamespace(id=schedule_id, repository_id=other_repo_id)
 
+    monkeypatch.setattr(scan_schedules, "require_beta_capability", lambda *_args, **_kwargs: None)
     _patch_project_access(monkeypatch, SimpleNamespace(id=project_id, organization_id=org_id))
     _patch_repository_access(monkeypatch, repo)
     monkeypatch.setattr(
@@ -354,6 +357,7 @@ async def test_delete_schedule_rejects_schedule_outside_repo_path(monkeypatch):
     repo = SimpleNamespace(id=repo_id, project_id=project_id)
     schedule = SimpleNamespace(id=schedule_id, repository_id=other_repo_id)
 
+    monkeypatch.setattr(scan_schedules, "require_beta_capability", lambda *_args, **_kwargs: None)
     _patch_project_access(monkeypatch, SimpleNamespace(id=project_id, organization_id=org_id))
     _patch_repository_access(monkeypatch, repo)
     monkeypatch.setattr(
@@ -374,3 +378,284 @@ async def test_delete_schedule_rejects_schedule_outside_repo_path(monkeypatch):
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Schedule not found in this repository"
+
+
+from sqlalchemy.dialects.postgresql import INET, JSONB, UUID as PGUUID
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.types import CHAR, TypeDecorator
+
+
+@compiles(PGUUID, "sqlite")
+def _pg_uuid_sqlite(type_, compiler, **kw):  # noqa: ARG001
+    return "CHAR(36)"
+
+
+@compiles(JSONB, "sqlite")
+def _pg_jsonb_sqlite(type_, compiler, **kw):  # noqa: ARG001
+    return "JSON"
+
+
+@compiles(INET, "sqlite")
+def _pg_inet_sqlite(type_, compiler, **kw):  # noqa: ARG001
+    return "VARCHAR(64)"
+
+
+class _SQLiteUUID(TypeDecorator):
+    impl = CHAR
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(PGUUID(as_uuid=True))
+        return dialect.type_descriptor(CHAR(36))
+
+    def bind_processor(self, dialect):
+        if dialect.name == "postgresql":
+            return None
+
+        def process(value):
+            if value is None:
+                return None
+            return str(value)
+
+        return process
+
+
+def _downcast_postgres_uuid_columns(metadata) -> None:
+    for table in metadata.tables.values():
+        for column in table.columns:
+            if isinstance(column.type, PGUUID):
+                column.type = _SQLiteUUID()
+
+
+@pytest.mark.asyncio
+async def test_privileged_org_a_viewer_org_b_cannot_mutate_org_b_finding_before_denial():
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    import app.db.models  # noqa: F401
+    from app.db.base import Base
+    from app.db.models import Finding, FindingEvent, Organization, OrganizationMember, Project, Repository, User
+    from app.services.findings import FindingAuthorizationError, FindingService
+
+    _downcast_postgres_uuid_columns(Base.metadata)
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    user_id = uuid4()
+    org_a = uuid4()
+    proj_a = uuid4()
+    org_b = uuid4()
+    proj_b = uuid4()
+    repo_b = uuid4()
+    finding_b = uuid4()
+
+    async with session_factory() as db:
+        db.add_all(
+            [
+                User(
+                    id=str(user_id),
+                    auth_provider_user_id="sub-cross-org",
+                    email="attacker@example.com",
+                    name="Attacker",
+                    is_active=True,
+                ),
+                Organization(id=str(org_a), name="Org A", slug="org-a", created_by_user_id=str(user_id)),
+                Organization(id=str(org_b), name="Org B", slug="org-b", created_by_user_id=str(user_id)),
+                OrganizationMember(
+                    id=str(uuid4()),
+                    organization_id=str(org_a),
+                    user_id=str(user_id),
+                    role="security_reviewer",
+                ),
+                OrganizationMember(
+                    id=str(uuid4()),
+                    organization_id=str(org_b),
+                    user_id=str(user_id),
+                    role="viewer",
+                ),
+                Project(
+                    id=str(proj_a),
+                    organization_id=str(org_a),
+                    name="Proj A",
+                    slug="proj-a",
+                    created_by_user_id=str(user_id),
+                ),
+                Project(
+                    id=str(proj_b),
+                    organization_id=str(org_b),
+                    name="Proj B",
+                    slug="proj-b",
+                    created_by_user_id=str(user_id),
+                ),
+                Repository(
+                    id=str(repo_b),
+                    project_id=str(proj_b),
+                    provider="github",
+                    owner_name="org-b",
+                    repo_name="repo-b",
+                    full_name="org-b/repo-b",
+                ),
+                Finding(
+                    id=str(finding_b),
+                    project_id=str(proj_b),
+                    repository_id=str(repo_b),
+                    category="vulnerability",
+                    severity="critical",
+                    status="open",
+                    title="Org B Critical Finding",
+                    canonical_fingerprint="fp-org-b",
+                    primary_scanner="trivy",
+                ),
+            ]
+        )
+        await db.commit()
+
+        # Route-level attempt using Org A / Proj A URL path with Finding B ID:
+        with pytest.raises(HTTPException) as route_exc:
+            await findings.suppress_finding(
+                org_id=org_a,
+                project_id=proj_a,
+                finding_id=finding_b,
+                data=FindingSuppress(reason="cross-tenant suppress attempt"),
+                current_user=SimpleNamespace(user_id=user_id, role="security_reviewer"),
+                db=db,
+            )
+        assert route_exc.value.status_code == 404
+
+        # Direct service-level attempt by viewer in Org B:
+        with pytest.raises(FindingAuthorizationError):
+            await FindingService(db).suppress(
+                finding_b,
+                user_id,
+                "viewer direct suppress attempt",
+            )
+
+        # Verify Finding B was NEVER mutated in database!
+        persisted = await db.get(Finding, str(finding_b))
+        assert persisted is not None
+        assert persisted.status == "open"
+        from sqlalchemy import select
+
+        events = (
+            await db.execute(select(FindingEvent).where(FindingEvent.finding_id == str(finding_b)))
+        ).scalars().all()
+        assert events == []
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_bulk_finding_mutation_rolls_back_all_when_any_item_is_outside_scope():
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    import app.db.models  # noqa: F401
+    from app.db.base import Base
+    from app.db.models import Finding, Organization, OrganizationMember, Project, Repository, User
+    from app.services.findings import FindingService
+
+    _downcast_postgres_uuid_columns(Base.metadata)
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    user_id = uuid4()
+    org_id = uuid4()
+    proj_1 = uuid4()
+    proj_2 = uuid4()
+    repo_1 = uuid4()
+    repo_2 = uuid4()
+    f1 = uuid4()
+    f2 = uuid4()
+
+    async with session_factory() as db:
+        db.add_all(
+            [
+                User(
+                    id=str(user_id),
+                    auth_provider_user_id="sub-bulk-rev",
+                    email="rev@example.com",
+                    name="Rev",
+                    is_active=True,
+                ),
+                Organization(id=str(org_id), name="Org", slug="org", created_by_user_id=str(user_id)),
+                OrganizationMember(
+                    id=str(uuid4()),
+                    organization_id=str(org_id),
+                    user_id=str(user_id),
+                    role="security_reviewer",
+                ),
+                Project(
+                    id=str(proj_1),
+                    organization_id=str(org_id),
+                    name="P1",
+                    slug="p1",
+                    created_by_user_id=str(user_id),
+                ),
+                Project(
+                    id=str(proj_2),
+                    organization_id=str(org_id),
+                    name="P2",
+                    slug="p2",
+                    created_by_user_id=str(user_id),
+                ),
+                Repository(
+                    id=str(repo_1),
+                    project_id=str(proj_1),
+                    provider="github",
+                    owner_name="o",
+                    repo_name="r1",
+                    full_name="o/r1",
+                ),
+                Repository(
+                    id=str(repo_2),
+                    project_id=str(proj_2),
+                    provider="github",
+                    owner_name="o",
+                    repo_name="r2",
+                    full_name="o/r2",
+                ),
+                Finding(
+                    id=str(f1),
+                    project_id=str(proj_1),
+                    repository_id=str(repo_1),
+                    category="vulnerability",
+                    severity="high",
+                    status="open",
+                    title="F1",
+                    canonical_fingerprint="fp-f1",
+                    primary_scanner="trivy",
+                ),
+                Finding(
+                    id=str(f2),
+                    project_id=str(proj_2),
+                    repository_id=str(repo_2),
+                    category="vulnerability",
+                    severity="high",
+                    status="open",
+                    title="F2",
+                    canonical_fingerprint="fp-f2",
+                    primary_scanner="trivy",
+                ),
+            ]
+        )
+        await db.commit()
+
+        with pytest.raises(ValueError, match="not found in the authorized scope"):
+            await FindingService(db).bulk_suppress(
+                [f1, f2],
+                user_id,
+                "bulk suppress",
+                project_id=proj_1,
+                organization_id=org_id,
+            )
+
+        p1_finding = await db.get(Finding, str(f1))
+        p2_finding = await db.get(Finding, str(f2))
+        assert p1_finding is not None and p1_finding.status == "open"
+        assert p2_finding is not None and p2_finding.status == "open"
+
+    await engine.dispose()
+

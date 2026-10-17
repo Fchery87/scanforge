@@ -23,18 +23,36 @@ AUDITED_PATHS = [
 ]
 
 
+from contextvars import ContextVar
+
+_audit_user_var: ContextVar[str | None] = ContextVar("audit_user_id", default=None)
+_audit_org_var: ContextVar[str | None] = ContextVar("audit_org_id", default=None)
+
+
 class AuditLogContext:
-    def __init__(self):
-        self.user_id: str | None = None
-        self.org_id: str | None = None
+    @property
+    def user_id(self) -> str | None:
+        return _audit_user_var.get()
+
+    @user_id.setter
+    def user_id(self, value: str | None) -> None:
+        _audit_user_var.set(value)
+
+    @property
+    def org_id(self) -> str | None:
+        return _audit_org_var.get()
+
+    @org_id.setter
+    def org_id(self, value: str | None) -> None:
+        _audit_org_var.set(value)
 
     def set(self, user_id: str | None = None, org_id: str | None = None):
-        self.user_id = user_id
-        self.org_id = org_id
+        _audit_user_var.set(user_id)
+        _audit_org_var.set(org_id)
 
     def clear(self):
-        self.user_id = None
-        self.org_id = None
+        _audit_user_var.set(None)
+        _audit_org_var.set(None)
 
 
 audit_context = AuditLogContext()
@@ -46,12 +64,14 @@ class AuditMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         path = request.url.path
-        if not any(path.startswith(p) for p in AUDITED_PATHS):
+        if not any(path.startswith(p) or f"/api/v1{p}" in path for p in AUDITED_PATHS):
             return await call_next(request)
 
         audit_context.clear()
 
         response = await call_next(request)
+        if response.status_code >= 400 or getattr(request.state, "audit_recorded_in_tx", False):
+            return response
 
         actor_user_id = getattr(request.state, "audit_user_id", None)
         actor_org_id = getattr(request.state, "audit_org_id", None)

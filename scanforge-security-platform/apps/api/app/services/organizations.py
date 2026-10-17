@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.enums import MemberRole
 from app.db.models import Organization, OrganizationMember, User
 from app.schemas.organizations import OrganizationCreate, OrganizationUpdate
+from app.services.audit_logs import AuditLogService
 
 
 class OrganizationService:
@@ -30,7 +31,9 @@ class OrganizationService:
         data: OrganizationCreate,
         user_id: UUID,
     ) -> tuple[Organization, OrganizationMember]:
-        user_result = await self.db.execute(select(User).where(User.id == user_id))
+        user_result = await self.db.execute(
+            select(User).where(User.id == str(user_id), User.is_active.is_(True))
+        )
         user = user_result.scalar_one_or_none()
         if not user:
             raise ValueError("Authenticated user record not found")
@@ -38,17 +41,25 @@ class OrganizationService:
         org = Organization(
             name=data.name,
             slug=await self.get_available_slug(data.slug),
-            created_by_user_id=user_id,
+            created_by_user_id=str(user_id),
         )
         self.db.add(org)
         await self.db.flush()
 
         member = OrganizationMember(
-            organization_id=org.id,
-            user_id=user_id,
+            organization_id=str(org.id),
+            user_id=str(user_id),
             role=MemberRole.OWNER.value,
         )
         self.db.add(member)
+        AuditLogService(self.db).record(
+            actor_user_id=user_id,
+            action="organization_created",
+            target_type="organization",
+            target_id=org.id,
+            organization_id=org.id,
+            metadata_json={"slug": org.slug, "name": org.name},
+        )
         await self.db.commit()
         await self.db.refresh(org)
         return org, member
@@ -58,16 +69,10 @@ class OrganizationService:
         org_id: UUID,
         user_id: UUID,
     ) -> Organization | None:
-        membership = await self.db.execute(
-            select(OrganizationMember).where(
-                OrganizationMember.organization_id == org_id,
-                OrganizationMember.user_id == user_id,
-            )
-        )
-        if not membership.scalar_one_or_none():
+        if not await self.is_member(org_id, user_id):
             return None
 
-        result = await self.db.execute(select(Organization).where(Organization.id == org_id))
+        result = await self.db.execute(select(Organization).where(Organization.id == str(org_id)))
         return result.scalar_one_or_none()
 
     async def get_by_slug(self, slug: str) -> Organization | None:
@@ -83,14 +88,16 @@ class OrganizationService:
         count_result = await self.db.execute(
             select(func.count(Organization.id))
             .join(OrganizationMember, OrganizationMember.organization_id == Organization.id)
-            .where(OrganizationMember.user_id == user_id)
+            .join(User, User.id == OrganizationMember.user_id)
+            .where(OrganizationMember.user_id == str(user_id), User.is_active.is_(True))
         )
         total = count_result.scalar_one()
 
         result = await self.db.execute(
             select(Organization)
             .join(OrganizationMember, OrganizationMember.organization_id == Organization.id)
-            .where(OrganizationMember.user_id == user_id)
+            .join(User, User.id == OrganizationMember.user_id)
+            .where(OrganizationMember.user_id == str(user_id), User.is_active.is_(True))
             .order_by(Organization.name)
             .offset(skip)
             .limit(limit)
@@ -106,9 +113,11 @@ class OrganizationService:
         user_id: UUID | None = None,
     ) -> Organization | None:
         if user_id is not None:
+            if not await self.user_has_permission(org_id, user_id, ["owner", "admin"]):
+                return None
             org = await self.get_by_id(org_id, user_id)
         else:
-            org = await self.db.get(Organization, org_id)
+            org = await self.db.get(Organization, str(org_id))
         if not org:
             return None
 
@@ -116,15 +125,25 @@ class OrganizationService:
         for field, value in update_data.items():
             setattr(org, field, value)
 
+        AuditLogService(self.db).record(
+            actor_user_id=user_id,
+            action="organization_updated",
+            target_type="organization",
+            target_id=org.id,
+            organization_id=org.id,
+            metadata_json={"updated_fields": sorted(update_data.keys())},
+        )
         await self.db.commit()
         await self.db.refresh(org)
         return org
 
     async def delete(self, org_id: UUID, user_id: UUID | None = None) -> bool:
         if user_id is not None:
+            if not await self.user_has_permission(org_id, user_id, ["owner"]):
+                return False
             org = await self.get_by_id(org_id, user_id)
         else:
-            org = await self.db.get(Organization, org_id)
+            org = await self.db.get(Organization, str(org_id))
         if not org:
             return False
 
@@ -134,9 +153,12 @@ class OrganizationService:
 
     async def is_member(self, org_id: UUID, user_id: UUID) -> bool:
         result = await self.db.execute(
-            select(OrganizationMember).where(
-                OrganizationMember.organization_id == org_id,
-                OrganizationMember.user_id == user_id,
+            select(OrganizationMember)
+            .join(User, User.id == OrganizationMember.user_id)
+            .where(
+                OrganizationMember.organization_id == str(org_id),
+                OrganizationMember.user_id == str(user_id),
+                User.is_active.is_(True),
             )
         )
         return result.scalar_one_or_none() is not None
@@ -147,13 +169,18 @@ class OrganizationService:
         user_id: UUID,
     ) -> str | None:
         result = await self.db.execute(
-            select(OrganizationMember).where(
-                OrganizationMember.organization_id == org_id,
-                OrganizationMember.user_id == user_id,
+            select(OrganizationMember)
+            .join(User, User.id == OrganizationMember.user_id)
+            .where(
+                OrganizationMember.organization_id == str(org_id),
+                OrganizationMember.user_id == str(user_id),
+                User.is_active.is_(True),
             )
         )
         member = result.scalar_one_or_none()
-        return member.role if member else None
+        if not member:
+            return None
+        return getattr(member.role, "value", member.role)
 
     async def user_has_permission(
         self,
@@ -164,6 +191,4 @@ class OrganizationService:
         role = await self.get_member_role(org_id, user_id)
         if not role:
             return False
-        if role in ("owner", "admin"):
-            return True
-        return role in required_roles
+        return role in set(required_roles)
