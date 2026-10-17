@@ -1,4 +1,5 @@
 import hashlib
+import re
 
 SEVERITY_MAP = {
     "CRITICAL": "critical",
@@ -7,6 +8,12 @@ SEVERITY_MAP = {
     "LOW": "low",
     "INFO": "info",
 }
+
+
+def _normalize_repo_path(path: str) -> str:
+    cleaned = str(path or "").strip()
+    cleaned = re.sub(r"^/workspace/source/?", "", cleaned)
+    return cleaned.lstrip("/")
 
 
 def compute_checkov_fingerprint(
@@ -25,15 +32,24 @@ def normalize_checkov_output(raw_output: dict | list, repository_id: str) -> lis
     failed_checks = results.get("failed_checks", []) if isinstance(results, dict) else []
 
     if isinstance(raw_output, list):
-        failed_checks = [item for item in raw_output if isinstance(item, dict)]
+        failed_checks = []
+        for item in raw_output:
+            if isinstance(item, dict):
+                if "results" in item and isinstance(item["results"], dict):
+                    failed_checks.extend(item["results"].get("failed_checks", []) or [])
+                else:
+                    failed_checks.append(item)
 
     for failed in failed_checks:
+        if not isinstance(failed, dict):
+            continue
         check_id = failed.get("check_id", "")
         massage_path = failed.get("file_path", "") or failed.get("repo_file_path", "")
-        path = massage_path.lstrip("/")
+        path = _normalize_repo_path(massage_path)
         resource = failed.get("resource", "")
         line_range = failed.get("file_line_range", []) or []
-        severity = SEVERITY_MAP.get(str(failed.get("severity", "MEDIUM")).upper(), "medium")
+        raw_severity = str(failed.get("severity") or "MEDIUM").upper()
+        severity = SEVERITY_MAP.get(raw_severity, "medium")
 
         if not check_id:
             continue
@@ -50,6 +66,11 @@ def normalize_checkov_output(raw_output: dict | list, repository_id: str) -> lis
                 "canonical_fingerprint": fingerprint,
                 "primary_scanner": "checkov",
                 "confidence_score": 0.9,
+                "metadata_json": {
+                    "severity_source": "checkov",
+                    "raw_severity": raw_severity,
+                    "check_id": check_id,
+                },
                 "instance": {
                     "path": path,
                     "line_start": line_range[0] if len(line_range) >= 1 else None,

@@ -1,4 +1,5 @@
 import hashlib
+import re
 
 SEVERITY_MAP = {
     "CRITICAL": "critical",
@@ -8,6 +9,14 @@ SEVERITY_MAP = {
     "NEGLIGIBLE": "low",
     "UNKNOWN": "info",
 }
+
+
+def _normalize_repo_path(path: str | None) -> str | None:
+    if not path:
+        return None
+    cleaned = str(path).strip()
+    cleaned = re.sub(r"^/workspace/source/?", "", cleaned)
+    return cleaned or None
 
 
 def compute_vulnerability_fingerprint(
@@ -41,10 +50,12 @@ def normalize_grype_output(raw_output: dict | list, repository_id: str) -> list[
         if not package_name or not vuln_id:
             continue
 
-        severity = SEVERITY_MAP.get(str(vulnerability.get("severity", "UNKNOWN")).upper(), "info")
+        raw_severity = str(vulnerability.get("severity", "UNKNOWN")).upper()
+        severity = SEVERITY_MAP.get(raw_severity, "info")
         fix_versions = ((vulnerability.get("fix") or {}).get("versions")) or []
+        fixed_version = fix_versions[0] if fix_versions else None
         locations = artifact.get("locations", []) or []
-        path = locations[0].get("path") if locations else None
+        path = _normalize_repo_path(locations[0].get("path")) if locations else None
 
         findings.append(
             {
@@ -60,11 +71,19 @@ def normalize_grype_output(raw_output: dict | list, repository_id: str) -> list[
                 ),
                 "primary_scanner": "grype",
                 "confidence_score": 0.92,
-                "fixed_version": fix_versions[0] if fix_versions else None,
+                "fixed_version": fixed_version,
+                "advisory_id": vuln_id,
+                "package_name": package_name,
+                "package_ecosystem": artifact.get("type") or None,
+                "metadata_json": {
+                    "severity_source": "grype",
+                    "raw_severity": raw_severity,
+                    "remediation_source": "grype" if fixed_version else None,
+                },
                 "instance": {
                     "package_name": package_name,
                     "installed_version": installed_version,
-                    "fixed_version": fix_versions[0] if fix_versions else None,
+                    "fixed_version": fixed_version,
                     "package_type": artifact.get("type"),
                     "path": path,
                     "purl": artifact.get("purl"),

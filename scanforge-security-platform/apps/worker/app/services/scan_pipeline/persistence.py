@@ -24,6 +24,7 @@ class PersistenceStage:
         return {"X-Worker-Credential": self.worker_credential}
 
     async def complete_scan(self, context: ScanContext) -> None:
+        run_uploads_by_scanner = (context.artifact_uris or {}).get("scanner_runs") or {}
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{self.api_base_url}/api/v1/internal/scans/{context.scan_id}/complete",
@@ -36,10 +37,33 @@ class PersistenceStage:
                             "scanner_name": name,
                             "scanner_version": result.version,
                             "status": "completed" if result.success else "failed",
+                            "outcome_status": getattr(
+                                result,
+                                "outcome_status",
+                                "completed" if result.success else "failed",
+                            ),
+                            "parser_version": getattr(result, "parser_version", None),
+                            "rules_digest": getattr(result, "rules_digest", None),
+                            "db_digest": getattr(result, "db_digest", None),
+                            "db_published_at": getattr(result, "db_published_at", None),
+                            "db_freshness_state": getattr(
+                                result,
+                                "db_freshness_state",
+                                "not_applicable",
+                            ),
+                            "image_digest": getattr(result, "image_digest", None),
                             "duration_ms": result.duration_ms,
-                            "exit_code": 0 if result.success else 1,
+                            "exit_code": (
+                                result.exit_code
+                                if getattr(result, "exit_code", None) is not None
+                                else (0 if result.success else 1)
+                            ),
                             "error_message": result.error or None,
-                            "metadata_json": {},
+                            "artifact_uri": (
+                                (run_uploads_by_scanner.get(name) or {}).get("artifact_uri")
+                                or (run_uploads_by_scanner.get(name) or {}).get("raw_output_uri")
+                            ),
+                            "metadata_json": dict(run_uploads_by_scanner.get(name) or {}),
                         }
                         for name, result in context.scanner_results.items()
                     ],

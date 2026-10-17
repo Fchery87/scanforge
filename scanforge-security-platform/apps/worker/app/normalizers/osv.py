@@ -10,6 +10,14 @@ SEVERITY_MAP = {
 }
 
 
+def _normalize_repo_path(path: str | None) -> str | None:
+    if not path:
+        return None
+    cleaned = str(path).strip()
+    cleaned = re.sub(r"^/workspace/source/?", "", cleaned)
+    return cleaned or None
+
+
 def compute_vulnerability_fingerprint(
     package_name: str,
     installed_version: str,
@@ -25,29 +33,49 @@ def compute_vulnerability_fingerprint(
     return hashlib.sha256("|".join(components).encode()).hexdigest()
 
 
-def normalize_osv_output(raw_output: dict, repository_id: str) -> list[dict]:
+def _extract_fixed_version_from_vuln(vuln: dict, package_name: str) -> str | None:
+    for affected in vuln.get("affected", []) or []:
+        aff_pkg = (affected.get("package") or {}).get("name", "")
+        if aff_pkg and aff_pkg.lower() != package_name.lower():
+            continue
+        for range_info in affected.get("ranges", []) or []:
+            for event in range_info.get("events", []) or []:
+                fixed = event.get("fixed")
+                if fixed:
+                    return str(fixed)
+    return None
+
+
+def normalize_osv_output(raw_output: dict | list, repository_id: str) -> list[dict]:
     findings = []
 
-    results = raw_output.get("results", [])
+    results = raw_output.get("results", []) if isinstance(raw_output, dict) else []
     if isinstance(raw_output, list):
         results = raw_output
 
     for result in results:
+        if not isinstance(result, dict):
+            continue
+        source_path = _normalize_repo_path((result.get("source") or {}).get("path"))
         packages = result.get("packages", []) or []
         if packages:
             for package_entry in packages:
-                pkg = package_entry.get("package", {})
+                pkg = package_entry.get("package", {}) or {}
                 package_name = pkg.get("name", "")
                 ecosystem = pkg.get("ecosystem", "unknown")
-                installed_version = str(package_entry.get("version", "unknown"))
+                installed_version = str(
+                    pkg.get("version") or package_entry.get("version") or "unknown"
+                )
                 for vuln in package_entry.get("vulnerabilities", []) or []:
+                    fixed_version = _extract_fixed_version_from_vuln(vuln, package_name)
                     finding = _build_osv_finding(
                         repository_id=repository_id,
                         package_name=package_name,
                         installed_version=installed_version,
                         ecosystem=ecosystem,
                         vuln=vuln,
-                        fixed_version=None,
+                        fixed_version=fixed_version,
+                        source_path=source_path,
                     )
                     if finding:
                         findings.append(finding)
@@ -79,6 +107,7 @@ def normalize_osv_output(raw_output: dict, repository_id: str) -> list[dict]:
                             ecosystem=ecosystem,
                             vuln=vuln,
                             fixed_version=fixed_version,
+                            source_path=source_path,
                         )
                         if finding:
                             findings.append(finding)
@@ -95,6 +124,7 @@ def normalize_osv_output(raw_output: dict, repository_id: str) -> list[dict]:
                     ecosystem=ecosystem,
                     vuln=vuln,
                     fixed_version=None,
+                    source_path=source_path,
                 )
                 if finding:
                     findings.append(finding)
@@ -137,6 +167,7 @@ def _build_osv_finding(
     ecosystem: str,
     vuln: dict,
     fixed_version: str | None,
+    source_path: str | None = None,
 ) -> dict | None:
     vuln_id = vuln.get("id", "")
     if not vuln_id or not package_name:
@@ -151,6 +182,15 @@ def _build_osv_finding(
         repo_id=repository_id,
     )
 
+    instance = {
+        "package_name": package_name,
+        "installed_version": installed_version,
+        "fixed_version": fixed_version,
+        "ecosystem": ecosystem,
+    }
+    if source_path:
+        instance["path"] = source_path
+
     return {
         "category": "vulnerability",
         "severity": severity,
@@ -160,12 +200,15 @@ def _build_osv_finding(
         "primary_scanner": "osv",
         "confidence_score": 0.9,
         "fixed_version": fixed_version,
-        "instance": {
-            "package_name": package_name,
-            "installed_version": installed_version,
-            "fixed_version": fixed_version,
-            "ecosystem": ecosystem,
+        "advisory_id": vuln_id,
+        "package_name": package_name,
+        "package_ecosystem": ecosystem,
+        "metadata_json": {
+            "severity_source": "osv",
+            "raw_severity": severity.upper(),
+            "remediation_source": "osv" if fixed_version else None,
         },
+        "instance": instance,
         "references": [
             {
                 "type": "advisory",

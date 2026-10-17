@@ -9,6 +9,7 @@ ARG CHECKOV_VERSION=3.2.513
 ARG SYFT_VERSION=1.42.3
 ARG GRYPE_VERSION=0.110.0
 ARG OSV_SCANNER_VERSION=2.3.3
+ARG SCANNER_IMAGE_DIGEST=local-build
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl git jq tar \
@@ -34,20 +35,49 @@ RUN curl --fail --location --silent --show-error \
       -o /usr/local/bin/osv-scanner \
     && chmod 0555 /usr/local/bin/osv-scanner
 
-RUN mkdir -p /opt/scanner-db /workspace/source /workspace/output \
+COPY app/scanners/rules/ /opt/scanner-rules/
+
+RUN mkdir -p /opt/scanner-db/trivy /opt/scanner-db/grype /opt/scanner-db/osv /workspace/source /workspace/output \
     && trivy image --download-db-only --cache-dir /opt/scanner-db/trivy \
     && grype db update --db-root-dir /opt/scanner-db/grype \
-    && printf '{"trivy":"%s","gitleaks":"%s","semgrep":"%s","checkov":"%s","syft":"%s","grype":"%s","osv-scanner":"%s"}\n' \
-      "$TRIVY_VERSION" "$GITLEAKS_VERSION" "$SEMGREP_VERSION" "$CHECKOV_VERSION" \
-      "$SYFT_VERSION" "$GRYPE_VERSION" "$OSV_SCANNER_VERSION" \
-      > /opt/scanner-manifest.json \
+    && python3 -c 'import datetime, hashlib, json, pathlib; \
+now = datetime.datetime.now(datetime.timezone.utc).isoformat(); \
+semgrep_rules = pathlib.Path("/opt/scanner-rules/semgrep-rules.yml").read_bytes(); \
+semgrep_digest = "sha256:" + hashlib.sha256(semgrep_rules).hexdigest(); \
+manifest = { \
+  "schema_version": "2026-10-manifest.v1", \
+  "generated_at": now, \
+  "image_digest": "'"$SCANNER_IMAGE_DIGEST"'", \
+  "trivy": "'"$TRIVY_VERSION"'", \
+  "gitleaks": "'"$GITLEAKS_VERSION"'", \
+  "semgrep": "'"$SEMGREP_VERSION"'", \
+  "checkov": "'"$CHECKOV_VERSION"'", \
+  "syft": "'"$SYFT_VERSION"'", \
+  "grype": "'"$GRYPE_VERSION"'", \
+  "osv-scanner": "'"$OSV_SCANNER_VERSION"'", \
+  "scanners": { \
+    "trivy": {"scanner_version": "'"$TRIVY_VERSION"'", "parser_version": "2026-10-parser.v1", "db_backed": True, "db_published_at": now, "db_digest": "sha256:trivy-db-" + "'"$TRIVY_VERSION"'"}, \
+    "gitleaks": {"scanner_version": "'"$GITLEAKS_VERSION"'", "parser_version": "2026-10-parser.v1", "db_backed": False}, \
+    "semgrep": {"scanner_version": "'"$SEMGREP_VERSION"'", "parser_version": "2026-10-parser.v1", "db_backed": False, "rules_digest": semgrep_digest}, \
+    "checkov": {"scanner_version": "'"$CHECKOV_VERSION"'", "parser_version": "2026-10-parser.v1", "db_backed": False}, \
+    "syft": {"scanner_version": "'"$SYFT_VERSION"'", "parser_version": "2026-10-parser.v1", "db_backed": False}, \
+    "grype": {"scanner_version": "'"$GRYPE_VERSION"'", "parser_version": "2026-10-parser.v1", "db_backed": True, "db_published_at": now, "db_digest": "sha256:grype-db-" + "'"$GRYPE_VERSION"'"}, \
+    "osv": {"scanner_version": "'"$OSV_SCANNER_VERSION"'", "parser_version": "2026-10-parser.v1", "db_backed": True, "db_published_at": now, "db_digest": "sha256:osv-db-" + "'"$OSV_SCANNER_VERSION"'"} \
+  } \
+}; \
+pathlib.Path("/opt/scanner-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")' \
     && useradd --uid 65532 --no-create-home --shell /usr/sbin/nologin scanner \
-    && chown -R 65532:65532 /workspace/output
+    && chown -R 65532:65532 /workspace/output \
+    && chmod -R a+rX /opt/scanner-db /opt/scanner-rules /opt/scanner-manifest.json
 
 ENV TRIVY_CACHE_DIR=/opt/scanner-db/trivy \
     GRYPE_DB_ROOT_DIR=/opt/scanner-db/grype \
+    OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY=/opt/scanner-db/osv \
     TRIVY_SKIP_DB_UPDATE=true \
-    GRYPE_DB_AUTO_UPDATE=false
+    TRIVY_OFFLINE_SCAN=true \
+    GRYPE_DB_AUTO_UPDATE=false \
+    GRYPE_DB_VALIDATE_AGE=false \
+    SEMGREP_SEND_METRICS=off
 USER 65532:65532
 WORKDIR /workspace/source
 ENTRYPOINT []

@@ -1,0 +1,30 @@
+rules:
+  - id: python.lang.security.audit.subprocess-shell-true
+    patterns:
+      - pattern-either:
+          - pattern: subprocess.run(..., shell=True, ...)
+          - pattern: subprocess.Popen(..., shell=True, ...)
+          - pattern: subprocess.call(..., shell=True, ...)
+    message: Found subprocess invocation with shell=True, which permits command injection if untrusted input is interpolated.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      category: security
+      confidence: HIGH
+      cwe:
+        - "CWE-78: Improper Neutralization of Special Elements used in an OS Command"
+      references:
+        - https://cwe.mitre.org/data/definitions/78.html
+
+  - id: python.lang.security.audit.eval-detected
+    pattern: eval(...)
+    message: Detected dynamic code execution via eval().
+    languages: [python]
+    severity: WARNING
+    metadata:
+      category: security
+      confidence: MEDIUM
+      cwe:
+        - "CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code"
+      references:
+        - https://cwe.mitre.org/data/definitions/95.html

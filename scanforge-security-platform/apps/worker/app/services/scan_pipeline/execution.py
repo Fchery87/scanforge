@@ -62,7 +62,9 @@ class ScanExecutionStage:
 
     async def prepare_repository(self, context: ScanContext) -> Path:
         repo_dir = prepare_isolated_scan_workspace(
-            scan_id=context.scan_id,
+            scan_id=getattr(context, "scan_id", None)
+            or getattr(context, "repository_id", None)
+            or "scan-unknown",
             attempt_id=getattr(context, "attempt_id", None) or "attempt-0",
         )
         clone_url, auth_header = await self._get_clone_url(context)
@@ -214,17 +216,23 @@ class ScanExecutionStage:
         return results
 
     async def upload_artifacts(self, context: ScanContext) -> dict:
+        from app.security.secret_evidence import sanitize_gitleaks_output, sanitize_scanner_output
+
         uris: dict = {"scanner_runs": {}}
         for scanner_name, result in context.scanner_results.items():
             if scanner_name == "gitleaks":
                 # Raw Gitleaks records contain matched values and never cross
-                # the coordinator boundary. Only normalized findings persist.
-                result.raw_output = {}
+                # the coordinator boundary. Keep only sanitized rule/location
+                # metadata in memory until normalization completes.
+                result.raw_output = sanitize_gitleaks_output(result.raw_output)
+                for path in list(result.artifact_paths or []):
+                    path.unlink(missing_ok=True)
                 result.artifact_paths = []
-            elif scanner_name == "trivy":
-                sanitized_output = sanitize_trivy_output(result.raw_output)
-                result.raw_output = sanitized_output
-                for artifact_path in result.artifact_paths:
+                continue
+            sanitized_output = sanitize_scanner_output(scanner_name, result.raw_output)
+            result.raw_output = sanitized_output
+            for artifact_path in result.artifact_paths:
+                if artifact_path.exists():
                     artifact_path.write_text(
                         json.dumps(sanitized_output, separators=(",", ":"))
                     )
@@ -237,10 +245,7 @@ class ScanExecutionStage:
                         scan_id=context.scan_id,
                         organization_id=context.organization_id,
                         scanner_name=scanner_name,
-                        output_data=(
-                            sanitize_trivy_output(result.raw_output)
-                            if scanner_name == "trivy" else result.raw_output
-                        ),
+                        output_data=sanitized_output,
                     )
                     uris[f"{scanner_name}_raw"] = uri
                     run_uploads["raw_output_uri"] = uri
@@ -276,6 +281,22 @@ class ScanExecutionStage:
                         metadata_json=run_uploads,
                     )
         return uris
+
+    def cleanup_scanner_artifacts(self, context: ScanContext) -> None:
+        for scanner_name, result in context.scanner_results.items():
+            if scanner_name == "gitleaks":
+                result.raw_output = []
+            for artifact_path in list(getattr(result, "artifact_paths", []) or []):
+                try:
+                    artifact_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            result.artifact_paths = []
+            output_dir = getattr(result, "output_directory", None)
+            if output_dir is not None:
+                shutil.rmtree(output_dir, ignore_errors=True)
+                result.output_directory = None
+
 
     async def _get_clone_url(self, context: ScanContext) -> tuple[str, str]:
         async with httpx.AsyncClient() as client:

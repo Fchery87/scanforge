@@ -149,12 +149,7 @@ class ScanOrchestrator:
             if await self._stop_if_canceled(context, job):
                 return True
 
-            await self._update_status(context, "artifacts_uploading")
-            context.artifact_uris = await self._execution.upload_artifacts(context)
-            if await self._stop_if_canceled(context, job):
-                return True
-
-            # Stage 2 — Normalization
+            # Normalize safe evidence before discarding raw secret data or uploading artifacts.
             await self._update_status(context, "normalizing")
             context.findings = self._normalization.normalize_results(context)
             if job.job_type == "scan.repo.diff":
@@ -163,6 +158,11 @@ class ScanOrchestrator:
                 )
             context.critical_count = sum(1 for f in context.findings if f.get("severity") == "critical")
             context.high_count = sum(1 for f in context.findings if f.get("severity") == "high")
+
+            await self._update_status(context, "artifacts_uploading")
+            context.artifact_uris = await self._execution.upload_artifacts(context)
+            if await self._stop_if_canceled(context, job):
+                return True
 
             # Stage 3 — AI investigation (disabled by default in initial beta)
             if getattr(self._ai_investigation, "_enabled", False):
@@ -180,6 +180,7 @@ class ScanOrchestrator:
             if await self._stop_if_canceled(context, job):
                 return True
             await self._persistence.complete_scan(context)
+            self._execution.cleanup_scanner_artifacts(context)
 
             await self._update_status(context, "done")
             await self._persistence.send_notifications(context, self._notifier)
@@ -232,6 +233,7 @@ class ScanOrchestrator:
         survives a finished, failed, or canceled scan.
         """
         started = time.monotonic()
+        self._execution.cleanup_scanner_artifacts(context)
         receipt: dict = {
             "scan_id": context.scan_id,
             "workspace": str(context.repo_path) if context.repo_path else None,
@@ -240,6 +242,11 @@ class ScanOrchestrator:
         }
         if context.repo_path and context.repo_path.exists():
             shutil.rmtree(context.repo_path, ignore_errors=True)
+            if (
+                context.repo_path.name == "source"
+                and context.repo_path.parent.name.startswith("scan-")
+            ):
+                shutil.rmtree(context.repo_path.parent, ignore_errors=True)
             if not context.repo_path.exists():
                 receipt["removed"] = True
             else:

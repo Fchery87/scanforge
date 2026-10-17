@@ -1,9 +1,14 @@
 import hashlib
+import re
 
 SEVERITY_MAP = {
+    "CRITICAL": "critical",
     "ERROR": "high",
+    "HIGH": "high",
     "WARNING": "medium",
+    "MEDIUM": "medium",
     "INFO": "low",
+    "LOW": "low",
 }
 
 CONFIDENCE_MAP = {
@@ -15,6 +20,12 @@ CONFIDENCE_MAP = {
 CATEGORY_MAP = {
     "security": "vulnerability",
 }
+
+
+def _normalize_repo_path(path: str) -> str:
+    cleaned = str(path or "").strip()
+    cleaned = re.sub(r"^/workspace/source/?", "", cleaned)
+    return cleaned
 
 
 def compute_semgrep_fingerprint(
@@ -46,7 +57,7 @@ def normalize_semgrep_output(raw_output: dict | list, repository_id: str) -> lis
         if not isinstance(result, dict):
             continue
         check_id = result.get("check_id", "")
-        path = result.get("path", "")
+        path = _normalize_repo_path(result.get("path", ""))
         start = result.get("start", {})
         end = result.get("end", {})
         extra = result.get("extra", {})
@@ -54,22 +65,18 @@ def normalize_semgrep_output(raw_output: dict | list, repository_id: str) -> lis
         if not check_id:
             continue
 
-        raw_severity = extra.get("severity", "INFO").upper()
-        metadata = extra.get("metadata", {})
+        raw_severity = str(extra.get("severity", "INFO")).upper()
+        metadata = extra.get("metadata", {}) or {}
         raw_confidence = metadata.get("confidence", "MEDIUM")
         if isinstance(raw_confidence, str):
             raw_confidence = raw_confidence.upper()
         else:
             raw_confidence = "MEDIUM"
 
-        # Base severity mapping
+        # ADR-014: Keep severity and confidence strictly separate.
+        # Confidence alone never promotes ERROR (high) to critical.
         severity = SEVERITY_MAP.get(raw_severity, "low")
 
-        # Boost to critical if severity=ERROR AND confidence=HIGH
-        if raw_severity == "ERROR" and raw_confidence == "HIGH":
-            severity = "critical"
-
-        # Category mapping: "security" -> "vulnerability", everything else -> "code_quality"
         raw_category = metadata.get("category", "")
         if isinstance(raw_category, str):
             raw_category = raw_category.lower()
@@ -85,7 +92,6 @@ def normalize_semgrep_output(raw_output: dict | list, repository_id: str) -> lis
             repo_id=repository_id,
         )
 
-        # Build references from CWE list and metadata.references
         references = []
         cwe_list = metadata.get("cwe", [])
         if isinstance(cwe_list, list):
@@ -118,12 +124,17 @@ def normalize_semgrep_output(raw_output: dict | list, repository_id: str) -> lis
             "canonical_fingerprint": fingerprint,
             "primary_scanner": "semgrep",
             "confidence_score": confidence_score,
+            "metadata_json": {
+                "severity_source": "semgrep",
+                "raw_severity": raw_severity,
+                "raw_confidence": raw_confidence,
+                "check_id": check_id,
+            },
             "instance": {
                 "path": path,
                 "line_start": start.get("line", 1),
                 "line_end": end.get("line", 1),
                 "check_id": check_id,
-                "lines": extra.get("lines", ""),
             },
             "references": references,
         }

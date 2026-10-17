@@ -97,6 +97,13 @@ def communicate_bounded(
 
     Returns (stdout, stderr, timed_out, canceled, output_truncated).
     """
+    if not hasattr(process, "stdout") or not hasattr(process, "wait"):
+        out, err = process.communicate(timeout=timeout_seconds)
+        out_str = (out or "")[:output_limit_bytes]
+        err_str = (err or "")[:output_limit_bytes]
+        trunc = len(out or "") > output_limit_bytes or len(err or "") > output_limit_bytes
+        return out_str, err_str, False, False, trunc
+
     stdout_reader = _BoundedStreamReader(process.stdout, output_limit_bytes)
     stderr_reader = _BoundedStreamReader(process.stderr, output_limit_bytes)
     deadline = time.monotonic() + timeout_seconds

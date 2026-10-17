@@ -177,3 +177,32 @@ def test_grype_normalizer_handles_list_output():
 
     assert len(findings) == 1
     assert findings[0]["primary_scanner"] == "grype"
+
+
+def test_incomplete_contained_scanner_adapter_fails_explicitly(tmp_path: Path):
+    import pytest
+    from app.scanners.base import ScannerAdapter, ScannerResult
+
+    class IncompleteAdapter(ScannerAdapter):
+        name = "incomplete"
+        binary_name = "incomplete"
+
+        def run(self, repo_path: Path) -> ScannerResult:
+            return ScannerResult(scanner_name=self.name, success=True, raw_output={})
+
+    class FakeRuntime:
+        def run(self, request):
+            raise AssertionError("runtime.run should not be called with default --version arguments")
+
+    with pytest.raises(NotImplementedError, match="does not implement contained"):
+        IncompleteAdapter().run_contained(tmp_path, FakeRuntime())
+
+
+def test_every_registered_scanner_implements_real_contained_arguments():
+    from app.scanners.registry import SCANNER_REGISTRY
+
+    for name, registration in SCANNER_REGISTRY.items():
+        adapter = registration.adapter_factory()
+        args = adapter.runtime_arguments()
+        assert args != ("--version",), f"{name} still uses version-only runtime_arguments"
+        assert "--version" not in args, f"{name} runtime_arguments must execute analysis, not --version"
