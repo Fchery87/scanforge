@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.beta_capabilities import require_beta_capability
 from app.db.models.policy import SuppressionRule
 from app.db.session import get_db
 from app.middleware.auth import UserContext, get_current_user
@@ -34,6 +35,10 @@ async def create_rule(
     current_user: UserContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    require_beta_capability(
+        "suppression_rules",
+        "Pattern-based suppression rules are disabled in initial managed beta",
+    )
     org_service = OrganizationService(db)
     has_permission = await org_service.user_has_permission(
         org_id, current_user.user_id, ["owner", "admin", "security_reviewer"]
@@ -100,6 +105,10 @@ async def update_rule(
     current_user: UserContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    require_beta_capability(
+        "suppression_rules",
+        "Pattern-based suppression rules are disabled in initial managed beta",
+    )
     org_service = OrganizationService(db)
     has_permission = await org_service.user_has_permission(
         org_id, current_user.user_id, ["owner", "admin", "security_reviewer"]
@@ -132,6 +141,10 @@ async def delete_rule(
     current_user: UserContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    require_beta_capability(
+        "suppression_rules",
+        "Pattern-based suppression rules are disabled in initial managed beta",
+    )
     org_service = OrganizationService(db)
     has_permission = await org_service.user_has_permission(org_id, current_user.user_id, ["owner", "admin"])
     if not has_permission:

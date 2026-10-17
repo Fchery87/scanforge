@@ -81,11 +81,11 @@ export default function ExportsPage() {
     <div>
       <PageHeader
         title="Exports"
-        description="Download findings, pipeline, or summary reports."
+        description="Export generation is deferred in the initial managed beta."
         actions={
-          <Button onClick={() => setShowCreate(true)}>
+          <Button disabled title="Disabled in initial managed beta">
             <Plus className="h-4 w-4" />
-            New export
+            New export (deferred)
           </Button>
         }
       />

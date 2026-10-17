@@ -51,7 +51,7 @@ test("groups setup destinations separately from daily work", () => {
 
   assert.deepEqual(
     navigation.setup.map((item) => item.label),
-    ["Repositories", "Suppressions", "Exports", "Audit log", "Settings"]
+    ["Repositories", "Audit log", "Settings"]
   );
-  assert.equal(navigation.setup[3]?.href, "/dashboard/acme/audit-logs");
+  assert.equal(navigation.setup[1]?.href, "/dashboard/acme/audit-logs");
 });

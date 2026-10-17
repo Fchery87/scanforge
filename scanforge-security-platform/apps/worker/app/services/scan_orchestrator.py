@@ -164,9 +164,10 @@ class ScanOrchestrator:
             context.critical_count = sum(1 for f in context.findings if f.get("severity") == "critical")
             context.high_count = sum(1 for f in context.findings if f.get("severity") == "high")
 
-            # Stage 3 — AI investigation (non-blocking)
-            await self._update_status(context, "ai_investigating")
-            await self._ai_investigation.run(context, job_type=job.job_type)
+            # Stage 3 — AI investigation (disabled by default in initial beta)
+            if getattr(self._ai_investigation, "_enabled", False):
+                await self._update_status(context, "ai_investigating")
+                await self._ai_investigation.run(context, job_type=job.job_type)
 
             # Atomic completion is the only operation that can mark the scan complete.
             duration = (datetime.now(UTC) - context.start_time.replace(tzinfo=UTC)).total_seconds()

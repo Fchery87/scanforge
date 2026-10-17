@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from app.core.beta_capabilities import is_beta_capability_enabled
 from app.core.config import settings
 from app.core.webhook import verify_github_webhook_async
 from app.db.enums import ScanTriggerType
@@ -283,7 +284,11 @@ async def github_webhook(
             delivery=delivery,
         )
 
-    if event == "pull_request" and payload.get("action") in {"opened", "reopened", "synchronize"}:
+    if (
+        event == "pull_request"
+        and is_beta_capability_enabled("pr_review")
+        and payload.get("action") in {"opened", "reopened", "synchronize"}
+    ):
         return await _handle_pull_request_event(
             db,
             delivery_row,

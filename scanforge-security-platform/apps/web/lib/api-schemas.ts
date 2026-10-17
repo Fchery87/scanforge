@@ -166,8 +166,26 @@ export const scanScheduleSchema = z.object({
 }).passthrough();
 
 export const scorecardSchema = z.object({
-  organization_id: z.string(),
-  project_id: z.string().optional(),
+  organization_id: z.string().optional(),
+  project_id: z.string(),
+  overall_score: z.number().nullable().optional(),
+  security_score: z.number().nullable().optional(),
+  secrets_score: z.number().nullable().optional(),
+  dependency_score: z.number().nullable().optional(),
+  grade: z.string().nullable().optional(),
+  open_critical: z.number().optional(),
+  open_high: z.number().optional(),
+  open_medium: z.number().optional(),
+  open_low: z.number().optional(),
+  open_total: z.number().optional(),
+  fixed_30d: z.number().optional(),
+  new_this_week: z.number().optional(),
+  scan_count: z.number().optional(),
+  last_scan_at: z.string().nullable().optional(),
+  risk_score_average: z.number().nullable().optional(),
+  sla_overdue: z.number().optional(),
+  scanner_health: z.record(z.unknown()).optional(),
+  policy_evaluation: z.record(z.unknown()).nullable().optional(),
   metrics: z.record(z.unknown()).optional(),
   generated_at: z.string().optional(),
 }).passthrough();

@@ -133,7 +133,7 @@ def safe_artifact_key(organization_id: str, scan_id: str, scanner_name: str, fil
 
 def assert_ai_disabled_for_private_beta() -> None:
     if (
-        os.environ.get("APP_ENV", "development").lower() == "private-beta"
+        os.environ.get("APP_ENV", "development").lower() in {"private-beta", "managed-beta", "production"}
         and os.environ.get("AI_ENABLED", "false").lower() == "true"
     ):
         raise RuntimeError("AI investigation must remain disabled in private-beta")

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.route_auth import get_project_in_org_or_404, get_repository_in_project_or_404
+from app.core.beta_capabilities import require_beta_capability
 from app.db.session import get_db
 from app.middleware.auth import UserContext, get_current_user
 from app.schemas.scan_schedules import (
@@ -26,6 +27,7 @@ async def create_schedule(
     *,
     db: AsyncSession = Depends(get_db),
 ):
+    require_beta_capability("scan_schedules", "Scan schedules are disabled in initial managed beta")
     await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)
     await get_repository_in_project_or_404(db, repo_id=repo_id, project_id=project_id, user_id=current_user.user_id)
 
@@ -64,6 +66,7 @@ async def update_schedule(
     current_user: UserContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    require_beta_capability("scan_schedules", "Scan schedules are disabled in initial managed beta")
     await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)
     await get_repository_in_project_or_404(db, repo_id=repo_id, project_id=project_id, user_id=current_user.user_id)
 
@@ -88,6 +91,7 @@ async def delete_schedule(
     *,
     db: AsyncSession = Depends(get_db),
 ):
+    require_beta_capability("scan_schedules", "Scan schedules are disabled in initial managed beta")
     await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)
     await get_repository_in_project_or_404(db, repo_id=repo_id, project_id=project_id, user_id=current_user.user_id)
 

@@ -253,7 +253,7 @@ async def test_github_webhook_queues_scan_for_matching_payload(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_github_pull_request_webhook_queues_advisory_diff_scan(monkeypatch):
+async def test_github_pull_request_webhook_ignored_by_default_and_queues_only_when_enabled(monkeypatch):
     org_id = uuid4()
     project_id = uuid4()
     repository_id = uuid4()
@@ -262,7 +262,7 @@ async def test_github_pull_request_webhook_queues_advisory_diff_scan(monkeypatch
     )
     project = SimpleNamespace(id=project_id, organization_id=org_id)
     integration = SimpleNamespace(installation_id="99")
-    db = _FakeDB(repo=repo, project=project, integration=integration)
+    db_disabled = _FakeDB(repo=repo, project=project, integration=integration)
     request = _FakeRequest(
         {
             "action": "synchronize",
@@ -284,12 +284,24 @@ async def test_github_pull_request_webhook_queues_advisory_diff_scan(monkeypatch
     monkeypatch.setattr(webhooks, "ScanLifecycleService", lambda _db: lifecycle)
     monkeypatch.setattr(webhooks, "AuditLogService", lambda _db: audit_service)
 
+    disabled_response = await webhooks.github_webhook(
+        org_id=org_id,
+        project_id=project_id,
+        repository_id=repository_id,
+        request=request,
+        db=db_disabled,
+    )
+    assert disabled_response == {"status": "ignored", "event": "pull_request"}
+    lifecycle.create_manual_scan.assert_not_awaited()
+
+    monkeypatch.setattr(webhooks, "is_beta_capability_enabled", lambda cap: cap == "pr_review")
+    db_enabled = _FakeDB(repo=repo, project=project, integration=integration)
     response = await webhooks.github_webhook(
         org_id=org_id,
         project_id=project_id,
         repository_id=repository_id,
         request=request,
-        db=db,
+        db=db_enabled,
     )
 
     assert response == {
@@ -307,6 +319,5 @@ async def test_github_pull_request_webhook_queues_advisory_diff_scan(monkeypatch
     assert created_data.scan_type == "diff"
     assert created_data.trigger_type == "pull_request"
     assert created_data.pull_request_number == 17
-    # R10 recorded base/head diff: base_sha persisted alongside commit_sha.
     assert created_data.base_sha == "basebeef"
     assert created_data.commit_sha == "cafebabe"

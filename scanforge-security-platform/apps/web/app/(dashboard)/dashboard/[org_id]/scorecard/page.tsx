@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/scanforge/page-header";
-import { ScorecardRing } from "@/components/scanforge/scorecard-ring";
 import { Badge } from "@/components/ui/badge";
 import { PageStatePanel } from "@/components/scanforge/page-state-panel";
 import { derivePageState } from "@/lib/page-surface/page-state";
@@ -55,18 +54,20 @@ export default function ScorecardDashboardPage() {
 
   const availableCount = Object.keys(scorecards).length;
   const unavailableCount = failedProjectIds.length;
-  const avgScore = availableCount
-    ? Math.round(
-        Object.values(scorecards).reduce((sum: number, scorecard: any) => sum + (scorecard.overall_score || 0), 0) /
-        availableCount
-      )
-    : null;
+  const totalOpenCritical = Object.values(scorecards).reduce(
+    (sum: number, scorecard: any) => sum + (scorecard.open_critical ?? 0),
+    0
+  );
+  const totalOpen = Object.values(scorecards).reduce(
+    (sum: number, scorecard: any) => sum + (scorecard.open_total ?? 0),
+    0
+  );
 
   return (
     <div>
       <PageHeader
-        title="Scorecard"
-        description="A grade for each project, and the average across the ones that loaded."
+        title="Exposure summary"
+        description="Unresolved findings and scanner coverage across projects in this organization."
       />
 
       {pageState.kind === "loading" ? (
@@ -75,22 +76,22 @@ export default function ScorecardDashboardPage() {
         <PageStatePanel state="error" message={pageState.message} retry={() => { setLoading(true); setError(null); }} />
       ) : (
         <>
-          {avgScore !== null ? (
+          {availableCount > 0 ? (
             <div className="mb-8 flex items-center gap-5">
-              <ScorecardRing
-                grade={avgScore >= 90 ? "A" : avgScore >= 80 ? "B" : avgScore >= 70 ? "C" : avgScore >= 60 ? "D" : "F"}
-                overallScore={avgScore}
-              />
-              <p className="text-sm text-text-secondary">
-                Average of {availableCount} project{availableCount !== 1 ? "s" : ""}
-                {unavailableCount ? `. ${unavailableCount} did not load.` : "."}
-              </p>
+              <div className="rounded-[10px] border border-border bg-surface px-4 py-3">
+                <p className="text-xs text-text-tertiary">Unresolved findings</p>
+                <p className="mt-1 font-mono text-2xl text-text-primary">{totalOpen}</p>
+                <p className="mt-1 text-xs text-text-tertiary">
+                  {totalOpenCritical} critical across {availableCount} project{availableCount !== 1 ? "s" : ""}
+                  {unavailableCount ? `. ${unavailableCount} did not load.` : "."}
+                </p>
+              </div>
             </div>
           ) : null}
 
           {unavailableCount > 0 ? (
             <div className="mb-6 rounded-[10px] border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-text-secondary">
-              {unavailableCount} scorecard{unavailableCount !== 1 ? "s" : ""} did not load and {unavailableCount !== 1 ? "are" : "is"} left out of the average.
+              {unavailableCount} project summary{unavailableCount !== 1 ? "ies" : ""} did not load.
             </div>
           ) : null}
 
@@ -113,11 +114,11 @@ export default function ScorecardDashboardPage() {
                         <span className="block truncate text-xs text-text-tertiary">
                           {scorecard
                             ? `${scorecard.open_critical ?? 0} critical · ${scorecard.fixed_30d ?? 0} fixed in 30 days`
-                            : "Scorecard did not load"}
+                            : "Summary did not load"}
                         </span>
                       </span>
                       <span className="shrink-0 font-mono text-sm text-text-primary">
-                        {scorecard ? `${scorecard.grade} ${scorecard.overall_score}` : "—"}
+                        {scorecard ? `${scorecard.open_total ?? 0} open` : "—"}
                       </span>
                     </Link>
                   </li>

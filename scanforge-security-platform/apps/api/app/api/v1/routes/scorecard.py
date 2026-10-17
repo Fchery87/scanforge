@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.route_auth import get_project_in_org_or_404
+from app.core.beta_capabilities import is_beta_capability_enabled
 from app.db.models.finding import Finding
 from app.db.models.scan import Scan
 from app.db.session import get_db
@@ -18,11 +19,11 @@ router = APIRouter()
 
 class ScorecardResponse(BaseModel):
     project_id: str
-    overall_score: float = 100.0
-    security_score: float = 100.0
-    secrets_score: float = 100.0
-    dependency_score: float = 100.0
-    grade: str = "A+"
+    overall_score: float | None = None
+    security_score: float | None = None
+    secrets_score: float | None = None
+    dependency_score: float | None = None
+    grade: str | None = None
     open_critical: int = 0
     open_high: int = 0
     open_medium: int = 0
@@ -74,7 +75,7 @@ async def get_project_scorecard(
                 .select_from(Finding)
                 .where(
                     Finding.project_id == project_id,
-                    Finding.status == "open",
+                    Finding.status.in_(["open", "reviewing", "to_fix", "not_observed"]),
                     Finding.severity == sev,
                 )
             )
@@ -82,38 +83,6 @@ async def get_project_scorecard(
         sev_counts[sev] = count
 
     open_total = sum(sev_counts.values())
-
-    penalty = sev_counts["critical"] * 25 + sev_counts["high"] * 10 + sev_counts["medium"] * 3 + sev_counts["low"] * 0.5
-    security_score = round(max(0, 100 - penalty), 1)
-
-    open_secrets = (
-        await db.execute(
-            select(func.count())
-            .select_from(Finding)
-            .where(
-                Finding.project_id == project_id,
-                Finding.status == "open",
-                Finding.category == "secret",
-            )
-        )
-    ).scalar_one_or_none() or 0
-    secrets_score = round(max(0, 100 - min(open_secrets * 20, 100)), 1)
-
-    open_deps = (
-        await db.execute(
-            select(func.count())
-            .select_from(Finding)
-            .where(
-                Finding.project_id == project_id,
-                Finding.status == "open",
-                Finding.category.in_(["vulnerability", "dependency_outdated"]),
-            )
-        )
-    ).scalar_one_or_none() or 0
-    dep_penalty = min(open_deps * 5, 100)
-    dependency_score = round(max(0, 100 - dep_penalty), 1)
-
-    overall = round(security_score * 0.5 + secrets_score * 0.3 + dependency_score * 0.2, 1)
 
     thirty_days_ago = now - timedelta(days=30)
     fixed_30d = (
@@ -146,15 +115,6 @@ async def get_project_scorecard(
         )
     ).scalar_one_or_none()
 
-    risk_score_average = (
-        await db.execute(
-            select(func.avg(Finding.risk_score)).where(
-                Finding.project_id == project_id,
-                Finding.status.in_(["open", "reviewing", "to_fix", "not_observed"]),
-            )
-        )
-    ).scalar_one_or_none()
-
     overdue_findings = (
         await db.execute(
             select(Finding).where(
@@ -179,15 +139,76 @@ async def get_project_scorecard(
             partial_scans += 1
 
     scanner_health_summary = {"complete_scans": complete_scans, "partial_scans": partial_scans}
-    risk_average = round(float(risk_score_average), 1) if risk_score_average is not None else None
+
+    overall_score: float | None = None
+    security_score: float | None = None
+    secrets_score: float | None = None
+    dependency_score: float | None = None
+    grade: str | None = None
+    risk_average: float | None = None
+    policy_evaluation: dict | None = None
+
+    if is_beta_capability_enabled("scorecard_grades"):
+        penalty = (
+            sev_counts["critical"] * 25
+            + sev_counts["high"] * 10
+            + sev_counts["medium"] * 3
+            + sev_counts["low"] * 0.5
+        )
+        security_score = round(max(0, 100 - penalty), 1)
+        open_secrets = (
+            await db.execute(
+                select(func.count())
+                .select_from(Finding)
+                .where(
+                    Finding.project_id == project_id,
+                    Finding.status.in_(["open", "reviewing", "to_fix", "not_observed"]),
+                    Finding.category == "secret",
+                )
+            )
+        ).scalar_one_or_none() or 0
+        secrets_score = round(max(0, 100 - min(open_secrets * 20, 100)), 1)
+        open_deps = (
+            await db.execute(
+                select(func.count())
+                .select_from(Finding)
+                .where(
+                    Finding.project_id == project_id,
+                    Finding.status.in_(["open", "reviewing", "to_fix", "not_observed"]),
+                    Finding.category.in_(["vulnerability", "dependency_outdated"]),
+                )
+            )
+        ).scalar_one_or_none() or 0
+        dep_penalty = min(open_deps * 5, 100)
+        dependency_score = round(max(0, 100 - dep_penalty), 1)
+        overall_score = round(security_score * 0.5 + secrets_score * 0.3 + dependency_score * 0.2, 1)
+        grade = _grade(overall_score)
+
+    if is_beta_capability_enabled("numeric_risk_scores"):
+        risk_score_average = (
+            await db.execute(
+                select(func.avg(Finding.risk_score)).where(
+                    Finding.project_id == project_id,
+                    Finding.status.in_(["open", "reviewing", "to_fix", "not_observed"]),
+                )
+            )
+        ).scalar_one_or_none()
+        risk_average = round(float(risk_score_average), 1) if risk_score_average is not None else None
+
+    if is_beta_capability_enabled("policy_enforcement"):
+        policy_evaluation = evaluate_advisory_policy(
+            risk_score_average=risk_average,
+            sla_overdue=sla_overdue,
+            scanner_health=scanner_health_summary,
+        )
 
     return ScorecardResponse(
         project_id=str(project_id),
-        overall_score=overall,
+        overall_score=overall_score,
         security_score=security_score,
         secrets_score=secrets_score,
         dependency_score=dependency_score,
-        grade=_grade(overall),
+        grade=grade,
         open_critical=sev_counts["critical"],
         open_high=sev_counts["high"],
         open_medium=sev_counts["medium"],
@@ -200,9 +221,5 @@ async def get_project_scorecard(
         risk_score_average=risk_average,
         sla_overdue=sla_overdue,
         scanner_health=scanner_health_summary,
-        policy_evaluation=evaluate_advisory_policy(
-            risk_score_average=risk_average,
-            sla_overdue=sla_overdue,
-            scanner_health=scanner_health_summary,
-        ),
+        policy_evaluation=policy_evaluation,
     )

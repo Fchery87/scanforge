@@ -9250,29 +9250,59 @@
             "title": "Project Id"
           },
           "overall_score": {
-            "type": "number",
-            "title": "Overall Score",
-            "default": 100.0
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overall Score"
           },
           "security_score": {
-            "type": "number",
-            "title": "Security Score",
-            "default": 100.0
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Security Score"
           },
           "secrets_score": {
-            "type": "number",
-            "title": "Secrets Score",
-            "default": 100.0
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secrets Score"
           },
           "dependency_score": {
-            "type": "number",
-            "title": "Dependency Score",
-            "default": 100.0
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dependency Score"
           },
           "grade": {
-            "type": "string",
-            "title": "Grade",
-            "default": "A+"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade"
           },
           "open_critical": {
             "type": "integer",

@@ -6,7 +6,6 @@ import {
   LayoutDashboard,
   Search,
   Settings,
-  ShieldCheck,
 } from "lucide-react";
 
 export interface DashboardNavItem {
@@ -53,8 +52,6 @@ export function buildDashboardNavigation(
     setup: orgId
       ? [
           navItem(Database, "Repositories", projectHref("repositories"), !projectId),
-          navItem(ShieldCheck, "Suppressions", projectHref("suppressions"), !projectId),
-          navItem(FileText, "Exports", projectHref("exports"), !projectId),
           navItem(FileText, "Audit log", `/dashboard/${orgId}/audit-logs`, false),
           navItem(Settings, "Settings", `/dashboard/${orgId}/settings`, false),
         ]

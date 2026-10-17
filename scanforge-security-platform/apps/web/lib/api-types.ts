@@ -2629,31 +2629,16 @@ export interface components {
         ScorecardResponse: {
             /** Project Id */
             project_id: string;
-            /**
-             * Overall Score
-             * @default 100
-             */
-            overall_score: number;
-            /**
-             * Security Score
-             * @default 100
-             */
-            security_score: number;
-            /**
-             * Secrets Score
-             * @default 100
-             */
-            secrets_score: number;
-            /**
-             * Dependency Score
-             * @default 100
-             */
-            dependency_score: number;
-            /**
-             * Grade
-             * @default A+
-             */
-            grade: string;
+            /** Overall Score */
+            overall_score?: number | null;
+            /** Security Score */
+            security_score?: number | null;
+            /** Secrets Score */
+            secrets_score?: number | null;
+            /** Dependency Score */
+            dependency_score?: number | null;
+            /** Grade */
+            grade?: string | null;
             /**
              * Open Critical
              * @default 0

@@ -112,11 +112,11 @@ export default function SuppressionsPage() {
     <div>
       <PageHeader
         title="Suppression rules"
-        description="Rules that hide matching findings for this project or the whole organization."
+        description="Pattern-based suppression rules are deferred in the initial managed beta. Use per-finding risk acceptance with reason and expiry."
         actions={
-          <Button onClick={() => setShowCreate(true)}>
+          <Button disabled title="Disabled in initial managed beta">
             <Plus className="h-4 w-4" />
-            New rule
+            New rule (deferred)
           </Button>
         }
       />

@@ -34,6 +34,7 @@ async def test_run_due_scan_schedules_marks_only_enqueued_schedules(monkeypatch)
         )
     )
 
+    monkeypatch.setattr(internal, "is_beta_capability_enabled", lambda cap: cap == "scan_schedules")
     monkeypatch.setattr(internal, "ScanScheduleService", lambda _db: schedule_service)
     monkeypatch.setattr(internal, "ScanLifecycleService", lambda _db: lifecycle)
 
@@ -52,6 +53,7 @@ async def test_run_due_scan_schedules_counts_lifecycle_exceptions(monkeypatch):
     )
     lifecycle = SimpleNamespace(create_scheduled_scan=AsyncMock(side_effect=RuntimeError("boom")))
 
+    monkeypatch.setattr(internal, "is_beta_capability_enabled", lambda cap: cap == "scan_schedules")
     monkeypatch.setattr(internal, "ScanScheduleService", lambda _db: schedule_service)
     monkeypatch.setattr(internal, "ScanLifecycleService", lambda _db: lifecycle)
 

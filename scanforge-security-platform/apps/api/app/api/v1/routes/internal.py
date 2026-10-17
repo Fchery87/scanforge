@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.r2 import R2Client
+from app.core.beta_capabilities import is_beta_capability_enabled
 from app.core.config import settings
 from app.db.enums import ScanStatus
 from app.db.models import OrganizationIntegration, Project, Repository, Scan
@@ -486,6 +487,9 @@ async def run_due_scan_schedules(
     _scheduler: None = Depends(require_scheduler_auth),
     db: AsyncSession = Depends(get_db),
 ):
+    if not is_beta_capability_enabled("scan_schedules"):
+        return {"found": 0, "queued": 0, "failed": 0, "disabled": True}
+
     schedule_service = ScanScheduleService(db)
     lifecycle = ScanLifecycleService(db)
     due_schedules = await schedule_service.get_due_schedules(limit=50)

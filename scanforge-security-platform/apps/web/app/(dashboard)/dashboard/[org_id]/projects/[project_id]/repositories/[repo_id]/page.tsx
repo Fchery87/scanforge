@@ -13,7 +13,6 @@ import { SkeletonTable } from "@/components/scanforge/loading-skeleton";
 import { StatusBadge } from "@/components/scanforge/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import ScheduleSection from "../ScheduleSection";
 
 export default function RepoDetailPage() {
   const { org_id, project_id, repo_id } = useParams<{ org_id: string; project_id: string; repo_id: string }>();
@@ -142,10 +141,6 @@ export default function RepoDetailPage() {
             ))}
           </ul>
         )}
-      </div>
-
-      <div className="mb-8">
-        <ScheduleSection orgId={org_id} projectId={project_id} repoId={repo_id} repoName={repo.full_name} />
       </div>
 
       <div className="rounded-[12px] border border-danger/30 bg-danger/5 p-6">

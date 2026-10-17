@@ -65,9 +65,9 @@ export default function ScheduleSection({ orgId, projectId, repoId, repoName }: 
     <div>
       <div className="flex items-center justify-between mb-4">
         <h4 className="text-sm text-text-tertiary flex items-center gap-2">
-          <Calendar className="h-4 w-4" /> Schedules for {repoName}
+          <Calendar className="h-4 w-4" /> Schedules for {repoName} (deferred in initial beta)
         </h4>
-        <Button variant="outline" size="sm" onClick={() => setShowCreate(true)}>
+        <Button variant="outline" size="sm" disabled title="Disabled in initial managed beta">
           <Plus className="h-3.5 w-3.5 mr-1" /> Add
         </Button>
       </div>

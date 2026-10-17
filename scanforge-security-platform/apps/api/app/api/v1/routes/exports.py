@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.route_auth import get_project_in_org_or_404
 from app.clients.r2 import R2Client
+from app.core.beta_capabilities import require_beta_capability
 from app.core.config import settings
 from app.db.session import get_db
 from app.middleware.auth import UserContext, get_current_user
@@ -45,6 +46,7 @@ async def create_export(
     current_user: UserContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    require_beta_capability("exports", "Exports are disabled in initial managed beta")
     await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)
 
     org_service = OrganizationService(db)
@@ -119,6 +121,7 @@ async def download_export(
     current_user: UserContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    require_beta_capability("exports", "Exports are disabled in initial managed beta")
     await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)
 
     service = ExportService(db)
