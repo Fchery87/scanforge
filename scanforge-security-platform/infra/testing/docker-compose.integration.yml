@@ -1,0 +1,53 @@
+# ScanForge — Disposable Integration Test Stack
+# Usage: docker compose -f infra/testing/docker-compose.integration.yml up -d
+# Uses ephemeral tmpfs storage, isolated ports, and test-only credentials.
+
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    restart: "no"
+    environment:
+      POSTGRES_DB: scanforge_test
+      POSTGRES_USER: scanforge_test
+      POSTGRES_PASSWORD: scanforge_test_fixture_only
+    ports:
+      - "127.0.0.1:55432:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scanforge_test -d scanforge_test"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  redis-test:
+    image: redis:7-alpine
+    restart: "no"
+    ports:
+      - "127.0.0.1:56379:6379"
+    tmpfs:
+      - /data
+    command: redis-server --save "" --appendonly no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  minio-test:
+    image: minio/minio:latest
+    restart: "no"
+    ports:
+      - "127.0.0.1:59000:9000"
+      - "127.0.0.1:59001:9001"
+    environment:
+      MINIO_ROOT_USER: scanforge_test
+      MINIO_ROOT_PASSWORD: scanforge_test_storage_fixture_only
+    tmpfs:
+      - /data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
