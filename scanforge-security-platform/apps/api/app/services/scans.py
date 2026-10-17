@@ -1,18 +1,26 @@
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.db.enums import DispatchObligationStatus
 from app.db.enums import ScanStatus as ScanStatusEnum
 from app.db.models import Organization, OrganizationMember, Project, Repository, Scan, ScannerRun
 from app.schemas.scans import ScanCreate
 from app.services.repository_refs import (
     SCAN_TYPE_SCANNERS,
     RepositoryRefService,
+)
+from app.services.scan_dispatch import (
+    DEFAULT_MAX_PENDING_MANUAL_PER_REPO,
+    DEFAULT_MAX_PENDING_PER_ORG,
+    ScanDispatchService,
+    compute_automatic_business_identity,
 )
 
 
@@ -38,6 +46,11 @@ class ScanService:
         revision_resolver: Callable[[str, str | None], Awaitable[str]] | None = None,
         compare_fn: Callable[[str, str], Awaitable[dict[str, Any]]] | None = None,
         require_exact_sha: bool = False,
+        commit: bool = True,
+        idempotency_key: str | None = None,
+        webhook_delivery_id: str | None = None,
+        max_pending_per_org: int | None = None,
+        max_pending_manual_per_repo: int | None = None,
     ) -> tuple[Scan, Repository, Project]:
         repo = (
             await self.db.execute(
@@ -54,6 +67,27 @@ class ScanService:
         project = await self.db.get(Project, repo.project_id)
         if not project:
             raise ValueError("Project not found")
+
+        resolved_idempotency_key = (idempotency_key or getattr(data, "idempotency_key", None) or "").strip() or None
+        dispatch_service = ScanDispatchService(
+            self.db,
+            max_pending_per_org=max_pending_per_org or DEFAULT_MAX_PENDING_PER_ORG,
+            max_pending_manual_per_repo=max_pending_manual_per_repo or DEFAULT_MAX_PENDING_MANUAL_PER_REPO,
+        )
+
+        if data.trigger_type == "manual":
+            if resolved_idempotency_key:
+                existing_manual = await dispatch_service.find_existing_manual_idempotent_scan(
+                    organization_id=project.organization_id,
+                    repository_id=repo.id,
+                    request_idempotency_key=resolved_idempotency_key,
+                )
+                if existing_manual is not None:
+                    return existing_manual[0], repo, project
+            await dispatch_service.enforce_manual_admission_capacity(
+                organization_id=project.organization_id,
+                repository_id=repo.id,
+            )
 
         ref_service = RepositoryRefService(self.db)
         if (
@@ -82,7 +116,8 @@ class ScanService:
             ancestry_status = resolved.ancestry_status
             commit_sha = resolved.commit_sha or data.commit_sha
             expected_scanners = resolved.expected_scanners
-            summary_json = {"coverage_scope": resolved.coverage_scope}
+            coverage_scope = resolved.coverage_scope
+            summary_json = {"coverage_scope": coverage_scope}
         else:
             branch_name = None
             full_ref_name = None
@@ -92,14 +127,45 @@ class ScanService:
             expected_scanners = list(
                 SCAN_TYPE_SCANNERS.get(data.scan_type, SCAN_TYPE_SCANNERS["full"])
             )
+            coverage_scope = "default_branch"
             summary_json = None
 
+        business_identity_key: str | None = None
+        if data.trigger_type != "manual":
+            business_identity_key = compute_automatic_business_identity(
+                organization_id=project.organization_id,
+                repository_id=repo.id,
+                trigger_type=data.trigger_type,
+                scan_type=data.scan_type,
+                full_ref_name=full_ref_name,
+                branch_generation_number=generation_number,
+                commit_sha=commit_sha,
+                contract_version="2026-10-beta.v1",
+                # Ancestry receipts vary across duplicate deliveries. Business
+                # identity uses the stable authorization scope, not evidence
+                # describing how this delivery reached the same revision.
+                coverage_scope=(
+                    str(coverage_scope.get("branch_scope", "default_branch"))
+                    if isinstance(coverage_scope, dict)
+                    else str(coverage_scope)
+                ),
+                expected_scanners=expected_scanners,
+            )
+            existing_auto = await dispatch_service.find_existing_automatic_scan(
+                repository_id=repo.id,
+                business_identity_key=business_identity_key,
+            )
+            if existing_auto is not None:
+                return existing_auto[0], repo, project
+
         scan = Scan(
+            id=str(uuid4()),
             project_id=repo.project_id,
             repository_id=repo_id,
             trigger_type=data.trigger_type,
             scan_type=data.scan_type,
             status=ScanStatusEnum.QUEUED,
+            dispatch_state=DispatchObligationStatus.AWAITING_DISPATCH.value,
             branch_name=branch_name,
             full_ref_name=full_ref_name,
             branch_generation_number=generation_number,
@@ -112,8 +178,47 @@ class ScanService:
             summary_json=summary_json,
         )
         self.db.add(scan)
-        await self.db.commit()
-        await self.db.refresh(scan)
+        try:
+            await self.db.flush()
+            await dispatch_service.create_obligation_for_scan(
+                scan=scan,
+                repo=repo,
+                project=project,
+                business_identity_key=business_identity_key,
+                request_idempotency_key=resolved_idempotency_key if data.trigger_type == "manual" else None,
+                webhook_delivery_id=webhook_delivery_id,
+            )
+            if data.trigger_type == "webhook" and full_ref_name:
+                await dispatch_service.supersede_unstarted_automatic_work(
+                    new_scan=scan,
+                    repository_id=repo.id,
+                    full_ref_name=full_ref_name,
+                    branch_generation_number=generation_number,
+                    ancestry_status=ancestry_status,
+                )
+            await self.db.flush()
+        except IntegrityError:
+            await self.db.rollback()
+            if data.trigger_type == "manual" and resolved_idempotency_key:
+                raced_manual = await dispatch_service.find_existing_manual_idempotent_scan(
+                    organization_id=project.organization_id,
+                    repository_id=repo.id,
+                    request_idempotency_key=resolved_idempotency_key,
+                )
+                if raced_manual is not None:
+                    return raced_manual[0], repo, project
+            if business_identity_key:
+                raced_auto = await dispatch_service.find_existing_automatic_scan(
+                    repository_id=repo.id,
+                    business_identity_key=business_identity_key,
+                )
+                if raced_auto is not None:
+                    return raced_auto[0], repo, project
+            raise
+
+        if commit:
+            await self.db.commit()
+            await self.db.refresh(scan)
 
         return scan, repo, project
 
@@ -275,9 +380,15 @@ class ScanService:
             raise ValueError("Can only cancel queued or running scans")
 
         scan.status = ScanStatusEnum.CANCELED
+        if getattr(scan, "dispatch_state", None) in (
+            DispatchObligationStatus.AWAITING_DISPATCH.value,
+            DispatchObligationStatus.LEASED.value,
+        ):
+            scan.dispatch_state = DispatchObligationStatus.CANCELED.value
         if reason:
             scan.error_message = reason
 
+        await ScanDispatchService(self.db).cancel_obligation_for_scan(scan.id, reason=reason)
         await self.db.commit()
         await self.db.refresh(scan)
         return scan
@@ -345,6 +456,8 @@ class ScanService:
         scanner_version: str | None = None,
         *,
         status: ScanStatusEnum = ScanStatusEnum.QUEUED,
+        attempt_id: str | None = None,
+        execution_revision: int = 0,
         caller_organization_id: UUID,
     ) -> ScannerRun | None:
         scan, project = await self._scan_project_for_org(scan_id)
@@ -360,6 +473,8 @@ class ScanService:
             scanner_name=scanner_name,
             scanner_version=scanner_version,
             status=status,
+            attempt_id=attempt_id,
+            execution_revision=execution_revision,
         )
         self.db.add(run)
         await self.db.commit()
@@ -376,6 +491,8 @@ class ScanService:
         error_message: str | None = None,
         artifact_uri: str | None = None,
         metadata_json: dict | None = None,
+        attempt_id: str | None = None,
+        execution_revision: int = 0,
         caller_organization_id: UUID,
     ) -> ScannerRun | None:
         run = await self.db.get(ScannerRun, run_id)
@@ -388,6 +505,9 @@ class ScanService:
             raise ScanAuthorizationError(
                 "Worker principal is not bound to the organization that owns the scan"
             )
+
+        run.attempt_id = attempt_id
+        run.execution_revision = execution_revision
 
         if status is not None:
             run.status = status

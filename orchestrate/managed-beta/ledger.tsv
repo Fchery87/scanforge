@@ -1,0 +1,2 @@
+pr	sha	verdict	evidence	verifier	ts
+1	e5d8de734be5d0ac77d9aec891d0e59b31c3ab55	unit-test-verified	orchestrate/managed-beta/decisions.tsv land row; coordinator rerun 10 passed	coordinator	2026-10-17T04:00:04.673Z

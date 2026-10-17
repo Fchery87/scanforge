@@ -38,6 +38,7 @@ class Scan(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     coverage_completeness: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown")
     closure_eligible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     cleanup_state: Mapped[str] = mapped_column(String(32), nullable=False, default="not_required")
+    dispatch_state: Mapped[str] = mapped_column(String(32), nullable=False, default="awaiting_dispatch")
     superseded_by_scan_id: Mapped[str | None] = mapped_column(
         ForeignKey("scans.id", ondelete="SET NULL"), nullable=True
     )

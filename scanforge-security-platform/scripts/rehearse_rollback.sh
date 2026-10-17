@@ -8,7 +8,7 @@
 #      CompletionPayloadConflict (conflict family surfaced as HTTP 409),
 #   4. stale-identity replay raises CompletionSuperseded (HTTP 409).
 # Runs against SQLite always and against a disposable PostgreSQL (pgserver,
-# docs/development-setup.md) when available. Non-zero exit on any failure.
+# RUNNING_LOCALLY.md) when available. Non-zero exit on any failure.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

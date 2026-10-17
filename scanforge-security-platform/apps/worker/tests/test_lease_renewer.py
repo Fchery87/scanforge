@@ -17,9 +17,9 @@ from pathlib import Path
 
 import httpx
 import pytest
-from app.services.lease_renewer import LeaseLostError, LeaseRenewer
 
 from app.clients.queue import QueueJob
+from app.services.lease_renewer import LeaseLostError, LeaseRenewer
 from app.services.scan_orchestrator import ScanContext, ScanOrchestrator
 
 pytestmark = pytest.mark.asyncio
@@ -48,6 +48,7 @@ def _renewer(handler, **overrides) -> LeaseRenewer:
         "scan_id": "scan-1",
         "attempt_id": "attempt-1",
         "execution_revision": 2,
+        "worker_incarnation_id": "incarnation-1",
         "api_base_url": "http://api.test",
         "worker_credential": "cred-1",
         "renewal_seconds": 0.02,
@@ -72,7 +73,11 @@ async def test_renewal_fires_on_interval_with_worker_credential_and_identity():
     for request in requests:
         assert request["url"] == HEARTBEAT_URL
         assert request["credential"] == "cred-1"
-        assert request["json"] == {"attempt_id": "attempt-1", "execution_revision": 2}
+        assert request["json"] == {
+            "attempt_id": "attempt-1",
+            "execution_revision": 2,
+            "worker_incarnation_id": "incarnation-1",
+        }
 
 
 async def test_conflict_409_stops_renewing_and_reports_typed_lease_lost():
@@ -107,17 +112,19 @@ async def test_conflict_409_without_json_detail_falls_back_to_unknown_reason():
 
 async def test_network_error_retries_with_bounded_backoff_without_crashing(caplog):
     attempts = {"count": 0}
+    recovered = asyncio.Event()
 
     def handler(_request: httpx.Request) -> httpx.Response:
         attempts["count"] += 1
         if attempts["count"] <= 3:
             raise httpx.ConnectError("connection refused", request=_request)
+        recovered.set()
         return httpx.Response(200, json={"lease_expires_at": "2026-01-01T00:00:00Z"})
 
     renewer = _renewer(handler)
     with caplog.at_level(logging.WARNING):
         renewer.start()
-        await asyncio.sleep(0.12)
+        await asyncio.wait_for(recovered.wait(), timeout=0.5)
         await renewer.stop()
 
     assert renewer.lost is None, "a transient outage must not abort the scan by itself"

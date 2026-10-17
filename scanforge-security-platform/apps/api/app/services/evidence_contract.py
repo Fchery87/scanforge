@@ -8,16 +8,16 @@ grant authority.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
 import hashlib
 import json
 import math
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from app.schemas.canonical_findings import CanonicalFindingCandidate
-    from app.schemas.scan_completion import ScannerRunCompletion, ScanCompletionRequest
+    from app.schemas.scan_completion import ScanCompletionRequest, ScannerRunCompletion
 
 CURRENT_EVIDENCE_CONTRACT_VERSION = "2026-10-beta.v1"
 SUPPORTED_EVIDENCE_CONTRACT_VERSIONS: frozenset[str] = frozenset({CURRENT_EVIDENCE_CONTRACT_VERSION})
@@ -213,17 +213,15 @@ def _is_scanner_db_fresh(run: ScannerRunCompletion, *, now: datetime) -> bool:
     scanner = run.scanner_name.lower()
     if scanner not in DATABASE_BACKED_SCANNERS:
         return True
-    if run.db_freshness_state == "stale":
+    if run.db_freshness_state != "fresh" or run.db_published_at is None or not run.db_digest:
         return False
-    if run.db_published_at is not None:
-        published_at = (
-            run.db_published_at
-            if run.db_published_at.tzinfo is not None
-            else run.db_published_at.replace(tzinfo=UTC)
-        )
-        if now - published_at > MAX_SCANNER_DB_AGE:
-            return False
-    return run.db_freshness_state in {"fresh", "unverified"}
+    published_at = (
+        run.db_published_at
+        if run.db_published_at.tzinfo is not None
+        else run.db_published_at.replace(tzinfo=UTC)
+    )
+    age = now - published_at
+    return timedelta(0) <= age <= MAX_SCANNER_DB_AGE
 
 
 def derive_scan_evidence_decision(

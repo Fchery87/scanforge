@@ -10,6 +10,7 @@ semantics, not only SQLite.
 import asyncio
 import os
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import HTTPException
@@ -20,7 +21,7 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.types import CHAR, TypeDecorator
 
-from app.api.v1.routes.internal import ArtifactUploadRequest, create_artifact_upload_url
+from app.api.v1.routes.internal import ArtifactUploadRequest, ExecutionAttemptIdentity, create_artifact_upload_url
 from app.db.base import Base
 from app.db.enums import RepoProvider, ScanStatus
 from app.db.models import Organization, Project, Repository, Scan, User
@@ -188,6 +189,20 @@ def principal_for(organization_id: uuid.UUID) -> WorkerPrincipal:
     )
 
 
+async def live_attempt(session, scan_id: str, principal: WorkerPrincipal) -> ExecutionAttemptIdentity:
+    scan = await session.get(Scan, scan_id)
+    attempt_id = str(uuid.uuid4())
+    incarnation_id = str(uuid.uuid4())
+    scan.status = ScanStatus.RUNNING
+    scan.current_attempt_id = attempt_id
+    scan.execution_revision = 1
+    scan.worker_incarnation_id = incarnation_id
+    scan.lease_owner = str(principal.worker_id)
+    scan.lease_expires_at = datetime.now(UTC) + timedelta(minutes=1)
+    await session.commit()
+    return ExecutionAttemptIdentity(attempt_id, 1, incarnation_id)
+
+
 class _StubR2Client:
     def __init__(self, **_kwargs) -> None:
         pass
@@ -205,7 +220,10 @@ async def test_worker_cannot_mint_upload_url_for_other_organization_scan(db_sess
     foreign_principal = principal_for(org_b)
     request = ArtifactUploadRequest(scanner_name="trivy", filename="results.json", size_bytes=10)
     with pytest.raises(HTTPException) as excinfo:
-        await create_artifact_upload_url(uuid.UUID(scan_id), request, foreign_principal, session)
+        await create_artifact_upload_url(
+            uuid.UUID(scan_id), request, foreign_principal,
+            ExecutionAttemptIdentity("foreign-attempt", 1, "foreign-incarnation"), session
+        )
 
     # Combined with R06: service-boundary org mismatch maps to 403
     # (ScanAuthorizationError), replacing the pre-R06 404 not-found shape.
@@ -219,8 +237,9 @@ async def test_upload_url_key_is_scoped_to_authenticated_organization_and_scan(d
     monkeypatch.setattr("app.api.v1.routes.internal.R2Client", _StubR2Client)
 
     principal = principal_for(org_a)
+    attempt = await live_attempt(session, scan_id, principal)
     request = ArtifactUploadRequest(scanner_name="trivy", filename="results.json", size_bytes=10)
-    response = await create_artifact_upload_url(uuid.UUID(scan_id), request, principal, session)
+    response = await create_artifact_upload_url(uuid.UUID(scan_id), request, principal, attempt, session)
 
     assert response["key"] == f"scan-artifacts/{org_a}/{scan_id}/trivy/results.json"
     assert response["upload_url"].startswith(f"https://signed.example/scan-artifacts/{org_a}/{scan_id}/")
@@ -231,8 +250,9 @@ async def test_upload_url_rejects_path_traversal_components(db_session):
     session, backend = db_session
     org_a, _org_b, scan_id = await seed_scan(session, backend)
     principal = principal_for(org_a)
+    attempt = await live_attempt(session, scan_id, principal)
     for filename in ("../escape.json", "sub/dir.json", "back\\slash.json"):
         request = ArtifactUploadRequest(scanner_name="trivy", filename=filename, size_bytes=10)
         with pytest.raises(HTTPException) as excinfo:
-            await create_artifact_upload_url(uuid.UUID(scan_id), request, principal, session)
+            await create_artifact_upload_url(uuid.UUID(scan_id), request, principal, attempt, session)
         assert excinfo.value.status_code == 400

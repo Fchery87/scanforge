@@ -11,12 +11,12 @@ checkov, grype) against:
 from __future__ import annotations
 
 import copy
-from datetime import UTC, datetime
 import json
+import zipfile
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
-import zipfile
 
 import pytest
 
@@ -267,6 +267,9 @@ async def test_real_pinned_scanner_executables_positive_and_empty_fixtures(
         "PATH",
         f"/home/nochaserz/.local/bin:/home/nochaserz/go/bin:{Path('/usr/bin')}:{Path('/bin')}",
     )
+    # External scanners may persist harmless CLI preferences. Keep those
+    # writes inside pytest's disposable temp directory.
+    monkeypatch.setenv("HOME", str(tmp_path / "scanner-home"))
     monkeypatch.setenv("SCANNER_MANIFEST_PATH", str(MANIFEST_FIXTURE_PATH))
     monkeypatch.setenv("CHECKOV_FRAMEWORKS", "terraform")
     monkeypatch.setenv("CHECKOV_CHECKS", "CKV_AWS_20")
@@ -351,7 +354,7 @@ async def test_real_pinned_scanner_executables_positive_and_empty_fixtures(
         uploaded_blobs.append(blob)
         return f"r2://bucket/{kwargs['scanner_name']}/raw.json"
 
-    async def _upload_file(path: Path, key: str):
+    async def _upload_file(path: Path, key: str, **_kwargs):
         uploaded_blobs.append(path.read_text())
         return {"storage_uri": f"r2://bucket/{key}"}
 
@@ -374,6 +377,9 @@ async def test_real_pinned_scanner_executables_positive_and_empty_fixtures(
         branch="main",
         commit_sha="a" * 40,
         job_id="job-pos-1",
+        attempt_id="attempt-pos-1",
+        execution_revision=1,
+        worker_incarnation_id="incarnation-pos-1",
         repo_path=pos_repo,
         scanner_results=pos_results,
     )

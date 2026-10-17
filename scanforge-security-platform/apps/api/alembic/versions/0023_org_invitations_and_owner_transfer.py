@@ -17,6 +17,13 @@ depends_on = None
 
 
 def upgrade() -> None:
+    op.alter_column(
+        "alembic_version",
+        "version_num",
+        type_=sa.String(length=64),
+        existing_type=sa.String(length=32),
+        existing_nullable=False,
+    )
     member_role_enum = ENUM(
         "owner",
         "admin",

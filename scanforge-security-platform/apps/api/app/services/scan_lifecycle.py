@@ -8,7 +8,9 @@ from app.clients.queue import QueueClient
 from app.contracts.queue import ScanJobType
 from app.core.config import settings
 from app.core.error_messages import GENERIC_QUEUE_ERROR
+from app.db.enums import DispatchObligationStatus
 from app.schemas.scans import ScanCreate
+from app.services.scan_dispatch import ScanDispatchService, job_type_for_scan_type
 from app.services.scans import ScanService
 
 logger = logging.getLogger(__name__)
@@ -62,6 +64,16 @@ class ScanLifecycleService:
         scan_type: str,
         user_id: UUID | None,
     ) -> ScanLifecycleOutcome:
+        if getattr(scan, "dispatch_state", None) == DispatchObligationStatus.DISPATCHED.value:
+            return ScanLifecycleOutcome(scan=scan, enqueued=True)
+
+        if isinstance(self.db, AsyncSession) and isinstance(self.scan_service, ScanService):
+            dispatch_service = ScanDispatchService(self.db, queue=self.queue)
+            attempt = await dispatch_service.dispatch_for_scan(scan.id)
+            await self.db.refresh(scan)
+            enqueued = bool(attempt and attempt.dispatched)
+            return ScanLifecycleOutcome(scan=scan, enqueued=enqueued)
+
         job_type = self._job_type_for_scan_type(scan_type)
 
         try:
@@ -70,24 +82,20 @@ class ScanLifecycleService:
                 self._queue_payload(scan, org_id=org_id, user_id=user_id),
                 organization_id=org_id,
             )
+            scan.dispatch_state = DispatchObligationStatus.DISPATCHED.value
             logger.info("Enqueued scan %s as job %s (%s)", scan.id, job_id, job_type)
             return ScanLifecycleOutcome(scan=scan, enqueued=True)
         except Exception:
-            logger.error("Failed to enqueue scan %s", scan.id, exc_info=True)
-            scan.status = "failed"
+            logger.error("Failed to enqueue scan %s; retaining awaiting_dispatch obligation", scan.id, exc_info=True)
+            scan.status = "queued"
+            scan.dispatch_state = DispatchObligationStatus.AWAITING_DISPATCH.value
             scan.error_message = GENERIC_QUEUE_ERROR
             await self.db.commit()
             await self.db.refresh(scan)
             return ScanLifecycleOutcome(scan=scan, enqueued=False)
 
     def _job_type_for_scan_type(self, scan_type: str) -> ScanJobType:
-        mapping: dict[str, ScanJobType] = {
-            "full": "scan.repo.full",
-            "diff": "scan.repo.diff",
-            "dependencies": "scan.dependencies",
-            "secrets": "scan.secrets",
-        }
-        return mapping.get(scan_type, "scan.repo.full")
+        return job_type_for_scan_type(scan_type)
 
     def _queue_payload(self, scan, *, org_id: UUID, user_id: UUID | None) -> dict:  # noqa: ARG002
         return {

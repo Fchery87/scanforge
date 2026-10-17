@@ -49,6 +49,7 @@ async def test_enqueue_writes_an_organization_stream_with_the_scan_id_as_job_id(
     command = queue._command.await_args_list[1].args
     assert command[:4] == ("XADD", f"queue:scans:{organization_id}", "*", "job")
     assert json.loads(command[4]) == {
+        "contract_version": "2026-10-queue.v1",
         "job_type": "scan.repo.full",
         "job_id": "scan-123",
         "payload": {"scan_id": "scan-123"},

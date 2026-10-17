@@ -34,14 +34,16 @@ class QueueJob(BaseModel):
         return payload
 
     @classmethod
-    def create(cls, job_type: ScanJobType, payload: dict) -> "QueueJob":
+    def create(cls, job_type: ScanJobType, payload: dict, *, job_id: str | None = None) -> "QueueJob":
         scan_id = payload.get("scan_id", "")
+        # Keep malformed scan payload errors in the shared Pydantic contract.
+        resolved_job_id = str(job_id or scan_id).strip() or "invalid-scan-job"
         return cls(
             contract_version=CURRENT_QUEUE_CONTRACT_VERSION,
             job_type=job_type,
             # A scan can be delivered more than once by Redis Streams.  The scan ID
             # remains the stable idempotency key across those deliveries.
-            job_id=scan_id,
+            job_id=resolved_job_id,
             payload=payload,
             created_at=datetime.now(UTC).isoformat(),
         )

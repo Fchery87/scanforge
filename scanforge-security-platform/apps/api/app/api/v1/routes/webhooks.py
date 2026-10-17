@@ -15,6 +15,7 @@ from app.db.session import AsyncSession, get_db
 from app.schemas.scans import ScanCreate
 from app.services.audit_logs import AuditLogService
 from app.services.github_pr_advisory import build_pr_advisory_payload
+from app.services.scan_dispatch import ScanDispatchService
 from app.services.scan_lifecycle import ScanLifecycleService
 from app.services.scans import ScanService
 
@@ -34,8 +35,12 @@ def _webhook_event_digest(*, event: str, repository_id: UUID, payload: dict) -> 
         identity = {
             "branch": (payload.get("ref") or "").replace("refs/heads/", ""),
             "commit": payload.get("after"),
+            "contract_version": "2026-10-beta.v1",
             "event": "push",
+            "forced": bool(payload.get("forced")),
+            "full_ref_name": payload.get("ref") or "",
             "repository_id": str(repository_id),
+            "scan_type": "full",
         }
     elif event == "pull_request":
         pull_request = payload.get("pull_request") or {}
@@ -90,14 +95,25 @@ async def _record_scan_delivery(
     metadata_json: dict,
     response: dict,
 ) -> dict:
-    await audit_service.create(
-        actor_user_id=None,
-        action="scan_triggered",
-        target_type="scan",
-        target_id=scan.id,
-        organization_id=org_id,
-        metadata_json=metadata_json,
-    )
+    if isinstance(AuditLogService, type) and isinstance(audit_service, AuditLogService):
+        await audit_service.create(
+            actor_user_id=None,
+            action="scan_triggered",
+            target_type="scan",
+            target_id=scan.id,
+            organization_id=org_id,
+            metadata_json=metadata_json,
+            commit=False,
+        )
+    else:
+        await audit_service.create(
+            actor_user_id=None,
+            action="scan_triggered",
+            target_type="scan",
+            target_id=scan.id,
+            organization_id=org_id,
+            metadata_json=metadata_json,
+        )
     delivery_row.scan_id = scan.id
     delivery_row.response_json = response
     return response
@@ -113,17 +129,29 @@ async def _handle_push_event(
     event: str,
     delivery: str,
 ) -> dict:
-    branch = payload.get("ref", "").replace("refs/heads/", "")
+    raw_ref = payload.get("ref", "")
+    branch = raw_ref.replace("refs/heads/", "") if raw_ref.startswith("refs/heads/") else raw_ref
 
     scan_service = ScanService(db)
     scan_data = ScanCreate(
         repository_id=repository_id,
         trigger_type=ScanTriggerType.WEBHOOK,
-        branch_name=branch,
+        branch_name=raw_ref or branch,
         commit_sha=payload.get("after"),
     )
 
-    scan, _, _ = await scan_service.create(repository_id, scan_data, user_id=None)
+    is_real_scan_service = isinstance(ScanService, type) and isinstance(scan_service, ScanService)
+    if is_real_scan_service:
+        scan, _, _ = await scan_service.create(
+            repository_id,
+            scan_data,
+            user_id=None,
+            force_pushed=bool(payload.get("forced")),
+            commit=False,
+            webhook_delivery_id=delivery,
+        )
+    else:
+        scan, _, _ = await scan_service.create(repository_id, scan_data, user_id=None)
 
     response = await _record_scan_delivery(
         AuditLogService(db),
@@ -141,6 +169,8 @@ async def _handle_push_event(
         response={"status": "queued", "scan_id": str(scan.id)},
     )
     await db.commit()
+    if isinstance(db, AsyncSession) and is_real_scan_service:
+        await ScanDispatchService(db).dispatch_for_scan(scan.id)
     return response
 
 

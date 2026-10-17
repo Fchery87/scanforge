@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # R12 migration rehearsal: disposable PostgreSQL via the documented pgserver
-# procedure (docs/development-setup.md, "Disposable PostgreSQL for test
+# procedure (RUNNING_LOCALLY.md, "Disposable PostgreSQL for test
 # evidence"), then alembic upgrade head -> downgrade base -> upgrade head
 # with per-step timings. Non-zero exit on any failure.
 set -euo pipefail
@@ -13,7 +13,7 @@ PGDATA="${R12_MIG_PGDATA:-/tmp/scanforge-r12-migrations-pg16}"
 
 log() { printf '[rehearse_migrations] %s\n' "$*"; }
 
-# Ensure the api venv exists (uv-managed; see docs/development-setup.md).
+# Ensure the api venv exists (uv-managed; see RUNNING_LOCALLY.md).
 if [ ! -x "$PY" ]; then
   log "no venv at apps/api/.venv; creating with uv"
   (cd "$API_DIR" && uv venv .venv -p 3.12 && uv pip install -q -p "$PY" -e '.[dev]')
@@ -39,7 +39,7 @@ trap cleanup EXIT
 
 # Fresh throwaway cluster on every run for a clean empty-database rehearsal.
 rm -rf "$PGDATA"
-# Documented pgserver procedure (docs/development-setup.md). The cluster is
+# Documented pgserver procedure (RUNNING_LOCALLY.md). The cluster is
 # started with cleanup_mode=None so it survives into the alembic child
 # process; it is stopped explicitly in cleanup(). pgserver serves a unix
 # socket, and alembic's configparser cannot carry the percent-encoded socket

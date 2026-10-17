@@ -1,5 +1,7 @@
 # Implement evidence-first private-beta readiness
 
+> Execution scope/order is superseded by the confirmed [2026-10-16 managed-beta plan](2026-10-16-managed-beta-implementation-plan.md) and ADR-010 through ADR-017. Preserve the historical receipts below, but reverify them against current source and accepted contracts; their completion labels do not establish current readiness.
+
 **Status:** Not started
 
 **Spec:** [Evidence-first readiness](../../spec/2026-09-13-evidence-first-readiness.md)
@@ -16,11 +18,7 @@ Record the accepted commit SHA, command output, fixture, and result in the task 
 Use `git cat-file -t <sha>` to verify recorded commits after a rebase.
 No task is complete merely because a file exists or an earlier review reported passing tests.
 
-This is the active execution tracker for the readiness work. It replaces the execution order in the
-[August beta plan](2026-08-19-secure-private-beta-implementation-plan.md), not its requirements.
-The [approved beta specification](../../spec/SECURE_PRIVATE_BETA.md) and accepted ADRs remain authoritative.
-The September spec remains proposed where it introduces new contract details.
-Resolve conflicts in R03 before contract implementation. Do not silently widen beta scope.
+This is the historical September execution tracker, retained for its task and evidence receipts. The superseded August plan/specification remain recoverable from Git. Current scope, security acceptance details and execution order are in the [October managed-beta plan](2026-10-16-managed-beta-implementation-plan.md) and ADR-010 through ADR-017. Historical completion labels below are not current verification.
 
 Execution starts only after a separate implementation instruction. Use the installed Poteto Bug fix
 playbook for reproduced defects and Feature playbook for new behavior. These playbooks are the execution playbooks. Deliver small reviewed PRs.
@@ -290,11 +288,11 @@ Use native agent delegation when implementation is authorized. Review UI evidenc
 ## Appendix D. Read before editing
 
 - [Readiness spec](../../spec/2026-09-13-evidence-first-readiness.md).
-- [Approved private-beta spec](../../spec/SECURE_PRIVATE_BETA.md).
+- [Current managed-beta scope](../adr/ADR-010-managed-beta-release-scope.md).
 - [Domain glossary](../../CONTEXT.md).
 - [Canonical finding ADR](../adr/ADR-002-canonical-finding-model.md).
 - [Scan lifecycle ADR](../adr/ADR-003-scan-lifecycle-architecture-program.md).
 - [Finding lifecycle ADR](../adr/ADR-004-finding-lifecycle-policy.md).
 - [Worker isolation ADR](../adr/ADR-009-dedicated-workers-for-private-beta.md).
 - [Operator runbooks](../runbooks/).
-- [Earlier beta plan](2026-08-19-secure-private-beta-implementation-plan.md).
+- [Current implementation plan](2026-10-16-managed-beta-implementation-plan.md).

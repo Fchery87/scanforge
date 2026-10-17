@@ -82,6 +82,33 @@
               ],
               "title": "X-Worker-Credential"
             }
+          },
+          {
+            "name": "X-Scan-Attempt-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Scan-Attempt-Id"
+            }
+          },
+          {
+            "name": "X-Scan-Execution-Revision",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "X-Scan-Execution-Revision"
+            }
+          },
+          {
+            "name": "X-Scan-Worker-Incarnation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Scan-Worker-Incarnation-Id"
+            }
           }
         ],
         "requestBody": {
@@ -276,6 +303,33 @@
               ],
               "title": "X-Worker-Credential"
             }
+          },
+          {
+            "name": "X-Scan-Attempt-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Scan-Attempt-Id"
+            }
+          },
+          {
+            "name": "X-Scan-Execution-Revision",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "X-Scan-Execution-Revision"
+            }
+          },
+          {
+            "name": "X-Scan-Worker-Incarnation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Scan-Worker-Incarnation-Id"
+            }
           }
         ],
         "requestBody": {
@@ -343,6 +397,33 @@
                 }
               ],
               "title": "X-Worker-Credential"
+            }
+          },
+          {
+            "name": "X-Scan-Attempt-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Scan-Attempt-Id"
+            }
+          },
+          {
+            "name": "X-Scan-Execution-Revision",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "X-Scan-Execution-Revision"
+            }
+          },
+          {
+            "name": "X-Scan-Worker-Incarnation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Scan-Worker-Incarnation-Id"
             }
           }
         ],
@@ -412,6 +493,33 @@
               ],
               "title": "X-Worker-Credential"
             }
+          },
+          {
+            "name": "X-Scan-Attempt-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Scan-Attempt-Id"
+            }
+          },
+          {
+            "name": "X-Scan-Execution-Revision",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "X-Scan-Execution-Revision"
+            }
+          },
+          {
+            "name": "X-Scan-Worker-Incarnation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Scan-Worker-Incarnation-Id"
+            }
           }
         ],
         "requestBody": {
@@ -479,6 +587,33 @@
                 }
               ],
               "title": "X-Worker-Credential"
+            }
+          },
+          {
+            "name": "X-Scan-Attempt-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Scan-Attempt-Id"
+            }
+          },
+          {
+            "name": "X-Scan-Execution-Revision",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "X-Scan-Execution-Revision"
+            }
+          },
+          {
+            "name": "X-Scan-Worker-Incarnation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Scan-Worker-Incarnation-Id"
             }
           }
         ],
@@ -548,6 +683,33 @@
                 }
               ],
               "title": "X-Worker-Credential"
+            }
+          },
+          {
+            "name": "X-Scan-Attempt-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Scan-Attempt-Id"
+            }
+          },
+          {
+            "name": "X-Scan-Execution-Revision",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "X-Scan-Execution-Revision"
+            }
+          },
+          {
+            "name": "X-Scan-Worker-Incarnation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Scan-Worker-Incarnation-Id"
             }
           }
         ],
@@ -7052,12 +7214,17 @@
           "execution_revision": {
             "type": "integer",
             "title": "Execution Revision"
+          },
+          "worker_incarnation_id": {
+            "type": "string",
+            "title": "Worker Incarnation Id"
           }
         },
         "type": "object",
         "required": [
           "attempt_id",
-          "execution_revision"
+          "execution_revision",
+          "worker_incarnation_id"
         ],
         "title": "HeartbeatRequest"
       },
@@ -8810,6 +8977,18 @@
             "pattern": "^(full|diff|dependencies|secrets)$",
             "title": "Scan Type",
             "default": "full"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
           }
         },
         "type": "object",
@@ -8846,6 +9025,11 @@
           "status": {
             "type": "string",
             "title": "Status"
+          },
+          "dispatch_state": {
+            "type": "string",
+            "title": "Dispatch State",
+            "default": "awaiting_dispatch"
           },
           "contract_version": {
             "type": "string",
@@ -9056,6 +9240,11 @@
           "status": {
             "type": "string",
             "title": "Status"
+          },
+          "dispatch_state": {
+            "type": "string",
+            "title": "Dispatch State",
+            "default": "awaiting_dispatch"
           },
           "contract_version": {
             "type": "string",

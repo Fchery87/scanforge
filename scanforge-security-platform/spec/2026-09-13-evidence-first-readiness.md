@@ -1,5 +1,8 @@
 # Evidence-first repository security operations readiness
 
+> Historical evidence specification retained for traceability. Current accepted scope and execution order are defined by ADR-010 through ADR-017 and the October managed-beta plan; this document is not an independent active roadmap.
+
+
 **Status:** Proposed
 
 **Date:** 2026-09-13
@@ -307,7 +310,7 @@ The failure drills and canary-secret tests are required evidence. A passing unit
 
 ## Source documents
 
-- `spec/SECURE_PRIVATE_BETA.md`
+- Current scope: [ADR-010](../docs/adr/ADR-010-managed-beta-release-scope.md); preserved security acceptance: [October plan](../docs/plans/2026-10-16-managed-beta-implementation-plan.md). The historical August specification is recoverable from Git.
 - `docs/adr/ADR-002-canonical-finding-model.md`
 - `docs/adr/ADR-003-scan-lifecycle-architecture-program.md`
 - `docs/adr/ADR-004-finding-lifecycle-policy.md`

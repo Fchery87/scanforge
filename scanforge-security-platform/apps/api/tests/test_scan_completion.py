@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
@@ -15,7 +16,17 @@ def completion_request() -> ScanCompletionRequest:
         winning_attempt_id=uuid4(),
         execution_revision=1,
         findings=[],
-        scanner_runs=[ScannerRunCompletion(scanner_name="trivy", status="completed", exit_code=0)],
+        scanner_runs=[
+            ScannerRunCompletion(
+                scanner_name="trivy",
+                status="completed",
+                outcome_status="completed",
+                db_freshness_state="fresh",
+                db_published_at=datetime.now(UTC) - timedelta(days=1),
+                db_digest="sha256:trivy-db",
+                exit_code=0,
+            )
+        ],
         summary_json={
             "seen_fingerprints": [],
             "scanner_health": {
@@ -42,6 +53,12 @@ async def test_commit_failure_rolls_back_and_leaves_scan_incomplete(monkeypatch)
         id=str(uuid4()),
         project_id=str(uuid4()),
         repository_id=str(uuid4()),
+        expected_scanners_json=["trivy"],
+        commit_sha="a" * 40,
+        full_ref_name="refs/heads/main",
+        branch_generation_number=1,
+        ancestry_status="verified_descendant",
+        cleanup_state="completed",
         status=ScanStatus.RUNNING,
         summary_json=None,
     )
@@ -107,6 +124,12 @@ async def test_scanner_health_findings_and_lifecycle_commit_before_completed(mon
         id=str(uuid4()),
         project_id=str(uuid4()),
         repository_id=str(uuid4()),
+        expected_scanners_json=["trivy"],
+        commit_sha="a" * 40,
+        full_ref_name="refs/heads/main",
+        branch_generation_number=1,
+        ancestry_status="verified_descendant",
+        cleanup_state="completed",
         status=ScanStatus.RUNNING,
         summary_json=None,
     )
@@ -124,7 +147,10 @@ async def test_scanner_health_findings_and_lifecycle_commit_before_completed(mon
 
     assert response["status"] == "completed"
     assert scan.status == ScanStatus.COMPLETED
-    assert scan.summary_json == request.summary_json
+    assert scan.summary_json["scanner_health"]["complete"] is True
+    assert scan.summary_json["coverage_completeness"] == "full"
+    assert scan.summary_json["closure_eligible"] is True
+    assert response["closure_eligible"] is True
     findings.upsert_from_scan.assert_awaited_once()
     assert findings.upsert_from_scan.await_args.kwargs["commit"] is False
     findings.mark_not_observed_after_scan.assert_awaited_once()

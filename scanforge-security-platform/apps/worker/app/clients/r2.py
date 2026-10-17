@@ -22,10 +22,6 @@ class R2Client:
         self.worker_credential = worker_credential
         self.request_timeout = request_timeout
 
-    @property
-    def _headers(self) -> dict[str, str]:
-        return {"X-Worker-Credential": self.worker_credential}
-
     def _compute_checksum(self, file_path: Path) -> str:
         sha256 = hashlib.sha256()
         with file_path.open("rb") as artifact:
@@ -42,6 +38,9 @@ class R2Client:
         filename: str,
         content: bytes,
         content_type: str,
+        attempt_id: str,
+        execution_revision: int,
+        worker_incarnation_id: str,
     ) -> str:
         request = {
             "scanner_name": scanner_name,
@@ -56,7 +55,12 @@ class R2Client:
             response = await client.post(
                 f"{self.api_base_url}/api/v1/internal/scans/{scan_id}/artifacts/upload-url",
                 json=request,
-                headers=self._headers,
+                headers={
+                    "X-Worker-Credential": self.worker_credential,
+                    "X-Scan-Attempt-Id": attempt_id,
+                    "X-Scan-Execution-Revision": str(execution_revision),
+                    "X-Scan-Worker-Incarnation-Id": worker_incarnation_id,
+                },
             )
             response.raise_for_status()
             upload = response.json()
@@ -75,6 +79,9 @@ class R2Client:
         self,
         file_path: Path,
         key: str,
+        attempt_id: str,
+        execution_revision: int,
+        worker_incarnation_id: str,
         content_type: str = "application/json",
     ) -> dict[str, Any]:
         parts = key.split("/")
@@ -89,6 +96,9 @@ class R2Client:
             filename=filename,
             content=content,
             content_type=content_type,
+            attempt_id=attempt_id,
+            execution_revision=execution_revision,
+            worker_incarnation_id=worker_incarnation_id,
         )
         return {
             "storage_uri": storage_uri,
@@ -103,6 +113,9 @@ class R2Client:
         scan_id: str,
         scanner_name: str,
         output_data: dict | list,
+        attempt_id: str,
+        execution_revision: int,
+        worker_incarnation_id: str,
         format: str = "json",
     ) -> str:
         return await self._upload(
@@ -112,4 +125,7 @@ class R2Client:
             filename=f"raw_output.{format}",
             content=json.dumps(output_data, separators=(",", ":")).encode(),
             content_type="application/json",
+            attempt_id=attempt_id,
+            execution_revision=execution_revision,
+            worker_incarnation_id=worker_incarnation_id,
         )

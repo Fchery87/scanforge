@@ -169,7 +169,11 @@ async def _acquire(session, scan, owner: str):
 
 async def _renew(session, scan, owner: str, attempt_id: str, revision: int):
     return await ScanLeaseService(session).renew(
-        str(scan.id), attempt_id=attempt_id, execution_revision=revision, worker_owner=owner
+        str(scan.id),
+        attempt_id=attempt_id,
+        execution_revision=revision,
+        worker_incarnation_id=scan.worker_incarnation_id,
+        worker_owner=owner,
     )
 
 

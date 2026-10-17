@@ -10,6 +10,25 @@ from app.schemas.findings import FindingBulkAction, FindingResponse
 from app.services.findings import FindingService
 
 
+def authorized_finding_db(finding, *, member_role: str | None = "admin", final_finding=None):
+    project = SimpleNamespace(id=finding.project_id, organization_id=uuid4())
+    row_result = Mock()
+    row_result.first.return_value = (finding, project)
+    member_result = Mock()
+    member_result.scalar_one_or_none.return_value = (
+        SimpleNamespace(role=member_role) if member_role else None
+    )
+    db = AsyncMock()
+    db.add = Mock()
+    results = [row_result, member_result]
+    if final_finding is not None:
+        final_result = Mock()
+        final_result.scalar_one.return_value = final_finding
+        results.append(final_result)
+    db.execute.side_effect = results
+    return db
+
+
 def test_finding_bulk_action_allows_accept_risk_and_duplicate():
     accepted = FindingBulkAction.model_validate(
         {
@@ -34,27 +53,18 @@ def test_finding_bulk_action_allows_accept_risk_and_duplicate():
 async def test_accept_risk_updates_status_and_records_event():
     finding_id = uuid4()
     user_id = uuid4()
-    finding = SimpleNamespace(status="open")
-    db = AsyncMock()
-    db.get.return_value = finding
-    db.scalar.return_value = 1
-    db.add = Mock()
-    execute_result = Mock()
-    execute_result.scalar_one.return_value = finding
-    db.execute.return_value = execute_result
+    finding = SimpleNamespace(id=str(finding_id), status="open", project_id=uuid4())
+    db = authorized_finding_db(finding)
 
     service = FindingService(db)
-    service.get_by_id = AsyncMock(return_value=finding)
-
     result = await service.accept_risk(finding_id, user_id, "Risk accepted with compensating controls")
 
     assert result is finding
     assert finding.status == "accepted_risk"
-    event = db.add.call_args.args[0]
-    assert isinstance(event, FindingEvent)
-    assert event.finding_id == finding_id
+    event = next(call.args[0] for call in db.add.call_args_list if isinstance(call.args[0], FindingEvent))
+    assert event.finding_id == str(finding_id)
     assert event.event_type == "accepted_risk"
-    assert event.actor_user_id == user_id
+    assert event.actor_user_id == str(user_id)
     assert event.reason == "Risk accepted with compensating controls"
     db.commit.assert_awaited_once()
     db.refresh.assert_awaited_once_with(finding)
@@ -64,23 +74,18 @@ async def test_accept_risk_updates_status_and_records_event():
 async def test_mark_duplicate_updates_status_and_records_event():
     finding_id = uuid4()
     user_id = uuid4()
-    finding = SimpleNamespace(status="open")
-    db = AsyncMock()
-    db.get.return_value = finding
-    db.add = Mock()
+    finding = SimpleNamespace(id=str(finding_id), status="open", project_id=uuid4())
+    db = authorized_finding_db(finding)
 
     service = FindingService(db)
-    service.get_by_id = AsyncMock(return_value=finding)
-
     result = await service.mark_duplicate(finding_id, user_id, "Duplicate of another finding")
 
     assert result is finding
     assert finding.status == "duplicate"
-    event = db.add.call_args.args[0]
-    assert isinstance(event, FindingEvent)
-    assert event.finding_id == finding_id
+    event = next(call.args[0] for call in db.add.call_args_list if isinstance(call.args[0], FindingEvent))
+    assert event.finding_id == str(finding_id)
     assert event.event_type == "duplicate"
-    assert event.actor_user_id == user_id
+    assert event.actor_user_id == str(user_id)
     assert event.reason == "Duplicate of another finding"
     db.commit.assert_awaited_once()
     db.refresh.assert_awaited_once_with(finding)
@@ -93,22 +98,16 @@ async def test_update_triage_sets_assignee_and_due_date_and_records_event():
     assignee_user_id = uuid4()
     due_date = date(2026, 4, 15)
     finding = SimpleNamespace(
+        id=str(finding_id),
         status="open",
         project_id=uuid4(),
         assignee_user_id=None,
         due_date=None,
     )
-    db = AsyncMock()
-    db.get.return_value = finding
+    db = authorized_finding_db(finding, final_finding=finding)
     db.scalar.return_value = 1
-    db.add = Mock()
-    execute_result = Mock()
-    execute_result.scalar_one.return_value = finding
-    db.execute.return_value = execute_result
 
     service = FindingService(db)
-    service.get_by_id = AsyncMock(return_value=finding)
-
     result = await service.update_triage(
         finding_id,
         user_id,
@@ -119,10 +118,10 @@ async def test_update_triage_sets_assignee_and_due_date_and_records_event():
     assert result is finding
     assert finding.assignee_user_id == str(assignee_user_id)
     assert finding.due_date == due_date
-    event = db.add.call_args.args[0]
-    assert isinstance(event, FindingEvent)
+    event = next(call.args[0] for call in db.add.call_args_list if isinstance(call.args[0], FindingEvent))
     assert event.event_type == "triage_updated"
     assert event.metadata_json == {
+        "project_id": str(finding.project_id),
         "assignee_user_id": str(assignee_user_id),
         "due_date": "2026-04-15",
     }
@@ -179,8 +178,10 @@ async def test_accept_risk_returns_none_when_user_cannot_access_finding():
     user_id = uuid4()
 
     db = AsyncMock()
+    result = Mock()
+    result.first.return_value = None
+    db.execute.return_value = result
     service = FindingService(db)
-    service.get_by_id = AsyncMock(return_value=None)
 
     result = await service.accept_risk(finding_id, user_id, "Risk accepted with compensating controls")
 

@@ -1,0 +1,17 @@
+id	track	state	branch	pr	sha	brief
+M00	intake	in-progress	managed-beta/integration			/home/nochaserz/Documents/Coding Projects/scanforge/orchestrate/managed-beta/briefs/M00-baseline-fixtures.md
+M01	api	done	managed-beta/m01		e5d8de734be5d0ac77d9aec891d0e59b31c3ab55	/home/nochaserz/Documents/Coding Projects/scanforge/orchestrate/managed-beta/briefs/M01-beta-capability-policy.md
+M02	api	in-progress	managed-beta/m02			
+M03	api	pending				
+M06	api	pending				/home/nochaserz/Documents/Coding Projects/scanforge/orchestrate/managed-beta/briefs/M06-repository-ref-identity.md
+M07	api	pending				
+M08	api	pending				
+M09	api	pending				
+M10	api	pending				
+M11	api	pending				
+M13	api	pending				
+M14	api	pending				
+M04	worker	pending				
+M05	worker	pending				
+M12	web	pending				
+M15	ops	pending				

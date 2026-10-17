@@ -12,7 +12,7 @@ def test_r2_client_uses_only_api_and_worker_credential():
     )
 
     assert client.api_base_url == "https://api.scanforge.example"
-    assert client._headers == {"X-Worker-Credential": "worker-credential"}
+    assert client.worker_credential == "worker-credential"
     assert not hasattr(client, "access_key_id")
     assert not hasattr(client, "secret_access_key")
 
@@ -40,11 +40,17 @@ async def test_upload_requests_exact_key_then_puts_without_worker_credential(tmp
         result = await client.upload_file(
             artifact,
             "scan-artifacts/org-1/scan-1/trivy/results.json",
+            attempt_id="attempt-1",
+            execution_revision=2,
+            worker_incarnation_id="incarnation-1",
         )
 
     assert result["storage_uri"] == "scan-artifacts/org-1/scan-1/trivy/results.json"
     assert http_client.post.await_args.kwargs["headers"] == {
-        "X-Worker-Credential": "worker-secret"
+        "X-Worker-Credential": "worker-secret",
+        "X-Scan-Attempt-Id": "attempt-1",
+        "X-Scan-Execution-Revision": "2",
+        "X-Scan-Worker-Incarnation-Id": "incarnation-1",
     }
     assert http_client.put.await_args.kwargs["headers"] == {
         "Content-Type": "application/json"
@@ -73,4 +79,7 @@ async def test_upload_rejects_api_key_outside_tenant_scope(tmp_path):
             await client.upload_file(
                 artifact,
                 "scan-artifacts/org-1/scan-1/trivy/results.json",
+                attempt_id="attempt-1",
+                execution_revision=2,
+                worker_incarnation_id="incarnation-1",
             )

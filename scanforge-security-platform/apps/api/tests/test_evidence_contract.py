@@ -12,8 +12,8 @@ from app.schemas.canonical_findings import (
     CanonicalFindingReference,
 )
 from app.schemas.scan_completion import (
-    ScannerRunCompletion,
     ScanCompletionRequest,
+    ScannerRunCompletion,
 )
 from app.services.evidence_contract import (
     CURRENT_EVIDENCE_CONTRACT_VERSION,
@@ -160,6 +160,45 @@ def test_stale_scanner_database_older_than_seven_days_blocks_full_coverage_and_c
         commit_sha="c" * 40,
         full_ref_name="refs/heads/main",
         branch_generation_number=1,
+        ancestry_status="verified_descendant",
+        cleanup_state="completed",
+    )
+
+    assert decision.coverage_completeness == "partial"
+    assert decision.closure_eligible is False
+
+
+@pytest.mark.parametrize(
+    "database_evidence",
+    [
+        {"db_freshness_state": "unverified", "db_published_at": _fresh_db_time(), "db_digest": "sha256:db"},
+        {"db_freshness_state": "fresh", "db_published_at": None, "db_digest": "sha256:db"},
+        {"db_freshness_state": "fresh", "db_published_at": _fresh_db_time(), "db_digest": None},
+        {
+            "db_freshness_state": "fresh",
+            "db_published_at": datetime.now(UTC) + timedelta(minutes=1),
+            "db_digest": "sha256:db",
+        },
+    ],
+)
+def test_unverifiable_or_future_scanner_database_never_grants_full_coverage(database_evidence):
+    request = ScanCompletionRequest(
+        winning_attempt_id=uuid4(),
+        execution_revision=1,
+        scanner_runs=[
+            ScannerRunCompletion(
+                scanner_name="trivy",
+                status="completed",
+                outcome_status="completed",
+                **database_evidence,
+            )
+        ],
+    )
+
+    decision = derive_scan_evidence_decision(
+        request,
+        expected_scanners=["trivy"],
+        commit_sha="a" * 40,
         ancestry_status="verified_descendant",
         cleanup_state="completed",
     )

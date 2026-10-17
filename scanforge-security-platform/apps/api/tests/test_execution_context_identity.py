@@ -143,10 +143,11 @@ def _principal(org_id: UUID) -> WorkerPrincipal:
     )
 
 
-def _completion_request(attempt_id, revision) -> ScanCompletionRequest:
+def _completion_request(attempt_id, revision, incarnation_id) -> ScanCompletionRequest:
     return ScanCompletionRequest(
         winning_attempt_id=attempt_id,
         execution_revision=revision,
+        worker_incarnation_id=incarnation_id,
         findings=[],
         scanner_runs=[ScannerRunCompletion(scanner_name="trivy", status="completed", exit_code=0)],
         summary_json={"seen_fingerprints": [], "scanner_health": {"complete": True}},
@@ -270,7 +271,9 @@ async def test_route_completion_with_stale_identity_is_a_typed_conflict(db_sessi
 
     accepted = await internal.complete_scan(
         scan_id=scan_id,
-        data=_completion_request(current["attempt_id"], current["execution_revision"]),
+        data=_completion_request(
+            current["attempt_id"], current["execution_revision"], current["worker_incarnation_id"]
+        ),
         principal=principal,
         db=db_session,
     )

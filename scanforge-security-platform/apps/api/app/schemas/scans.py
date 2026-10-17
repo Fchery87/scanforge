@@ -34,6 +34,7 @@ class ScanCreate(BaseModel):
     base_sha: str | None = Field(None, max_length=64)
     pull_request_number: int | None = None
     scan_type: str = Field(default="full", pattern="^(full|diff|dependencies|secrets)$")
+    idempotency_key: str | None = Field(default=None, max_length=255)
 
 
 class ScanResponse(BaseModel):
@@ -45,6 +46,7 @@ class ScanResponse(BaseModel):
     trigger_type: str
     scan_type: str
     status: str
+    dispatch_state: str = "awaiting_dispatch"
     contract_version: str = "2026-10-beta.v1"
     branch_name: str | None
     full_ref_name: str | None = None

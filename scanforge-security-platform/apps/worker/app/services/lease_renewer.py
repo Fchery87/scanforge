@@ -52,6 +52,7 @@ class LeaseRenewer:
         scan_id: str,
         attempt_id: str | None,
         execution_revision: int | None,
+        worker_incarnation_id: str | None,
         api_base_url: str,
         worker_credential: str,
         *,
@@ -63,6 +64,7 @@ class LeaseRenewer:
         self.scan_id = scan_id
         self.attempt_id = attempt_id
         self.execution_revision = execution_revision
+        self.worker_incarnation_id = worker_incarnation_id
         self.api_base_url = api_base_url.rstrip("/")
         self.worker_credential = worker_credential
         self.renewal_seconds = renewal_seconds
@@ -80,7 +82,7 @@ class LeaseRenewer:
         """Start the renewal loop; disabled without a full execution identity."""
         if self._task is not None and not self._task.done():
             return
-        if not self.attempt_id or self.execution_revision is None:
+        if not self.attempt_id or self.execution_revision is None or not self.worker_incarnation_id:
             _log.warning(
                 "lease renewal disabled: execution identity missing",
                 extra={"scan_id": self.scan_id},
@@ -144,8 +146,10 @@ class LeaseRenewer:
                             "retry_in_seconds": backoff,
                         },
                     )
-                    # Never retry faster than the renewal interval itself.
-                    due = max(due, loop.time() - self.renewal_seconds) + self.renewal_seconds + backoff
+                    # Retry after the larger of exponential backoff and the
+                    # normal renewal interval. Adding both delays needlessly
+                    # pushes later attempts beyond the lease safety window.
+                    due = max(due, loop.time()) + max(self.renewal_seconds, backoff)
                     backoff = min(backoff * 2, self.max_retry_backoff_seconds)
                     continue
                 self.renewal_count += 1
@@ -155,8 +159,17 @@ class LeaseRenewer:
     async def _heartbeat(self, client: httpx.AsyncClient) -> None:
         response = await client.post(
             f"{self.api_base_url}/api/v1/internal/scans/{self.scan_id}/heartbeat",
-            json={"attempt_id": self.attempt_id, "execution_revision": self.execution_revision},
-            headers={"X-Worker-Credential": self.worker_credential},
+            json={
+                "attempt_id": self.attempt_id,
+                "execution_revision": self.execution_revision,
+                "worker_incarnation_id": self.worker_incarnation_id,
+            },
+            headers={
+                "X-Worker-Credential": self.worker_credential,
+                "X-Scan-Attempt-Id": self.attempt_id,
+                "X-Scan-Execution-Revision": str(self.execution_revision),
+                "X-Scan-Worker-Incarnation-Id": self.worker_incarnation_id,
+            },
             timeout=self.HEARTBEAT_TIMEOUT_SECONDS,
         )
         if response.status_code == 409:

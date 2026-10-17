@@ -16,6 +16,7 @@ def _scan(repository_id, project_id):
         branch_name="main",
         commit_sha="deadbeef",
         status="queued",
+        dispatch_state="awaiting_dispatch",
         error_message=None,
     )
 
@@ -39,6 +40,7 @@ async def test_create_manual_scan_creates_scan_and_enqueues_job():
     )
 
     assert result is scan
+    assert scan.dispatch_state == "dispatched"
     scan_service.create.assert_awaited_once_with(repository_id, data, user_id)
     queue.enqueue.assert_awaited_once_with(
         "scan.repo.full",
@@ -68,7 +70,8 @@ async def test_create_manual_scan_records_generic_error_when_enqueue_fails():
     )
 
     assert result is scan
-    assert scan.status == "failed"
+    assert scan.status == "queued"
+    assert scan.dispatch_state == "awaiting_dispatch"
     assert scan.error_message == GENERIC_QUEUE_ERROR
     queue.enqueue.assert_awaited_once()
     db.commit.assert_awaited_once()
@@ -91,6 +94,7 @@ async def test_create_scheduled_scan_uses_same_scan_job_invariants():
 
     assert outcome.scan is scan
     assert outcome.enqueued is True
+    assert scan.dispatch_state == "dispatched"
     scan_service.create.assert_awaited_once()
     created_data = scan_service.create.await_args.args[1]
     assert created_data.repository_id == repository_id
@@ -119,7 +123,8 @@ async def test_create_scheduled_scan_reports_enqueue_failure_without_marking_sch
 
     assert outcome.scan is scan
     assert outcome.enqueued is False
-    assert scan.status == "failed"
+    assert scan.status == "queued"
+    assert scan.dispatch_state == "awaiting_dispatch"
     assert scan.error_message == GENERIC_QUEUE_ERROR
     db.commit.assert_awaited_once()
     db.refresh.assert_awaited_once_with(scan)

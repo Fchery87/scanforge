@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -5,6 +6,7 @@ from uuid import uuid4
 import pytest
 
 from app.api.v1.routes import internal
+from app.api.v1.routes.internal import ExecutionAttemptIdentity
 from app.middleware.service_auth import WorkerPrincipal
 from app.schemas.scans import ScanStatusUpdate
 
@@ -131,15 +133,22 @@ async def test_get_scan_execution_context_loads_authoritative_scan_context(monke
         "expected_scanners": ["trivy", "osv", "syft", "grype"],
         "coverage_scope": {
             "branch": "main",
+            "full_ref_name": "refs/heads/main",
+            "branch_generation_number": 1,
+            "ancestry_status": "unknown",
             "commit_sha": "deadbeef",
             "scan_type": "dependencies",
         },
         "branch": "main",
+        "full_ref_name": "refs/heads/main",
+        "branch_generation_number": 1,
+        "ancestry_status": "unknown",
         "commit_sha": "deadbeef",
         "status": scan.status.value,
         "user_id": str(user_id),
         "attempt_id": result["attempt_id"],
         "execution_revision": 1,
+        "worker_incarnation_id": result["worker_incarnation_id"],
         "lease_owner": result["lease_owner"],
         "lease_expires_at": result["lease_expires_at"],
         "reclaim_reason": "fresh_start",
@@ -151,12 +160,19 @@ async def test_get_scan_execution_context_loads_authoritative_scan_context(monke
 async def test_completed_status_is_rejected_by_progress_endpoint(monkeypatch):
     scan_id = uuid4()
     org_id = uuid4()
+    worker = principal(org_id)
+    attempt = ExecutionAttemptIdentity("attempt-1", 1, "incarnation-1")
     scan = SimpleNamespace(
         id=scan_id,
         repository_id="repo-1",
         status=internal.ScanStatus.RUNNING,
         summary_json=None,
         error_message=None,
+        current_attempt_id=attempt.attempt_id,
+        execution_revision=attempt.execution_revision,
+        worker_incarnation_id=attempt.worker_incarnation_id,
+        lease_owner=str(worker.worker_id),
+        lease_expires_at=datetime.now(UTC) + timedelta(minutes=1),
     )
     project = SimpleNamespace(organization_id=org_id)
 
@@ -178,7 +194,8 @@ async def test_completed_status_is_rejected_by_progress_endpoint(monkeypatch):
         await internal.update_scan_status_internal(
             scan_id=scan_id,
             data=ScanStatusUpdate(status="completed", summary_json=summary),
-            principal=principal(org_id),
+            principal=worker,
+            attempt=attempt,
             db=Db(),
         )
 

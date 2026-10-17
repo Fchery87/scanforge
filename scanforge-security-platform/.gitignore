@@ -82,3 +82,7 @@ localstack_data/
 .turbo/
 .worktrees/
 turbo.json
+
+# Local agent settings and inspected recovery scratch
+.apex-code/
+.cache/scanforge-recovery/

@@ -31,7 +31,7 @@ class DummyR2:
     async def upload_raw_output(self, scan_id: str, scanner_name: str, output_data: dict, **kwargs) -> str:
         return f"https://cdn.example/scans/{scan_id}/{scanner_name}/raw_output.json"
 
-    async def upload_file(self, file_path: Path, key: str) -> dict:
+    async def upload_file(self, file_path: Path, key: str, **_kwargs) -> dict:
         return {"storage_uri": f"https://cdn.example/{key}"}
 
 
@@ -43,7 +43,7 @@ async def test_upload_artifacts_returns_scanner_run_updates(tmp_path: Path):
     orchestrator = ScanOrchestrator(queue=DummyQueue(), r2=DummyR2())
     updates = []
 
-    async def capture_update(run_id: str, **kwargs):
+    async def capture_update(_context, run_id: str, **kwargs):
         updates.append((run_id, kwargs))
 
     orchestrator._execution._update_scanner_run = capture_update
@@ -55,6 +55,9 @@ async def test_upload_artifacts_returns_scanner_run_updates(tmp_path: Path):
         branch="main",
         commit_sha=None,
         job_id="job-1",
+        attempt_id="attempt-1",
+        execution_revision=1,
+        worker_incarnation_id="incarnation-1",
     )
     context.scanner_results = {
         "trivy": ScannerResult(
@@ -404,6 +407,7 @@ async def test_complete_scan_payload_echoes_attempt_identity():
             job_id="job-1",
             attempt_id="attempt-abc",
             execution_revision=3,
+            worker_incarnation_id="incarnation-1",
         )
         await stage.complete_scan(context)
     finally:

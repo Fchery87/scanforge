@@ -6,6 +6,7 @@ row-lock serialization is the hard release gate and must not be weakened.
 """
 import asyncio
 import os
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -96,7 +97,16 @@ def completion_request(**overrides) -> ScanCompletionRequest:
         "winning_attempt_id": uuid4(),
         "execution_revision": 1,
         "findings": [],
-        "scanner_runs": [ScannerRunCompletion(scanner_name="trivy", status="completed", exit_code=0)],
+        "scanner_runs": [
+            ScannerRunCompletion(
+                scanner_name="trivy",
+                status="completed",
+                exit_code=0,
+                db_digest="a" * 64,
+                db_published_at=datetime.now(UTC),
+                db_freshness_state="fresh",
+            )
+        ],
         "summary_json": {
             "seen_fingerprints": [],
             "scanner_health": {
@@ -159,6 +169,7 @@ async def _seed_scan(session, *, repo_suffix: str = "") -> Scan:
         trigger_type="manual",
         scan_type="full",
         status=ScanStatus.RUNNING,
+        expected_scanners_json=["trivy"],
     )
     # Real PostgreSQL enforces bare-FK insert order while SQLAlchemy only
     # orders flush output along relationship() edges, so seed parents
@@ -223,11 +234,7 @@ async def test_identical_replay_returns_stored_receipt_without_reinserting(db_se
         raise AssertionError("replay must not re-run finding writes")
 
     monkeypatch.setattr(scan_completion_module, "FindingService", _no_findings)
-    replay = await service.complete(
-        scan_id,
-        org_id,
-        completion_request(winning_attempt_id=data.winning_attempt_id, execution_revision=1),
-    )
+    replay = await service.complete(scan_id, org_id, data)
 
     assert replay["replayed"] is True
     assert replay["inserted_findings"] == first["inserted_findings"]

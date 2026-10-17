@@ -23,6 +23,7 @@ from app.db.models.repository import (
     RepositoryIntegration,
 )
 from app.db.models.scan import Scan, ScanCompletionReceipt, ScannerRun
+from app.db.models.scan_dispatch import ScanDispatchObligation
 from app.db.models.scan_schedule import ScanSchedule
 from app.db.models.user import User
 from app.db.models.webhook_delivery import WebhookDelivery
@@ -49,6 +50,7 @@ __all__ = [
     "Scan",
     "ScanArtifact",
     "ScanCompletionReceipt",
+    "ScanDispatchObligation",
     "ScanSchedule",
     "ScannerRun",
     "SuppressionRule",

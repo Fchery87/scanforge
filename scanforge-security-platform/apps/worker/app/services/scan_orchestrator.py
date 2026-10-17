@@ -121,6 +121,7 @@ class ScanOrchestrator:
             scan_id=context.scan_id,
             attempt_id=context.attempt_id,
             execution_revision=context.execution_revision,
+            worker_incarnation_id=context.worker_incarnation_id,
             api_base_url=self.api_base_url,
             worker_credential=self._worker_credential,
         )
@@ -295,6 +296,7 @@ class ScanOrchestrator:
             coverage_scope=data.get("coverage_scope"),
             attempt_id=data.get("attempt_id"),
             execution_revision=data.get("execution_revision"),
+            worker_incarnation_id=data.get("worker_incarnation_id"),
         )
 
     def _build_completion_summary(
@@ -347,7 +349,7 @@ class ScanOrchestrator:
                 resp = await client.patch(
                     f"{self.api_base_url}/api/v1/internal/scans/{context.scan_id}/status",
                     json={"status": status, "error_message": error, "summary_json": summary},
-                    headers={"X-Worker-Credential": self._worker_credential},
+                    headers=context.attempt_headers(self._worker_credential),
                     timeout=30.0,
                 )
                 resp.raise_for_status()

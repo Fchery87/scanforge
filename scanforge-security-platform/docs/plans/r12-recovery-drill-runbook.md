@@ -38,7 +38,7 @@ Command:
 ```
 
 What it does: creates a throwaway PostgreSQL 16 cluster with `pgserver`
-(documented in docs/development-setup.md, "Disposable PostgreSQL for test
+(documented in RUNNING_LOCALLY.md, "Disposable PostgreSQL for test
 evidence"), points `DATABASE_URL` at it, and times `alembic upgrade head`,
 `alembic downgrade base`, and `alembic upgrade head` again. Exits non-zero if
 any step fails; removes the cluster directory afterwards

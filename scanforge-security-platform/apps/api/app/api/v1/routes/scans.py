@@ -19,6 +19,7 @@ from app.schemas.scans import (
     ScanResponse,
 )
 from app.services.organizations import OrganizationService
+from app.services.scan_dispatch import ScanCapacityExceededError
 from app.services.scan_lifecycle import ScanLifecycleService
 from app.services.scans import ScanService
 
@@ -86,6 +87,8 @@ async def create_scan(
             data=data,
             user_id=current_user.user_id,
         )
+    except ScanCapacityExceededError as e:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 

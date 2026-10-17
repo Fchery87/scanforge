@@ -108,7 +108,9 @@ class ScanLeaseService:
         reclaim_reason = RECLAIM_EXPIRED if previous_owner else RECLAIM_FRESH
         scan.current_attempt_id = str(uuid4())
         scan.execution_revision = (scan.execution_revision or 0) + 1
+        scan.worker_incarnation_id = str(uuid4())
         scan.lease_owner = worker_owner
+        scan.worker_principal_id = worker_owner
         scan.lease_expires_at = now + timedelta(seconds=LEASE_SECONDS)
         scan.last_heartbeat_at = now
         await self.db.commit()
@@ -142,6 +144,7 @@ class ScanLeaseService:
         *,
         attempt_id: str | None,
         execution_revision: int | None,
+        worker_incarnation_id: str | None,
         worker_owner: str,
     ) -> Scan:
         """Renew a live lease.  An expired lease cannot be renewed (R03)."""
@@ -153,6 +156,8 @@ class ScanLeaseService:
             or attempt_id is None
             or scan.current_attempt_id != str(attempt_id)
             or (scan.execution_revision or 0) != (execution_revision or -1)
+            or not worker_incarnation_id
+            or scan.worker_incarnation_id != worker_incarnation_id
         ):
             logger.warning(
                 "scan.lease.heartbeat_rejected",
@@ -165,6 +170,9 @@ class ScanLeaseService:
                 },
             )
             raise LeaseConflict("stale_attempt", current_owner=scan.lease_owner)
+
+        if scan.lease_owner != worker_owner:
+            raise LeaseConflict("stale_worker", current_owner=scan.lease_owner)
 
         lease_expires_at = _aware(scan.lease_expires_at)
         if lease_expires_at is not None and lease_expires_at <= now:

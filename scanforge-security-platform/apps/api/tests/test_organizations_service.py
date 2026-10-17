@@ -38,7 +38,7 @@ async def test_create_organization_auto_suffixes_taken_slug():
     assert isinstance(created_org, Organization)
     assert created_org.slug == "studio-eighty7-2"
     assert isinstance(created_member, OrganizationMember)
-    assert created_member.user_id == user_id
+    assert created_member.user_id == str(user_id)
 
 
 @pytest.mark.asyncio

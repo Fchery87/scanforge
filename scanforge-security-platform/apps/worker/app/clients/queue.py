@@ -318,6 +318,13 @@ return entry_id
         result = await self._command("DEL", self.scan_queue, self.dlq, self.retry_queue)
         return int(result.get("result", 0))
 
+    async def has_dedupe_marker(self, job_id: str) -> bool:
+        result = await self._command("GET", self._dedupe_key(job_id))
+        return bool(result and result.get("result"))
+
+    def _dedupe_key(self, job_id: str) -> str:
+        return f"{self.scan_queue}:dedupe:{job_id}"
+
     def _status_key(self, job_id: str) -> str:
         return f"{self.scan_queue}:job:{job_id}:status"
 

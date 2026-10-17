@@ -35,13 +35,14 @@ class QueueClient:
         *,
         organization_id: UUID | str,
         delay_seconds: int = 0,
+        job_id: str | None = None,
     ) -> str:
         if delay_seconds > 0:
             raise NotImplementedError("Delayed jobs are not implemented for the scan queue")
 
-        job = QueueJob.create(job_type, payload)
+        job = QueueJob.create(job_type, payload, job_id=job_id)
         job_json = job.model_dump_json()
-        dedupe_key = f"queue:scans:{organization_id}:dedupe:{job.job_id}"
+        dedupe_key = self._dedupe_key(organization_id, job.job_id)
         claimed = await self._command("SET", dedupe_key, "1", "NX", "EX", 86400)
         if claimed.get("result") is None:
             return job.job_id
@@ -61,6 +62,14 @@ class QueueClient:
             raise
 
         return job.job_id
+
+    async def has_dedupe_marker(self, organization_id: UUID | str, job_id: str) -> bool:
+        result = await self._command("GET", self._dedupe_key(organization_id, job_id))
+        return bool(result and result.get("result"))
+
+    @staticmethod
+    def _dedupe_key(organization_id: UUID | str, job_id: str) -> str:
+        return f"queue:scans:{organization_id}:dedupe:{job_id}"
 
     @staticmethod
     def _scan_queue_key(organization_id: UUID | str) -> str:

@@ -154,9 +154,9 @@ Keep this policy as the amended review contract until G1 and independent review 
 
 - [Readiness spec](2026-09-13-evidence-first-readiness.md)
 - [Readiness plan](../docs/plans/2026-09-13-evidence-first-readiness-plan.md)
-- [Approved beta specification](SECURE_PRIVATE_BETA.md)
+- [Current accepted beta scope](../docs/adr/ADR-010-managed-beta-release-scope.md)
 - [Canonical findings ADR](../docs/adr/ADR-002-canonical-finding-model.md)
 - [Lifecycle ownership ADR](../docs/adr/ADR-003-scan-lifecycle-architecture-program.md)
 - [Finding policy ADR](../docs/adr/ADR-004-finding-lifecycle-policy.md)
 - [Worker isolation ADR](../docs/adr/ADR-009-dedicated-workers-for-private-beta.md)
-- [Role definitions](RBAC.md)
+- [Current role matrix](../docs/adr/ADR-015-beta-access-and-data-erasure.md)

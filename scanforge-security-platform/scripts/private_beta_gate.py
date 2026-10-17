@@ -55,7 +55,7 @@ def local_checks() -> list[Check]:
 
 def run_check(check: Check, output: Path, *, reject_skips: bool = False) -> dict:
     environment = dict(os.environ)
-    for name in ("TEST_POSTGRES_URL", "REDIS_URL", "SCANFORGE_LIVE_DOCKER"):
+    for name in ("TEST_POSTGRES_URL", "R04_POSTGRES_URL", "REDIS_URL", "SCANFORGE_LIVE_DOCKER"):
         environment.pop(name, None)
     environment.update(check.environment)
     log = output / f"{check.name}.log"
@@ -149,19 +149,17 @@ def main() -> int:
     dirty = bool(subprocess.check_output(("git", "status", "--porcelain"), cwd=ROOT, text=True).strip())
     checks = [run_check(check, args.output) for check in local_checks()]
     integrations = (
-        ("postgres-completion", "TEST_POSTGRES_URL", Check("postgres-completion", "apps/api",
-            (".venv/bin/python", "-m", "pytest", "tests/test_completion_postgres_beta.py", "-q"))),
+        ("postgres-completion", "R04_POSTGRES_URL", Check("postgres-completion", "apps/api",
+            (".venv/bin/python", "-m", "pytest", "tests/test_r04_postgres_completion_red.py", "-q"))),
         ("native-redis-recovery", "REDIS_URL", Check("native-redis-recovery", "apps/worker",
-            (".venv/bin/python", "-m", "pytest", "tests/test_queue_native_beta.py", "-q"))),
+            (".venv/bin/python", "-m", "pytest", "tests/test_redis_stream_recovery_integration.py", "-q"))),
         ("live-docker", "SCANFORGE_LIVE_DOCKER", Check("live-docker", "apps/worker",
-            (".venv/bin/python", "-m", "pytest", "tests/test_live_docker_beta.py", "-q"))),
+            (".venv/bin/python", "-m", "pytest", "tests/test_host_executor_integration.py::test_live_docker_container_isolation_and_mount_contract", "-q"))),
     )
     for name, variable, check in integrations:
         enabled = bool(os.environ.get(variable))
         if variable == "SCANFORGE_LIVE_DOCKER":
-            enabled = os.environ.get(variable) == "1" and bool(
-                re.fullmatch(r".+@sha256:[0-9a-fA-F]{64}", os.environ.get("SCANNER_IMAGE", ""))
-            )
+            enabled = os.environ.get(variable) == "1"
         if enabled:
             check = Check(check.name, check.directory, check.command, ((variable, os.environ[variable]),))
             checks.append(run_check(check, args.output, reject_skips=True))

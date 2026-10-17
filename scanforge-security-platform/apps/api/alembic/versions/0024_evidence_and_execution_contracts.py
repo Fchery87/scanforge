@@ -82,6 +82,10 @@ def upgrade() -> None:
     )
     op.add_column(
         "scans",
+        sa.Column("dispatch_state", sa.String(length=32), nullable=False, server_default="awaiting_dispatch"),
+    )
+    op.add_column(
+        "scans",
         sa.Column(
             "superseded_by_scan_id",
             postgresql.UUID(as_uuid=False),
@@ -92,6 +96,95 @@ def upgrade() -> None:
     op.add_column("scans", sa.Column("supersession_reason", sa.String(length=255), nullable=True))
     op.add_column("scans", sa.Column("worker_principal_id", sa.String(length=128), nullable=True))
     op.add_column("scans", sa.Column("worker_incarnation_id", sa.String(length=128), nullable=True))
+
+    op.create_table(
+        "scan_dispatch_obligations",
+        sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True, nullable=False),
+        sa.Column(
+            "organization_id",
+            postgresql.UUID(as_uuid=False),
+            sa.ForeignKey("organizations.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "project_id",
+            postgresql.UUID(as_uuid=False),
+            sa.ForeignKey("projects.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "repository_id",
+            postgresql.UUID(as_uuid=False),
+            sa.ForeignKey("repositories.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "scan_id",
+            postgresql.UUID(as_uuid=False),
+            sa.ForeignKey("scans.id", ondelete="CASCADE"),
+            nullable=False,
+            unique=True,
+        ),
+        sa.Column("trigger_type", sa.String(length=50), nullable=False),
+        sa.Column("scan_type", sa.String(length=50), nullable=False, server_default="full"),
+        sa.Column("job_type", sa.String(length=64), nullable=False, server_default="scan.repo.full"),
+        sa.Column("business_identity_key", sa.String(length=255), nullable=True),
+        sa.Column("request_idempotency_key", sa.String(length=255), nullable=True),
+        sa.Column("full_ref_name", sa.String(length=255), nullable=True),
+        sa.Column("branch_generation_number", sa.Integer(), nullable=False, server_default="1"),
+        sa.Column("commit_sha", sa.String(length=64), nullable=True),
+        sa.Column("status", sa.String(length=32), nullable=False, server_default="awaiting_dispatch"),
+        sa.Column("queue_job_id", sa.String(length=128), nullable=False, unique=True),
+        sa.Column("lease_owner", sa.String(length=128), nullable=True),
+        sa.Column("lease_expires_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("attempt_count", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("max_attempts", sa.Integer(), nullable=False, server_default="5"),
+        sa.Column("next_attempt_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column("last_error", sa.Text(), nullable=True),
+        sa.Column("dispatched_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column(
+            "superseded_by_scan_id",
+            postgresql.UUID(as_uuid=False),
+            sa.ForeignKey("scans.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+        sa.Column("supersession_reason", sa.String(length=255), nullable=True),
+        sa.Column("webhook_delivery_id", sa.String(length=255), nullable=True),
+        sa.Column("payload_json", postgresql.JSONB(), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.UniqueConstraint(
+            "repository_id",
+            "business_identity_key",
+            name="uq_dispatch_repo_business_identity",
+        ),
+        sa.UniqueConstraint(
+            "organization_id",
+            "repository_id",
+            "request_idempotency_key",
+            name="uq_dispatch_org_repo_idempotency_key",
+        ),
+    )
+    op.create_index("ix_scan_dispatch_obligations_organization_id", "scan_dispatch_obligations", ["organization_id"])
+    op.create_index("ix_scan_dispatch_obligations_project_id", "scan_dispatch_obligations", ["project_id"])
+    op.create_index("ix_scan_dispatch_obligations_repository_id", "scan_dispatch_obligations", ["repository_id"])
+    op.create_index("ix_scan_dispatch_obligations_scan_id", "scan_dispatch_obligations", ["scan_id"])
+    op.create_index(
+        "ix_scan_dispatch_obligations_business_identity_key",
+        "scan_dispatch_obligations",
+        ["business_identity_key"],
+    )
+    op.create_index(
+        "ix_scan_dispatch_obligations_request_idempotency_key",
+        "scan_dispatch_obligations",
+        ["request_idempotency_key"],
+    )
+    op.create_index("ix_scan_dispatch_obligations_status", "scan_dispatch_obligations", ["status"])
+    op.create_index(
+        "ix_scan_dispatch_obligations_webhook_delivery_id",
+        "scan_dispatch_obligations",
+        ["webhook_delivery_id"],
+    )
 
     op.add_column("scanner_runs", sa.Column("attempt_id", sa.String(length=64), nullable=True))
     op.add_column(
@@ -293,10 +386,27 @@ def downgrade() -> None:
     op.drop_column("scanner_runs", "execution_revision")
     op.drop_column("scanner_runs", "attempt_id")
 
+    op.drop_index("ix_scan_dispatch_obligations_webhook_delivery_id", table_name="scan_dispatch_obligations")
+    op.drop_index("ix_scan_dispatch_obligations_status", table_name="scan_dispatch_obligations")
+    op.drop_index(
+        "ix_scan_dispatch_obligations_request_idempotency_key",
+        table_name="scan_dispatch_obligations",
+    )
+    op.drop_index(
+        "ix_scan_dispatch_obligations_business_identity_key",
+        table_name="scan_dispatch_obligations",
+    )
+    op.drop_index("ix_scan_dispatch_obligations_scan_id", table_name="scan_dispatch_obligations")
+    op.drop_index("ix_scan_dispatch_obligations_repository_id", table_name="scan_dispatch_obligations")
+    op.drop_index("ix_scan_dispatch_obligations_project_id", table_name="scan_dispatch_obligations")
+    op.drop_index("ix_scan_dispatch_obligations_organization_id", table_name="scan_dispatch_obligations")
+    op.drop_table("scan_dispatch_obligations")
+
     op.drop_column("scans", "worker_incarnation_id")
     op.drop_column("scans", "worker_principal_id")
     op.drop_column("scans", "supersession_reason")
     op.drop_column("scans", "superseded_by_scan_id")
+    op.drop_column("scans", "dispatch_state")
     op.drop_column("scans", "cleanup_state")
     op.drop_column("scans", "closure_eligible")
     op.drop_column("scans", "coverage_completeness")

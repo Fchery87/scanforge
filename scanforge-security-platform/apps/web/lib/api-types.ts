@@ -1753,6 +1753,8 @@ export interface components {
             attempt_id: string;
             /** Execution Revision */
             execution_revision: number;
+            /** Worker Incarnation Id */
+            worker_incarnation_id: string;
         };
         /** InvitationAccept */
         InvitationAccept: {
@@ -2464,6 +2466,8 @@ export interface components {
              * @default full
              */
             scan_type: string;
+            /** Idempotency Key */
+            idempotency_key?: string | null;
         };
         /** ScanDetailResponse */
         ScanDetailResponse: {
@@ -2488,6 +2492,11 @@ export interface components {
             scan_type: string;
             /** Status */
             status: string;
+            /**
+             * Dispatch State
+             * @default awaiting_dispatch
+             */
+            dispatch_state: string;
             /**
              * Contract Version
              * @default 2026-10-beta.v1
@@ -2579,6 +2588,11 @@ export interface components {
             scan_type: string;
             /** Status */
             status: string;
+            /**
+             * Dispatch State
+             * @default awaiting_dispatch
+             */
+            dispatch_state: string;
             /**
              * Contract Version
              * @default 2026-10-beta.v1
@@ -3045,8 +3059,11 @@ export interface operations {
     create_artifact_upload_url_api_v1_internal_scans__scan_id__artifacts_upload_url_post: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 "X-Worker-Credential"?: string | null;
+                "X-Scan-Attempt-Id": string;
+                "X-Scan-Execution-Revision": number;
+                "X-Scan-Worker-Incarnation-Id": string;
             };
             path: {
                 scan_id: string;
@@ -3154,8 +3171,11 @@ export interface operations {
     update_scan_status_internal_api_v1_internal_scans__scan_id__status_patch: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 "X-Worker-Credential"?: string | null;
+                "X-Scan-Attempt-Id": string;
+                "X-Scan-Execution-Revision": number;
+                "X-Scan-Worker-Incarnation-Id": string;
             };
             path: {
                 scan_id: string;
@@ -3191,8 +3211,11 @@ export interface operations {
     create_scanner_run_api_v1_internal_scans__scan_id__scanner_runs_post: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 "X-Worker-Credential"?: string | null;
+                "X-Scan-Attempt-Id": string;
+                "X-Scan-Execution-Revision": number;
+                "X-Scan-Worker-Incarnation-Id": string;
             };
             path: {
                 scan_id: string;
@@ -3228,8 +3251,11 @@ export interface operations {
     update_scanner_run_api_v1_internal_scanner_runs__run_id__patch: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 "X-Worker-Credential"?: string | null;
+                "X-Scan-Attempt-Id": string;
+                "X-Scan-Execution-Revision": number;
+                "X-Scan-Worker-Incarnation-Id": string;
             };
             path: {
                 run_id: string;
@@ -3265,8 +3291,11 @@ export interface operations {
     persist_scan_findings_api_v1_internal_scans__scan_id__findings_post: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 "X-Worker-Credential"?: string | null;
+                "X-Scan-Attempt-Id": string;
+                "X-Scan-Execution-Revision": number;
+                "X-Scan-Worker-Incarnation-Id": string;
             };
             path: {
                 scan_id: string;
@@ -3302,8 +3331,11 @@ export interface operations {
     get_repository_clone_url_api_v1_internal_repositories__repo_id__clone_url_get: {
         parameters: {
             query?: never;
-            header?: {
+            header: {
                 "X-Worker-Credential"?: string | null;
+                "X-Scan-Attempt-Id": string;
+                "X-Scan-Execution-Revision": number;
+                "X-Scan-Worker-Incarnation-Id": string;
             };
             path: {
                 repo_id: string;

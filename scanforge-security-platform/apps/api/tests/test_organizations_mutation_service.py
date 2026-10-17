@@ -15,6 +15,7 @@ async def test_update_organization_returns_none_when_user_cannot_access_org():
     db = AsyncMock()
     service = OrganizationService(db)
     service.get_by_id = AsyncMock(return_value=None)
+    service.user_has_permission = AsyncMock(return_value=False)
 
     updated = await service.update(org_id, OrganizationUpdate(name="Renamed"), user_id=user_id)
 
@@ -30,6 +31,7 @@ async def test_delete_organization_returns_false_when_user_cannot_access_org():
     db = AsyncMock()
     service = OrganizationService(db)
     service.get_by_id = AsyncMock(return_value=None)
+    service.user_has_permission = AsyncMock(return_value=False)
 
     deleted = await service.delete(org_id, user_id=user_id)
 

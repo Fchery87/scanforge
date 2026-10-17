@@ -19,10 +19,6 @@ class PersistenceStage:
         self.api_base_url = api_base_url
         self.worker_credential = worker_credential
 
-    @property
-    def _headers(self) -> dict[str, str]:
-        return {"X-Worker-Credential": self.worker_credential}
-
     async def complete_scan(self, context: ScanContext) -> None:
         run_uploads_by_scanner = (context.artifact_uris or {}).get("scanner_runs") or {}
         async with httpx.AsyncClient() as client:
@@ -31,6 +27,7 @@ class PersistenceStage:
                 json={
                     "winning_attempt_id": context.attempt_id,
                     "execution_revision": context.execution_revision,
+                    "worker_incarnation_id": context.worker_incarnation_id,
                     "findings": [sanitize_secret_finding(finding) for finding in context.findings],
                     "scanner_runs": [
                         {
@@ -70,7 +67,7 @@ class PersistenceStage:
                     "summary_json": context.summary_json,
                     "artifact_uris": context.artifact_uris,
                 },
-                headers=self._headers,
+                headers=context.attempt_headers(self.worker_credential),
                 timeout=60.0,
             )
             response.raise_for_status()

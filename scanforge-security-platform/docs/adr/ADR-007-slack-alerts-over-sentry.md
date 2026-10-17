@@ -15,9 +15,9 @@ ScanForge is a security-sensitive platform. Adding a third-party error aggregati
 The structured JSON logging (PR 3) provides enough observability for the current operational context:
 - Each scan failure emits a `level=ERROR` log event with `scan_id`, `job_id`, and a redacted error string
 - Slack alerts fire when `MAX_RETRIES` is exceeded, surfacing unrecoverable failures to the team
-- No sensitive internal state (INTERNAL_API_KEY, auth headers) reaches Slack because the orchestrator runs `_redact_sensitive_text` before emitting any alert
+- Sensitive credentials, auth headers and finding content must be excluded from alerts. The orchestrator invokes `_redact_sensitive_text`; actual boundary enforcement requires the canary and alert verification in the current implementation plan.
 
-Self-hosted GlitchTip is the deferred alternative if Slack alert volume grows unmanageable or stack-trace deduplication becomes necessary. See deferred items in `plans/2026-05-16-pre-ai-stage-hardening-plan.md`.
+Self-hosted GlitchTip is the deferred alternative if Slack alert volume grows unmanageable or stack-trace deduplication becomes necessary. These are the conditions for reconsidering this decision; no external error-tracking service is enabled by that possibility.
 
 ## Consequences
 No per-error stack traces in a dedicated UI. Triage requires `grep` or structured log queries on container stdout. This is acceptable until log query tooling is in place.

@@ -377,6 +377,7 @@ def run_disposable_fixture_verification() -> dict:
         results["s3_object_storage_fixture"] = {
             "returncode": proc.returncode,
             "passed": proc.returncode == 0,
+            "fixture": "in-process S3 protocol emulator; does not verify MinIO or R2",
             "output": (proc.stdout + proc.stderr).strip(),
         }
 
@@ -425,6 +426,8 @@ def main() -> int:
         for key in ("r04_postgres_completion", "redis_stream_recovery", "s3_object_storage_fixture"):
             if not fixtures[key]["passed"]:
                 return 1
+        if not fixtures["container_runtime"]["available"]:
+            return 1
     return 0
 
 

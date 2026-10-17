@@ -206,7 +206,13 @@ async def test_r2_client_refuses_put_when_api_returns_foreign_org_key(tmp_path):
     with patch("app.clients.r2.httpx.AsyncClient", return_value=http_client), pytest.raises(
         RuntimeError, match="outside the requested tenant scope"
     ):
-        await client.upload_file(artifact, "scan-artifacts/org-1/scan-1/trivy/results.json")
+        await client.upload_file(
+            artifact,
+            "scan-artifacts/org-1/scan-1/trivy/results.json",
+            attempt_id="attempt-1",
+            execution_revision=2,
+            worker_incarnation_id="incarnation-1",
+        )
 
     http_client.put.assert_not_called()
 

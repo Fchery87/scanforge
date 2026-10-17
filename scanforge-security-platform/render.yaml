@@ -48,6 +48,22 @@ services:
       - fromGroup: storage
       - fromGroup: queue
 
+  # Durable scan obligations retry independently of request and executor lifetimes.
+  - type: cron
+    name: scanforge-scan-dispatch
+    region: oregon
+    plan: starter
+    branch: main
+    autoDeploy: true
+    schedule: "* * * * *"
+    command: python -m app.dispatch_main
+    envVars:
+      - key: APP_ENV
+        value: production
+      - fromGroup: shared-app
+      - fromGroup: shared-db
+      - fromGroup: queue
+
 # ─── Environment Groups ───────────────────────────────────────────
 # Configure these in the Render Dashboard → Environment → Groups
 #

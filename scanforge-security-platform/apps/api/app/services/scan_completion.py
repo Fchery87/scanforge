@@ -1,8 +1,6 @@
 # ruff: noqa: TC002, TC003
 from __future__ import annotations
 
-import hashlib
-import json
 from uuid import UUID
 
 from sqlalchemy import select
@@ -11,6 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.enums import ScanStatus
 from app.db.models import Project, Scan, ScanCompletionReceipt, ScannerRun
 from app.schemas.scan_completion import ScanCompletionRequest
+from app.services.evidence_contract import (
+    compute_canonical_evidence_digest,
+    derive_scan_evidence_decision,
+)
 from app.services.findings import FindingService
 
 
@@ -33,17 +35,8 @@ class CompletionSuperseded(ScanCompletionConflict):
 
 
 def canonical_evidence_digest(data: ScanCompletionRequest) -> str:
-    """Stable digest of the completion evidence payload."""
-    payload = {
-        "artifact_uris": data.artifact_uris,
-        "execution_revision": data.execution_revision,
-        "findings": [finding.model_dump(mode="json") for finding in data.findings],
-        "scanner_runs": [run.model_dump(mode="json") for run in data.scanner_runs],
-        "summary_json": data.summary_json,
-        "winning_attempt_id": str(data.winning_attempt_id),
-    }
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    """Stable digest of validated evidence with order-independent collections."""
+    return compute_canonical_evidence_digest(data)
 
 
 class ScanCompletionService:
@@ -55,6 +48,8 @@ class ScanCompletionService:
         scan_id: UUID,
         organization_id: UUID,
         data: ScanCompletionRequest,
+        *,
+        worker_principal_id: str | None = None,
     ) -> dict:
         try:
             result = await self.db.execute(
@@ -85,6 +80,7 @@ class ScanCompletionService:
             if issued_attempt_id is not None and (
                 issued_attempt_id != str(data.winning_attempt_id)
                 or getattr(scan, "execution_revision", None) != data.execution_revision
+                or getattr(scan, "worker_incarnation_id", None) != data.worker_incarnation_id
             ):
                 # The scan row holds the latest server-issued identity; anything
                 # else lost the race before a receipt could exist.
@@ -107,7 +103,12 @@ class ScanCompletionService:
                     "replayed": True,
                 }
 
-            return await self._commit_completion(scan, data, digest)
+            return await self._commit_completion(
+                scan,
+                data,
+                digest,
+                worker_principal_id=worker_principal_id,
+            )
         except Exception:
             await self.db.rollback()
             raise
@@ -141,8 +142,25 @@ class ScanCompletionService:
         )
         return response
 
-    async def _commit_completion(self, scan: Scan, data: ScanCompletionRequest, digest: str) -> dict:
+    async def _commit_completion(
+        self,
+        scan: Scan,
+        data: ScanCompletionRequest,
+        digest: str,
+        *,
+        worker_principal_id: str | None,
+    ) -> dict:
         scan_id = scan.id
+        decision = derive_scan_evidence_decision(
+            data,
+            expected_scanners=getattr(scan, "expected_scanners_json", None),
+            commit_sha=getattr(scan, "commit_sha", None),
+            full_ref_name=getattr(scan, "full_ref_name", None),
+            branch_generation_number=getattr(scan, "branch_generation_number", 1),
+            ancestry_status=getattr(scan, "ancestry_status", "unknown"),
+            cleanup_state=getattr(scan, "cleanup_state", "unknown"),
+            superseded_by_scan_id=getattr(scan, "superseded_by_scan_id", None),
+        )
         existing_runs = await self.db.execute(
             select(ScannerRun).where(ScannerRun.scan_id == str(scan_id))
         )
@@ -153,10 +171,23 @@ class ScanCompletionService:
                 run = ScannerRun(
                     scan_id=str(scan_id),
                     scanner_name=run_data.scanner_name,
+                    attempt_id=str(data.winning_attempt_id),
+                    execution_revision=data.execution_revision,
                 )
                 self.db.add(run)
+            run.attempt_id = str(data.winning_attempt_id)
+            run.execution_revision = data.execution_revision
             run.scanner_version = run_data.scanner_version
             run.status = ScanStatus(run_data.status)
+            run.outcome_status = run_data.outcome_status or run_data.status
+            run.parser_version = run_data.parser_version
+            run.rules_digest = run_data.rules_digest
+            run.db_digest = run_data.db_digest
+            run.db_published_at = run_data.db_published_at
+            run.db_freshness_state = run_data.db_freshness_state
+            run.image_digest = run_data.image_digest
+            run.artifact_availability = run_data.artifact_availability
+            run.closure_eligible = decision.closure_eligible
             run.duration_ms = run_data.duration_ms
             run.exit_code = run_data.exit_code
             run.error_message = run_data.error_message
@@ -172,17 +203,41 @@ class ScanCompletionService:
             normalized_findings=data.findings,
             commit=False,
         )
-        scan.summary_json = data.summary_json
-        await finding_service.mark_not_observed_after_scan(
-            repository_id=str(scan.repository_id),
-            scan_id=str(scan.id),
-            seen_fingerprints=set(data.summary_json.get("seen_fingerprints") or []),
-            scan_summary=data.summary_json,
-            commit=False,
-        )
+        seen_fingerprints = {finding.canonical_fingerprint for finding in data.findings}
+        scanner_health = {
+            "expected": list(decision.expected_scanners),
+            "completed": list(decision.completed_scanners),
+            "failed": list(decision.failed_scanners),
+            "missing": list(decision.missing_scanners),
+            "complete": decision.scanner_runs_complete,
+        }
+        scan.summary_json = {
+            **data.summary_json,
+            "scanner_health": scanner_health,
+            "seen_fingerprints": sorted(seen_fingerprints),
+            "coverage_completeness": decision.coverage_completeness,
+            "closure_eligible": decision.closure_eligible,
+            "artifact_availability": decision.artifact_availability,
+            "severity_counts": decision.severity_counts,
+            "ineligibility_reasons": list(decision.ineligibility_reasons),
+        }
+        scan.contract_version = decision.contract_version
+        scan.coverage_completeness = decision.coverage_completeness
+        scan.closure_eligible = decision.closure_eligible
+        scan.artifact_availability = decision.artifact_availability
+        if decision.closure_eligible:
+            await finding_service.mark_not_observed_after_scan(
+                repository_id=str(scan.repository_id),
+                scan_id=str(scan.id),
+                seen_fingerprints=seen_fingerprints,
+                scan_summary=scan.summary_json,
+                commit=False,
+            )
         scan.status = ScanStatus.COMPLETED
         receipt = ScanCompletionReceipt(
             scan_id=str(scan_id),
+            worker_principal_id=worker_principal_id,
+            worker_incarnation_id=data.worker_incarnation_id,
             winning_attempt_id=str(data.winning_attempt_id),
             execution_revision=data.execution_revision,
             evidence_digest=digest,
@@ -190,18 +245,20 @@ class ScanCompletionService:
             inserted_findings=inserted,
             updated_findings=updated,
             scanner_runs_total=len(data.scanner_runs),
-            scanner_runs_complete=bool(
-                (data.summary_json.get("scanner_health") or {}).get("complete")
-            ),
+            scanner_runs_complete=decision.scanner_runs_complete,
+            coverage_completeness=decision.coverage_completeness,
+            closure_eligible=decision.closure_eligible,
+            artifact_availability=decision.artifact_availability,
             response_json={
                 "scan_id": str(scan_id),
                 "status": ScanStatus.COMPLETED.value,
                 "inserted_findings": inserted,
                 "updated_findings": updated,
                 "scanner_runs": len(data.scanner_runs),
-                "scanner_runs_complete": bool(
-                    (data.summary_json.get("scanner_health") or {}).get("complete")
-                ),
+                "scanner_runs_complete": decision.scanner_runs_complete,
+                "coverage_completeness": decision.coverage_completeness,
+                "closure_eligible": decision.closure_eligible,
+                "artifact_availability": decision.artifact_availability,
                 "winning_attempt_id": str(data.winning_attempt_id),
                 "execution_revision": data.execution_revision,
                 "evidence_digest": digest,

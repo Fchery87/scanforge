@@ -17,6 +17,7 @@ class ScanContext:
     user_id: str | None = None
     attempt_id: str | None = None
     execution_revision: int | None = None
+    worker_incarnation_id: str | None = None
     repo_path: Path | None = None
     start_time: datetime = field(default_factory=lambda: datetime.now(UTC).replace(tzinfo=None))
     scanner_results: dict = field(default_factory=dict)
@@ -38,3 +39,13 @@ class ScanContext:
     ai_annotated_count: int = 0
     ai_skipped_count: int = 0
     cleanup_receipt: dict | None = None
+
+    def attempt_headers(self, worker_credential: str) -> dict[str, str]:
+        if not self.attempt_id or self.execution_revision is None or not self.worker_incarnation_id:
+            raise RuntimeError("execution attempt identity is required for worker mutations")
+        return {
+            "X-Worker-Credential": worker_credential,
+            "X-Scan-Attempt-Id": self.attempt_id,
+            "X-Scan-Execution-Revision": str(self.execution_revision),
+            "X-Scan-Worker-Incarnation-Id": self.worker_incarnation_id,
+        }

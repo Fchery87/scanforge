@@ -8,7 +8,6 @@ import shutil
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
-from tempfile import mkdtemp
 from urllib.parse import urlparse
 
 import httpx
@@ -26,7 +25,7 @@ from app.scanners.base import ScannerResult
 from app.scanners.registry import SCANNER_REGISTRY, scanners_for_scan_type
 from app.security.proc_env import build_contained_env
 from app.security.redaction import redact_sensitive_text
-from app.security.secret_evidence import safe_artifact_key, sanitize_trivy_output
+from app.security.secret_evidence import safe_artifact_key
 from app.services.scan_pipeline.context import ScanContext
 
 _log = get_logger(__name__)
@@ -291,6 +290,7 @@ class ScanExecutionStage:
                 result.duration_ms = duration_ms
                 if run_id:
                     await self._update_scanner_run(
+                        context,
                         run_id,
                         status="completed" if result.success else "failed",
                         duration_ms=duration_ms,
@@ -311,7 +311,7 @@ class ScanExecutionStage:
                 duration_ms = int((datetime.now(UTC) - start).total_seconds() * 1000)
                 if run_id:
                     await self._update_scanner_run(
-                        run_id, status="failed", duration_ms=duration_ms,
+                        context, run_id, status="failed", duration_ms=duration_ms,
                         error_message="Scanner timed out after 30 minutes",
                     )
                 _log.warning(
@@ -326,7 +326,7 @@ class ScanExecutionStage:
                 duration_ms = int((datetime.now(UTC) - start).total_seconds() * 1000)
                 if run_id:
                     await self._update_scanner_run(
-                        run_id, status="failed", duration_ms=duration_ms, error_message=redact_sensitive_text(str(exc), known_secrets=(self.worker_credential,)),
+                        context, run_id, status="failed", duration_ms=duration_ms, error_message=redact_sensitive_text(str(exc), known_secrets=(self.worker_credential,)),
                     )
                 _log.error(
                     "scanner crashed",
@@ -375,6 +375,9 @@ class ScanExecutionStage:
                         organization_id=context.organization_id,
                         scanner_name=scanner_name,
                         output_data=sanitized_output,
+                        attempt_id=context.attempt_id,
+                        execution_revision=context.execution_revision,
+                        worker_incarnation_id=context.worker_incarnation_id,
                     )
                     uris[f"{scanner_name}_raw"] = uri
                     run_uploads["raw_output_uri"] = uri
@@ -392,7 +395,13 @@ class ScanExecutionStage:
                             scanner_name,
                             artifact_path.name,
                         )
-                        meta = await self.r2.upload_file(artifact_path, key)
+                        meta = await self.r2.upload_file(
+                            artifact_path,
+                            key,
+                            attempt_id=context.attempt_id,
+                            execution_revision=context.execution_revision,
+                            worker_incarnation_id=context.worker_incarnation_id,
+                        )
                         uris[f"{scanner_name}_{artifact_path.name}"] = meta["storage_uri"]
                         run_uploads["artifact_uri"] = meta["storage_uri"]
                     except Exception:
@@ -405,6 +414,7 @@ class ScanExecutionStage:
                 run_id = context.scanner_run_ids.get(scanner_name)
                 if run_id:
                     await self._update_scanner_run(
+                        context,
                         run_id,
                         artifact_uri=run_uploads.get("artifact_uri") or run_uploads.get("raw_output_uri"),
                         metadata_json=run_uploads,
@@ -431,7 +441,7 @@ class ScanExecutionStage:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 f"{self.api_base_url}/api/v1/internal/repositories/{context.repository_id}/clone-url",
-                headers=self._headers,
+                headers=context.attempt_headers(self.worker_credential),
                 timeout=30.0,
             )
             resp.raise_for_status()
@@ -444,7 +454,7 @@ class ScanExecutionStage:
                 resp = await client.post(
                     f"{self.api_base_url}/api/v1/internal/scans/{context.scan_id}/scanner-runs",
                     json={"scanner_name": scanner_name, "scanner_version": version},
-                    headers=self._headers,
+                    headers=context.attempt_headers(self.worker_credential),
                     timeout=30.0,
                 )
                 resp.raise_for_status()
@@ -456,13 +466,13 @@ class ScanExecutionStage:
                 )
                 return None
 
-    async def _update_scanner_run(self, run_id: str, **kwargs) -> None:
+    async def _update_scanner_run(self, context: ScanContext, run_id: str, **kwargs) -> None:
         async with httpx.AsyncClient() as client:
             try:
                 resp = await client.patch(
                     f"{self.api_base_url}/api/v1/internal/scanner-runs/{run_id}",
                     json=kwargs,
-                    headers=self._headers,
+                    headers=context.attempt_headers(self.worker_credential),
                     timeout=30.0,
                 )
                 resp.raise_for_status()
