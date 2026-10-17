@@ -27,6 +27,10 @@ class ScanContext:
     changed_files: list[str] | None = None
     expected_scanners: list[str] | None = None
     coverage_scope: dict | None = None
+    full_ref_name: str | None = None
+    branch_generation_number: int = 1
+    ancestry_status: str = "unknown"
+    verified_commit_sha: str | None = None
     critical_count: int = 0
     high_count: int = 0
     scan_failed: bool = False

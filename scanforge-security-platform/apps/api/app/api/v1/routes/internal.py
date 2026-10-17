@@ -326,9 +326,22 @@ async def get_repository_clone_url(
     db: AsyncSession = Depends(get_db),
 ):
     """Return an authenticated clone URL for the worker to use."""
-    repo = await db.get(Repository, str(repo_id))
+    from app.db.models.repository import RepositoryIntegration
+
+    repo = (
+        await db.execute(
+            select(Repository)
+            .where(Repository.id == str(repo_id))
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
+    if not getattr(repo, "is_active", True) or getattr(repo, "lifecycle_state", "connected") != "connected":
+        raise HTTPException(
+            status_code=404,
+            detail="Repository is not active or requires authorization revalidation",
+        )
 
     if (
         getattr(repo.provider, "value", repo.provider) != "github"
@@ -347,12 +360,35 @@ async def get_repository_clone_url(
     if not integration:
         raise HTTPException(status_code=404, detail="No GitHub integration for this org")
 
-    gh = GitHubService(db)
-    if not await gh.repository_is_accessible(
-        integration.installation_id,
-        repo.owner_name,
-        repo.repo_name,
+    repo_integration_result = await db.execute(
+        select(RepositoryIntegration).where(RepositoryIntegration.repository_id == str(repo.id))
+    )
+    repo_integration = repo_integration_result.scalar_one_or_none()
+    if (
+        repo_integration is not None
+        and repo_integration.installation_id is not None
+        and str(repo_integration.installation_id) != str(integration.installation_id)
     ):
+        raise HTTPException(
+            status_code=404,
+            detail="Repository installation binding does not match organization integration",
+        )
+
+    gh = GitHubService(db)
+    try:
+        accessible = await gh.repository_is_accessible(
+            integration.installation_id,
+            repo.owner_name,
+            repo.repo_name,
+            expected_external_repo_id=getattr(repo, "external_repo_id", None),
+        )
+    except TypeError:
+        accessible = await gh.repository_is_accessible(
+            integration.installation_id,
+            repo.owner_name,
+            repo.repo_name,
+        )
+    if not accessible:
         raise HTTPException(status_code=404, detail="Repository is not accessible to the GitHub installation")
     token = await gh._get_installation_token(integration.installation_id)
 
@@ -362,6 +398,7 @@ async def get_repository_clone_url(
     return {
         "clone_url": clone_url,
         "auth_header": f"Authorization: Basic {basic_auth}",
+        "external_repo_id": getattr(repo, "external_repo_id", None),
     }
 
 
@@ -417,19 +454,34 @@ async def get_scan_execution_context(
         ).scalar_one()
         reclaim_reason = "terminal"
 
+    full_ref_name = getattr(scan, "full_ref_name", None) or (
+        f"refs/heads/{scan.branch_name}" if scan.branch_name else None
+    )
+    branch_generation_number = int(getattr(scan, "branch_generation_number", 1) or 1)
+    ancestry_status = getattr(scan, "ancestry_status", "unknown") or "unknown"
+    expected_scanners = getattr(scan, "expected_scanners_json", None) or SCAN_TYPE_SCANNERS.get(
+        scan_type, SCAN_TYPE_SCANNERS["full"]
+    )
+
     return {
         "scan_id": str(scan.id),
         "org_id": str(project.organization_id),
         "repository_id": str(scan.repository_id),
         "project_id": str(scan.project_id),
         "scan_type": scan_type,
-        "expected_scanners": SCAN_TYPE_SCANNERS.get(scan_type, SCAN_TYPE_SCANNERS["full"]),
+        "expected_scanners": expected_scanners,
         "coverage_scope": {
             "branch": scan.branch_name,
+            "full_ref_name": full_ref_name,
+            "branch_generation_number": branch_generation_number,
+            "ancestry_status": ancestry_status,
             "commit_sha": scan.commit_sha,
             "scan_type": scan_type,
         },
         "branch": scan.branch_name,
+        "full_ref_name": full_ref_name,
+        "branch_generation_number": branch_generation_number,
+        "ancestry_status": ancestry_status,
         "commit_sha": scan.commit_sha,
         "status": scan.status.value,
         "user_id": str(scan.requested_by_user_id) if scan.requested_by_user_id else None,

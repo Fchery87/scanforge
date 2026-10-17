@@ -69,7 +69,12 @@ class ScanExecutionStage:
         )
         clone_url, auth_header = await self._get_clone_url(context)
         parsed_url = urlparse(clone_url)
-        if parsed_url.scheme != "https" or parsed_url.hostname != "github.com":
+        allow_local_fixture = (
+            not is_customer_runtime_environment()
+            and os.environ.get("SCANFORGE_ALLOW_LOCAL_GIT_FIXTURES") == "1"
+            and parsed_url.scheme == "file"
+        )
+        if not allow_local_fixture and (parsed_url.scheme != "https" or parsed_url.hostname != "github.com"):
             shutil.rmtree(repo_dir.parent, ignore_errors=True)
             raise RuntimeError("clone target must be the verified github.com origin")
         git_env = build_contained_env(
@@ -79,21 +84,145 @@ class ScanExecutionStage:
                 "GIT_CONFIG_VALUE_0": auth_header,
             }
         )
+        expected_sha = (getattr(context, "commit_sha", None) or "").strip().lower()
+        full_ref = getattr(context, "full_ref_name", None) or (
+            f"refs/heads/{context.branch}" if getattr(context, "branch", None) else None
+        )
         try:
-            result = await asyncio.to_thread(
-                subprocess.run,
-                [
-                    "git", "-c", "http.followRedirects=false", "clone", "--depth", "1", "--single-branch", "--no-recurse-submodules",
-                    *(["--branch", context.branch] if context.branch else []),
-                    clone_url, str(repo_dir),
-                ],
-                capture_output=True,
-                text=True,
-                timeout=300,
-                env=git_env,
-            )
-            if result.returncode != 0:
-                raise RuntimeError(f"git clone failed: {self._redact(result.stderr).strip()}")
+            if expected_sha:
+                if not re.match(r"^[0-9a-f]{7,64}$", expected_sha):
+                    raise RuntimeError(f"Invalid target commit SHA: {expected_sha!r}")
+                init_res = await asyncio.to_thread(
+                    subprocess.run,
+                    ["git", "init", str(repo_dir)],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    env=git_env,
+                )
+                if init_res.returncode != 0:
+                    raise RuntimeError(f"git init failed: {self._redact(init_res.stderr).strip()}")
+                remote_res = await asyncio.to_thread(
+                    subprocess.run,
+                    ["git", "-C", str(repo_dir), "remote", "add", "origin", clone_url],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    env=git_env,
+                )
+                if remote_res.returncode != 0:
+                    raise RuntimeError(f"git remote add failed: {self._redact(remote_res.stderr).strip()}")
+
+                fetch_sha_res = await asyncio.to_thread(
+                    subprocess.run,
+                    [
+                        "git",
+                        "-c",
+                        "http.followRedirects=false",
+                        "-C",
+                        str(repo_dir),
+                        "fetch",
+                        "--depth",
+                        "1",
+                        "--no-tags",
+                        "--no-recurse-submodules",
+                        "origin",
+                        expected_sha,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                    env=git_env,
+                )
+                if fetch_sha_res.returncode != 0:
+                    if full_ref:
+                        fetch_ref_res = await asyncio.to_thread(
+                            subprocess.run,
+                            [
+                                "git",
+                                "-c",
+                                "http.followRedirects=false",
+                                "-C",
+                                str(repo_dir),
+                                "fetch",
+                                "--no-tags",
+                                "--no-recurse-submodules",
+                                "origin",
+                                full_ref,
+                            ],
+                            capture_output=True,
+                            text=True,
+                            timeout=300,
+                            env=git_env,
+                        )
+                        if fetch_ref_res.returncode != 0:
+                            raise RuntimeError(
+                                f"git fetch failed for {expected_sha}: {self._redact(fetch_sha_res.stderr).strip()}"
+                            )
+                    else:
+                        raise RuntimeError(
+                            f"git fetch failed for {expected_sha}: {self._redact(fetch_sha_res.stderr).strip()}"
+                        )
+
+                # Checkout the exact commit detached — never substitute FETCH_HEAD or branch tip
+                checkout_res = await asyncio.to_thread(
+                    subprocess.run,
+                    [
+                        "git",
+                        "-C",
+                        str(repo_dir),
+                        "checkout",
+                        "--detach",
+                        expected_sha,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    env=git_env,
+                )
+                if checkout_res.returncode != 0:
+                    raise RuntimeError(
+                        f"Requested commit {expected_sha} is not accessible in repository: "
+                        f"{self._redact(checkout_res.stderr).strip()}"
+                    )
+                verify_res = await asyncio.to_thread(
+                    subprocess.run,
+                    ["git", "-C", str(repo_dir), "rev-parse", "--verify", "HEAD"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    env=git_env,
+                )
+                checked_out_sha = verify_res.stdout.strip().lower()
+                if verify_res.returncode != 0 or not checked_out_sha.startswith(expected_sha):
+                    raise RuntimeError(
+                        f"Checked out revision {checked_out_sha!r} does not match expected commit {expected_sha!r}"
+                    )
+                context.verified_commit_sha = checked_out_sha
+                context.commit_sha = checked_out_sha
+            else:
+                result = await asyncio.to_thread(
+                    subprocess.run,
+                    [
+                        "git",
+                        "-c",
+                        "http.followRedirects=false",
+                        "clone",
+                        "--depth",
+                        "1",
+                        "--single-branch",
+                        "--no-recurse-submodules",
+                        *(["--branch", context.branch] if context.branch else []),
+                        clone_url,
+                        str(repo_dir),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                    env=git_env,
+                )
+                if result.returncode != 0:
+                    raise RuntimeError(f"git clone failed: {self._redact(result.stderr).strip()}")
             make_source_readable_for_scanner(repo_dir)
             enforce_directory_quota(repo_dir, MAX_SOURCE_WORKSPACE_BYTES, label="repository workspace")
         except subprocess.TimeoutExpired as exc:

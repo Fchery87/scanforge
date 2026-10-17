@@ -12,16 +12,19 @@ class GitHubConnectRequest(BaseModel):
     state: str
     account_login: str | None = None
     account_type: str | None = None
+    user_token: str | None = None
 
 
 class GitHubOAuthCallbackRequest(BaseModel):
     code: str
     state: str
+    installation_id: str | None = None
 
 
 class GitHubInstallCallbackRequest(BaseModel):
     installation_id: str
     state: str
+    code: str | None = None
 
 
 class GitHubIntegrationResponse(BaseModel):

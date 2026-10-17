@@ -1,5 +1,6 @@
 import logging
 import time
+from typing import Any
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -14,6 +15,24 @@ from app.db.models.organization import OrganizationIntegration
 from app.schemas.github import GitHubConnectRequest, GitHubOAuthCallbackRequest, GitHubRepoItem
 
 logger = logging.getLogger(__name__)
+
+
+class GitHubInstallationAccessError(PermissionError):
+    """Raised when the connecting user or installation lacks verified GitHub authority."""
+
+    code = "github_installation_access_denied"
+
+
+class GitHubInstallationConflictError(ValueError):
+    """Raised when a GitHub installation is already bound to another ScanForge organization."""
+
+    code = "github_installation_already_bound"
+
+
+class GitHubRevisionNotFoundError(LookupError):
+    """Raised when a branch ref or exact commit SHA cannot be verified in GitHub."""
+
+    code = "github_revision_not_found"
 
 
 def _make_app_jwt() -> str:
@@ -48,9 +67,13 @@ class GitHubService:
     async def handle_oauth_callback(
         self, data: GitHubOAuthCallbackRequest, callback_url: str, org_id: UUID
     ) -> OrganizationIntegration:
-        """Exchange OAuth code for user token, get installation, and save integration."""
+        """Exchange OAuth code for user token, verify user installation access, and save integration."""
         user_token = await self._exchange_code_for_user_token(data.code, callback_url)
-        install = await self._get_user_installation(user_token)
+        requested_installation_id = getattr(data, "installation_id", None)
+        install = await self._get_user_installation(
+            user_token,
+            installation_id=requested_installation_id,
+        )
 
         connect_data = GitHubConnectRequest(
             installation_id=str(install["id"]),
@@ -58,7 +81,11 @@ class GitHubService:
             account_login=install.get("account", {}).get("login"),
             account_type=install.get("account", {}).get("type"),
         )
-        return await self.save_integration(org_id, connect_data)
+        return await self.save_integration(
+            org_id,
+            connect_data,
+            verified_installation=install,
+        )
 
     async def _exchange_code_for_user_token(self, code: str, redirect_uri: str) -> str:
         """Exchange OAuth authorization code for a user access token."""
@@ -79,8 +106,12 @@ class GitHubService:
                 raise Exception(body.get("error_description", body["error"]))
             return body["access_token"]
 
-    async def _get_user_installation(self, user_token: str) -> dict:
-        """Get the GitHub App installation for the authenticated user."""
+    async def _get_user_installation(
+        self,
+        user_token: str,
+        installation_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Verify and return a GitHub App installation accessible to the authenticated user."""
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 "https://api.github.com/user/installations",
@@ -94,10 +125,19 @@ class GitHubService:
             data = resp.json()
             installations = data.get("installations", [])
             if not installations:
-                raise Exception("No GitHub App installation found. Please install the app first.")
+                raise GitHubInstallationAccessError(
+                    "No GitHub App installation found for the connecting user."
+                )
+            if installation_id is not None:
+                for inst in installations:
+                    if str(inst.get("id")) == str(installation_id):
+                        return inst
+                raise GitHubInstallationAccessError(
+                    "Connecting user does not have access to the requested GitHub installation."
+                )
             return installations[0]
 
-    async def _get_installation_details(self, installation_id: str) -> dict:
+    async def _get_installation_details(self, installation_id: str) -> dict[str, Any]:
         """Fetch installation details from GitHub using the App JWT."""
         app_jwt = _make_app_jwt()
         async with httpx.AsyncClient() as client:
@@ -116,19 +156,54 @@ class GitHubService:
         self,
         org_id: UUID,
         data: GitHubConnectRequest,
+        *,
+        user_token: str | None = None,
+        verified_installation: dict[str, Any] | None = None,
     ) -> OrganizationIntegration:
-        account_login = data.account_login
-        account_type = data.account_type
+        installation_id = str(data.installation_id).strip()
+        if not installation_id:
+            raise GitHubInstallationAccessError("GitHub installation_id is required")
 
-        # Fetch account details from GitHub if not provided by the client
-        if not account_login:
-            try:
-                details = await self._get_installation_details(data.installation_id)
-                account = details.get("account", {})
-                account_login = account.get("login")
-                account_type = account.get("type")
-            except Exception:
-                logger.warning("Could not fetch installation details from GitHub", exc_info=True)
+        # 1. Enforce 1:1 installation-to-organization binding before reserving or mutating state
+        existing_installation_result = await self.db.execute(
+            select(OrganizationIntegration).where(
+                OrganizationIntegration.installation_id == installation_id
+            )
+        )
+        for bound in existing_installation_result.scalars().all():
+            if str(bound.organization_id) != str(org_id):
+                raise GitHubInstallationConflictError(
+                    "GitHub installation is already bound to another organization"
+                )
+
+        # 2. Verify installation authority before persisting binding
+        details = verified_installation
+        effective_user_token = user_token or getattr(data, "user_token", None)
+        if details is None:
+            if effective_user_token:
+                details = await self._get_user_installation(
+                    effective_user_token,
+                    installation_id=installation_id,
+                )
+            else:
+                try:
+                    details = await self._get_installation_details(installation_id)
+                except Exception as exc:
+                    logger.warning("Could not verify installation details from GitHub", exc_info=True)
+                    raise GitHubInstallationAccessError(
+                        "Unable to verify GitHub installation access"
+                    ) from exc
+
+        if not isinstance(details, dict):
+            raise GitHubInstallationAccessError("Invalid GitHub installation verification response")
+        if details.get("id") is not None and str(details["id"]) != installation_id:
+            raise GitHubInstallationAccessError(
+                "Verified GitHub installation ID does not match requested installation"
+            )
+
+        account = details.get("account") or {}
+        account_login = account.get("login") or data.account_login
+        account_type = account.get("type") or data.account_type
 
         result = await self.db.execute(
             select(OrganizationIntegration).where(OrganizationIntegration.organization_id == org_id)
@@ -136,14 +211,14 @@ class GitHubService:
         integration = result.scalar_one_or_none()
 
         if integration:
-            integration.installation_id = data.installation_id
+            integration.installation_id = installation_id
             integration.account_login = account_login
             integration.account_type = account_type
         else:
             integration = OrganizationIntegration(
                 organization_id=org_id,
                 provider="github",
-                installation_id=data.installation_id,
+                installation_id=installation_id,
                 account_login=account_login,
                 account_type=account_type,
             )
@@ -198,6 +273,8 @@ class GitHubService:
         installation_id: str,
         owner_name: str,
         repo_name: str,
+        *,
+        expected_external_repo_id: str | None = None,
     ) -> bool:
         token = await self._get_installation_token(installation_id)
         async with httpx.AsyncClient(follow_redirects=False) as client:
@@ -209,7 +286,132 @@ class GitHubService:
                     "X-GitHub-Api-Version": "2022-11-28",
                 },
             )
-        return response.status_code == httpx.codes.OK
+        if response.status_code != httpx.codes.OK:
+            return False
+        if expected_external_repo_id is not None:
+            try:
+                payload = response.json()
+            except Exception:
+                return False
+            if isinstance(payload, dict) and payload.get("id") is not None:
+                return str(payload["id"]) == str(expected_external_repo_id)
+        return True
+
+    async def get_installation_repository(
+        self,
+        installation_id: str,
+        *,
+        external_repo_id: str | None = None,
+        owner_name: str | None = None,
+        repo_name: str | None = None,
+        full_name: str | None = None,
+    ) -> dict[str, Any]:
+        """Verify that a repository belongs to `installation_id` and return immutable provider metadata."""
+        repos = await self.list_repositories(installation_id)
+        matched: GitHubRepoItem | None = None
+        for item in repos:
+            if external_repo_id and str(item.external_repo_id) == str(external_repo_id):
+                matched = item
+                break
+            if full_name and item.full_name.lower() == full_name.lower():
+                matched = item
+                break
+            if (
+                owner_name
+                and repo_name
+                and f"{item.owner_name}/{item.repo_name}".lower() == f"{owner_name}/{repo_name}".lower()
+            ):
+                matched = item
+                break
+
+        if matched is None:
+            raise GitHubInstallationAccessError(
+                "Repository is not accessible under the organization's verified GitHub installation"
+            )
+        if external_repo_id and str(matched.external_repo_id) != str(external_repo_id):
+            raise GitHubInstallationAccessError(
+                "Repository immutable provider ID does not match requested external_repo_id"
+            )
+        return {
+            "external_repo_id": str(matched.external_repo_id),
+            "owner_name": matched.owner_name,
+            "repo_name": matched.repo_name,
+            "full_name": matched.full_name,
+            "default_branch": matched.default_branch,
+            "clone_url": matched.clone_url or f"https://github.com/{matched.full_name}.git",
+            "html_url": matched.html_url or f"https://github.com/{matched.full_name}",
+        }
+
+    async def resolve_branch_commit(
+        self,
+        installation_id: str,
+        owner_name: str,
+        repo_name: str,
+        branch_name: str,
+        *,
+        expected_commit_sha: str | None = None,
+    ) -> str:
+        """Resolve or verify an exact 40-character commit SHA in GitHub."""
+        token = await self._get_installation_token(installation_id)
+        target_ref = expected_commit_sha or f"heads/{branch_name}"
+        async with httpx.AsyncClient(follow_redirects=False) as client:
+            resp = await client.get(
+                f"https://api.github.com/repos/{owner_name}/{repo_name}/commits/{target_ref}",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+            )
+        if resp.status_code != httpx.codes.OK:
+            raise GitHubRevisionNotFoundError(
+                f"Revision {target_ref!r} is not accessible in {owner_name}/{repo_name}"
+            )
+        body = resp.json()
+        resolved_sha = str(body.get("sha") or "").strip().lower()
+        if len(resolved_sha) != 40:
+            raise GitHubRevisionNotFoundError("GitHub did not return a 40-character commit SHA")
+        if expected_commit_sha and resolved_sha != expected_commit_sha.strip().lower():
+            raise GitHubRevisionNotFoundError(
+                f"Resolved commit {resolved_sha} does not match expected {expected_commit_sha}"
+            )
+        return resolved_sha
+
+    async def compare_commits(
+        self,
+        installation_id: str,
+        owner_name: str,
+        repo_name: str,
+        base_sha: str,
+        head_sha: str,
+    ) -> dict[str, Any]:
+        """Return a provider-backed ancestry comparison receipt between `base_sha` and `head_sha`."""
+        token = await self._get_installation_token(installation_id)
+        async with httpx.AsyncClient(follow_redirects=False) as client:
+            resp = await client.get(
+                f"https://api.github.com/repos/{owner_name}/{repo_name}/compare/{base_sha}...{head_sha}",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+            )
+        if resp.status_code != httpx.codes.OK:
+            return {
+                "status": "unknown",
+                "base_sha": base_sha,
+                "head_sha": head_sha,
+                "http_status": resp.status_code,
+            }
+        body = resp.json()
+        return {
+            "status": str(body.get("status") or "unknown"),
+            "ahead_by": int(body.get("ahead_by") or 0),
+            "behind_by": int(body.get("behind_by") or 0),
+            "base_sha": base_sha,
+            "head_sha": head_sha,
+            "merge_base_sha": (body.get("merge_base_commit") or {}).get("sha"),
+        }
 
     async def list_repositories(self, installation_id: str, per_page: int = 100) -> list[GitHubRepoItem]:
         token = await self._get_installation_token(installation_id)

@@ -18,7 +18,11 @@ from app.schemas.github import (
     GitHubOAuthCallbackRequest,
     GitHubRepoListResponse,
 )
-from app.services.github import GitHubService
+from app.services.github import (
+    GitHubInstallationAccessError,
+    GitHubInstallationConflictError,
+    GitHubService,
+)
 from app.services.organizations import OrganizationService
 
 router = APIRouter()
@@ -112,6 +116,16 @@ async def github_oauth_callback(
     gh = GitHubService(db)
     try:
         return await gh.handle_oauth_callback(data, callback_url, org_id)
+    except GitHubInstallationConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="GitHub installation is already bound to another organization",
+        ) from exc
+    except GitHubInstallationAccessError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Connecting user does not have access to the requested GitHub installation",
+        ) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -150,10 +164,27 @@ async def github_install_callback(
 
     gh = GitHubService(db)
     try:
-        return await gh.save_integration(
-            org_id,
-            GitHubConnectRequest(installation_id=data.installation_id, state=data.state),
+        user_token: str | None = None
+        if getattr(data, "code", None):
+            frontend_base = settings.CORS_ORIGINS.split(",")[0].strip()
+            callback_url = f"{frontend_base}/github/callback"
+            user_token = await gh._exchange_code_for_user_token(data.code, callback_url)
+        connect_req = GitHubConnectRequest(
+            installation_id=data.installation_id,
+            state=data.state,
+            user_token=user_token,
         )
+        return await gh.save_integration(org_id, connect_req)
+    except GitHubInstallationConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="GitHub installation is already bound to another organization",
+        ) from exc
+    except GitHubInstallationAccessError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Connecting user does not have access to the requested GitHub installation",
+        ) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -185,7 +216,18 @@ async def connect_github(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     gh = GitHubService(db)
-    return await gh.save_integration(org_id, data)
+    try:
+        return await gh.save_integration(org_id, data)
+    except GitHubInstallationConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="GitHub installation is already bound to another organization",
+        ) from exc
+    except GitHubInstallationAccessError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Connecting user does not have access to the requested GitHub installation",
+        ) from exc
 
 
 @router.get(

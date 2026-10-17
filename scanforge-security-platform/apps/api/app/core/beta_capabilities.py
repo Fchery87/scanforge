@@ -39,8 +39,10 @@ def require_beta_capability(capability: str, detail: str | None = None) -> None:
 
 
 def assert_scan_request_supported(data: ScanCreate) -> None:
-    trigger = getattr(data.trigger_type, "value", data.trigger_type) or "manual"
-    scan_type = getattr(data.scan_type, "value", data.scan_type) or "full"
+    raw_trigger = getattr(data, "trigger_type", "manual") or "manual"
+    raw_scan_type = getattr(data, "scan_type", "full") or "full"
+    trigger = getattr(raw_trigger, "value", raw_trigger) or "manual"
+    scan_type = getattr(raw_scan_type, "value", raw_scan_type) or "full"
 
     if trigger == "pull_request":
         require_beta_capability(

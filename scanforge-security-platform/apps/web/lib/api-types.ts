@@ -1669,6 +1669,8 @@ export interface components {
             account_login?: string | null;
             /** Account Type */
             account_type?: string | null;
+            /** User Token */
+            user_token?: string | null;
         };
         /** GitHubInstallCallbackRequest */
         GitHubInstallCallbackRequest: {
@@ -1676,6 +1678,8 @@ export interface components {
             installation_id: string;
             /** State */
             state: string;
+            /** Code */
+            code?: string | null;
         };
         /** GitHubInstallUrlResponse */
         GitHubInstallUrlResponse: {
@@ -1709,6 +1713,8 @@ export interface components {
             code: string;
             /** State */
             state: string;
+            /** Installation Id */
+            installation_id?: string | null;
         };
         /** GitHubRepoItem */
         GitHubRepoItem: {

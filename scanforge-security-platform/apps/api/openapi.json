@@ -6795,6 +6795,17 @@
               }
             ],
             "title": "Account Type"
+          },
+          "user_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Token"
           }
         },
         "type": "object",
@@ -6813,6 +6824,17 @@
           "state": {
             "type": "string",
             "title": "State"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
           }
         },
         "type": "object",
@@ -6898,6 +6920,17 @@
           "state": {
             "type": "string",
             "title": "State"
+          },
+          "installation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installation Id"
           }
         },
         "type": "object",

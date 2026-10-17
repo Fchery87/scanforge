@@ -14,7 +14,11 @@ from app.schemas.repositories import (
     RepositoryWithIntegration,
 )
 from app.services.organizations import OrganizationService
-from app.services.repositories import RepositoryService
+from app.services.repositories import (
+    RepositoryAuthorizationError,
+    RepositoryConflictError,
+    RepositoryService,
+)
 
 router = APIRouter()
 
@@ -38,15 +42,18 @@ async def connect_repository(
         )
 
     service = RepositoryService(db)
-
-    existing = await service.get_by_provider_and_full_name(data.provider, data.full_name)
-    if existing:
+    try:
+        return await service.connect(project_id, data, current_user.user_id)
+    except RepositoryAuthorizationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
+    except RepositoryConflictError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Repository already connected",
-        )
-
-    return await service.connect(project_id, data, current_user.user_id)
+        ) from exc
 
 
 @router.get("/", response_model=PaginatedResponse[RepositoryResponse])

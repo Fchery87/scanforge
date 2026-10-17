@@ -1,4 +1,6 @@
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -8,6 +10,10 @@ from sqlalchemy.orm import selectinload
 from app.db.enums import ScanStatus as ScanStatusEnum
 from app.db.models import Organization, OrganizationMember, Project, Repository, Scan, ScannerRun
 from app.schemas.scans import ScanCreate
+from app.services.repository_refs import (
+    SCAN_TYPE_SCANNERS,
+    RepositoryRefService,
+)
 
 
 class ScanAuthorizationError(Exception):
@@ -25,14 +31,68 @@ class ScanService:
         repo_id: UUID,
         data: ScanCreate,
         user_id: UUID | None,
+        *,
+        force_pushed: bool = False,
+        ancestry_relation: str | None = None,
+        provider_receipt: dict[str, Any] | None = None,
+        revision_resolver: Callable[[str, str | None], Awaitable[str]] | None = None,
+        compare_fn: Callable[[str, str], Awaitable[dict[str, Any]]] | None = None,
+        require_exact_sha: bool = False,
     ) -> tuple[Scan, Repository, Project]:
-        repo = await self.db.get(Repository, repo_id)
+        repo = (
+            await self.db.execute(
+                select(Repository)
+                .where(Repository.id == repo_id)
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
         if not repo:
             raise ValueError("Repository not found")
+        if not repo.is_active or getattr(repo, "lifecycle_state", "connected") != "connected":
+            raise ValueError("Repository is not active or requires authorization revalidation")
 
         project = await self.db.get(Project, repo.project_id)
         if not project:
             raise ValueError("Project not found")
+
+        ref_service = RepositoryRefService(self.db)
+        if (
+            data.branch_name
+            or repo.default_branch
+            or data.trigger_type == "webhook"
+            or require_exact_sha
+            or revision_resolver is not None
+        ):
+            resolved = await ref_service.resolve_scan_revision(
+                repo=repo,
+                trigger_type=data.trigger_type,
+                scan_type=data.scan_type,
+                branch_or_ref=data.branch_name,
+                commit_sha=data.commit_sha,
+                force_pushed=force_pushed,
+                ancestry_relation=ancestry_relation,
+                provider_receipt=provider_receipt,
+                revision_resolver=revision_resolver,
+                compare_fn=compare_fn,
+                require_exact_sha=require_exact_sha,
+            )
+            branch_name = resolved.branch_name
+            full_ref_name = resolved.full_ref_name
+            generation_number = resolved.generation_number
+            ancestry_status = resolved.ancestry_status
+            commit_sha = resolved.commit_sha or data.commit_sha
+            expected_scanners = resolved.expected_scanners
+            summary_json = {"coverage_scope": resolved.coverage_scope}
+        else:
+            branch_name = None
+            full_ref_name = None
+            generation_number = 1
+            ancestry_status = "unknown"
+            commit_sha = data.commit_sha
+            expected_scanners = list(
+                SCAN_TYPE_SCANNERS.get(data.scan_type, SCAN_TYPE_SCANNERS["full"])
+            )
+            summary_json = None
 
         scan = Scan(
             project_id=repo.project_id,
@@ -40,11 +100,16 @@ class ScanService:
             trigger_type=data.trigger_type,
             scan_type=data.scan_type,
             status=ScanStatusEnum.QUEUED,
-            branch_name=data.branch_name or repo.default_branch,
-            commit_sha=data.commit_sha,
+            branch_name=branch_name,
+            full_ref_name=full_ref_name,
+            branch_generation_number=generation_number,
+            ancestry_status=ancestry_status,
+            commit_sha=commit_sha,
             base_sha=data.base_sha,
             pull_request_number=data.pull_request_number,
             requested_by_user_id=user_id,
+            expected_scanners_json=expected_scanners,
+            summary_json=summary_json,
         )
         self.db.add(scan)
         await self.db.commit()
