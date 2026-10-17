@@ -3,12 +3,12 @@ from __future__ import annotations
 import subprocess
 import time
 
-from app.runtime.containment import kill_process_tree, popen_scanner_process
-from app.runtime.models import ScanRuntimeRequest, ScanRuntimeResult, bounded_text
+from app.runtime.containment import communicate_bounded, popen_scanner_process
+from app.runtime.models import ScanRuntimeRequest, ScanRuntimeResult
 
 
 class LocalScanRuntime:
-    """Test/development runtime. Private beta must use DockerScanRuntime."""
+    """Test/development runtime. Customer environments must use DockerScanRuntime."""
 
     def run(self, request: ScanRuntimeRequest) -> ScanRuntimeResult:
         started = time.monotonic()
@@ -20,23 +20,29 @@ class LocalScanRuntime:
             text=True,
             env={},
         )
-        try:
-            stdout, stderr = process.communicate(timeout=request.timeout_seconds)
-        except subprocess.TimeoutExpired:
-            # Kill the entire process group so scanner-spawned children cannot
-            # survive the deadline as orphans.
-            kill_process_tree(process)
-            stdout, stderr = process.communicate()
+        if request.execution_handle is not None:
+            request.execution_handle.bind(process)
+        stdout, stderr, timed_out, canceled, truncated = communicate_bounded(
+            process,
+            timeout_seconds=request.timeout_seconds,
+            output_limit_bytes=request.output_limit_bytes,
+            execution_handle=request.execution_handle,
+        )
+        if timed_out or canceled:
             return ScanRuntimeResult(
-                exit_code=124,
-                stdout=bounded_text(stdout, request.output_limit_bytes),
-                stderr=bounded_text(stderr, request.output_limit_bytes),
+                exit_code=124 if timed_out else 130,
+                stdout=stdout,
+                stderr=stderr,
                 duration_ms=int((time.monotonic() - started) * 1000),
-                timed_out=True,
+                timed_out=timed_out,
+                canceled=canceled,
+                output_truncated=truncated,
             )
         return ScanRuntimeResult(
-            exit_code=process.returncode,
-            stdout=bounded_text(stdout, request.output_limit_bytes),
-            stderr=bounded_text(stderr, request.output_limit_bytes),
+            exit_code=process.returncode if process.returncode is not None else 1,
+            stdout=stdout,
+            stderr=stderr,
             duration_ms=int((time.monotonic() - started) * 1000),
+            output_truncated=truncated,
         )
+

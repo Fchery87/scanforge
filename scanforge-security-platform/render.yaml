@@ -24,58 +24,14 @@ services:
       - fromGroup: storage
       - fromGroup: queue
 
-      # Scanner binaries
-      - key: TRIVY_BINARY
-        value: /usr/local/bin/trivy
-      - key: GITLEAKS_BINARY
-        value: /usr/local/bin/gitleaks
-      - key: OSV_SCANNER_BINARY
-        value: /usr/local/bin/osv-scanner
-      - key: SYFT_BINARY
-        value: /usr/local/bin/syft
-      - key: GRYPE_BINARY
-        value: /usr/local/bin/grype
-      - key: SEMGREP_BINARY
-        value: /usr/local/bin/semgrep
-      - key: CHECKOV_BINARY
-        value: /usr/local/bin/checkov
+  # ─── Dedicated Organization Worker Host Notice (ADR-011) ──────────
+  # Customer scan execution runs on dedicated per-organization Linux hosts
+  # supervised via infra/worker/scanforge-worker.service and provisioned by
+  # scripts/provision_worker_host.sh (with local git, local Docker daemon,
+  # WORKER_CONCURRENCY=1, and controlled WORKER_WORKSPACE_ROOT).
+  # Recurring scan scheduling (scanforge-scheduler) is deferred for initial beta (ADR-010).
 
-  # ─── Dedicated Worker Service ─────────────────────────────────────
-  - type: worker
-    name: scanforge-worker
-    runtime: python_3.12
-    region: oregon
-    plan: starter
-    branch: main
-    autoDeploy: true
-    # Dedicated beta hosts use infra/worker. Each host is organization-bound.
-    envVars:
-      - key: APP_ENV
-        value: private-beta
-      - key: WORKER_CONCURRENCY
-        value: "1"
-      - key: AI_ENABLED
-        value: "false"
-      - fromGroup: worker-beta
-      - fromGroup: queue
-
-  # ─── Nightly Scan Scheduler Cron ──────────────────────────────────
-  - type: cron
-    name: scanforge-scheduler
-    region: oregon
-    plan: starter
-    branch: main
-    autoDeploy: true
-    schedule: "0 3 * * *"
-    command: python -m app.worker.scheduler
-    envVars:
-      - key: APP_ENV
-        value: production
-      - fromGroup: shared-app
-      - fromGroup: shared-db
-      - fromGroup: queue
-
-  # ─── Weekly Deep Scan + Cleanup Cron ─────────────────────────────
+  # ─── Weekly Maintenance & Stale Lease Recovery Cron ───────────────
   - type: cron
     name: scanforge-maintenance
     region: oregon

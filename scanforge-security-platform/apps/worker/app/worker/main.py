@@ -37,13 +37,20 @@ _log = get_logger(__name__)
 class Worker:
     def __init__(
         self,
-        concurrency: int = 2,
+        concurrency: int = 1,
         poll_interval: float = 5.0,
         shutdown_timeout: float = 30.0,
     ):
+        from uuid import uuid4
+
+        from app.runtime.base import is_customer_runtime_environment
+
+        if is_customer_runtime_environment() and concurrency != 1:
+            raise ValueError("Customer worker host coordinator concurrency must be 1")
         self.concurrency = concurrency
         self.poll_interval = poll_interval
         self.shutdown_timeout = shutdown_timeout
+        self.incarnation_id = os.environ.get("WORKER_INCARNATION_ID", "").strip() or f"inc-{uuid4().hex[:16]}"
         self._running = False
         self._shutdown_event = asyncio.Event()
         self._degraded_since: datetime | None = None
@@ -133,7 +140,10 @@ class Worker:
             )
         )
 
-        _log.info("starting worker", extra={"concurrency": self.concurrency})
+        _log.info(
+            "starting worker",
+            extra={"concurrency": self.concurrency, "incarnation_id": self.incarnation_id},
+        )
 
         try:
             queue_len = await queue.get_queue_length()
@@ -199,10 +209,11 @@ class Worker:
 
 
 def main():
-    from app.runtime.base import build_scan_runtime
+    from app.runtime.base import build_scan_runtime, verify_host_coordinator_prerequisites
 
+    verify_host_coordinator_prerequisites()
     build_scan_runtime()
-    concurrency = int(os.environ.get("WORKER_CONCURRENCY", "2"))
+    concurrency = int(os.environ.get("WORKER_CONCURRENCY", "1"))
     worker = Worker(concurrency=concurrency)
 
     loop = asyncio.new_event_loop()
@@ -226,3 +237,4 @@ async def _shutdown(worker: Worker):
 
 if __name__ == "__main__":
     main()
+

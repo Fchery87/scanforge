@@ -6,8 +6,8 @@ import subprocess
 import time
 from uuid import uuid4
 
-from app.runtime.containment import kill_process_tree, popen_scanner_process
-from app.runtime.models import ScanRuntimeRequest, ScanRuntimeResult, bounded_text
+from app.runtime.containment import communicate_bounded, popen_scanner_process
+from app.runtime.models import ScanRuntimeRequest, ScanRuntimeResult
 
 # Proposed cleanup budget from the readiness plan: kill the daemon-owned
 # container within 30 seconds of the configured deadline.
@@ -83,6 +83,9 @@ class DockerScanRuntime:
             return
 
     def run(self, request: ScanRuntimeRequest) -> ScanRuntimeResult:
+        from app.runtime.base import prepare_scanner_output_directory
+
+        prepare_scanner_output_directory(request.output_directory)
         started = time.monotonic()
         container_name = self.new_container_name()
         process = popen_scanner_process(
@@ -92,26 +95,36 @@ class DockerScanRuntime:
             text=True,
             env={"PATH": "/usr/bin:/bin"},
         )
-        try:
-            stdout, stderr = process.communicate(timeout=request.timeout_seconds)
-        except subprocess.TimeoutExpired:
-            # Kill the CLI process group (it may have spawned children), then
-            # force-kill the named container in case the daemon still runs it.
-            kill_process_tree(process)
-            stdout, stderr = process.communicate()
+        if request.execution_handle is not None:
+            request.execution_handle.bind(
+                process,
+                container_name=container_name,
+                container_kill_callback=self._force_container_kill,
+            )
+        stdout, stderr, timed_out, canceled, truncated = communicate_bounded(
+            process,
+            timeout_seconds=request.timeout_seconds,
+            output_limit_bytes=request.output_limit_bytes,
+            execution_handle=request.execution_handle,
+        )
+        if timed_out or canceled:
             self._force_container_kill(container_name)
             return ScanRuntimeResult(
-                exit_code=124,
-                stdout=bounded_text(stdout, request.output_limit_bytes),
-                stderr=bounded_text(stderr, request.output_limit_bytes),
+                exit_code=124 if timed_out else 130,
+                stdout=stdout,
+                stderr=stderr,
                 duration_ms=int((time.monotonic() - started) * 1000),
-                timed_out=True,
+                timed_out=timed_out,
+                canceled=canceled,
+                output_truncated=truncated,
                 container_name=container_name,
             )
         return ScanRuntimeResult(
-            exit_code=process.returncode,
-            stdout=bounded_text(stdout, request.output_limit_bytes),
-            stderr=bounded_text(stderr, request.output_limit_bytes),
+            exit_code=process.returncode if process.returncode is not None else 1,
+            stdout=stdout,
+            stderr=stderr,
             duration_ms=int((time.monotonic() - started) * 1000),
+            output_truncated=truncated,
             container_name=container_name,
         )
+

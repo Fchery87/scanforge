@@ -15,6 +15,13 @@ import httpx
 
 from app.clients.r2 import R2Client
 from app.core.logging import get_logger
+from app.runtime.base import (
+    enforce_directory_quota,
+    is_customer_runtime_environment,
+    make_source_readable_for_scanner,
+    prepare_isolated_scan_workspace,
+)
+from app.runtime.docker import DockerScanRuntime
 from app.scanners.base import ScannerResult
 from app.scanners.registry import SCANNER_REGISTRY, scanners_for_scan_type
 from app.security.proc_env import build_contained_env
@@ -25,6 +32,7 @@ from app.services.scan_pipeline.context import ScanContext
 _log = get_logger(__name__)
 
 SCAN_TIMEOUT = 1800
+MAX_SOURCE_WORKSPACE_BYTES = 1024 * 1024 * 1024
 
 
 class ScanExecutionStage:
@@ -53,10 +61,14 @@ class ScanExecutionStage:
         return re.sub(r"Authorization: Basic\s+\S+", "Authorization: Basic [REDACTED]", redacted)
 
     async def prepare_repository(self, context: ScanContext) -> Path:
-        repo_dir = Path(mkdtemp(prefix="scan_repo_"))
+        repo_dir = prepare_isolated_scan_workspace(
+            scan_id=context.scan_id,
+            attempt_id=getattr(context, "attempt_id", None) or "attempt-0",
+        )
         clone_url, auth_header = await self._get_clone_url(context)
         parsed_url = urlparse(clone_url)
         if parsed_url.scheme != "https" or parsed_url.hostname != "github.com":
+            shutil.rmtree(repo_dir.parent, ignore_errors=True)
             raise RuntimeError("clone target must be the verified github.com origin")
         git_env = build_contained_env(
             {
@@ -80,10 +92,13 @@ class ScanExecutionStage:
             )
             if result.returncode != 0:
                 raise RuntimeError(f"git clone failed: {self._redact(result.stderr).strip()}")
+            make_source_readable_for_scanner(repo_dir)
+            enforce_directory_quota(repo_dir, MAX_SOURCE_WORKSPACE_BYTES, label="repository workspace")
         except subprocess.TimeoutExpired as exc:
+            shutil.rmtree(repo_dir.parent, ignore_errors=True)
             raise RuntimeError("git clone timed out after 5 minutes") from exc
         except Exception:
-            shutil.rmtree(repo_dir, ignore_errors=True)
+            shutil.rmtree(repo_dir.parent, ignore_errors=True)
             raise
         finally:
             auth_header = ""
@@ -133,7 +148,7 @@ class ScanExecutionStage:
             )
             try:
                 def scanner_run():
-                    if os.environ.get("APP_ENV", "development").lower() == "private-beta":
+                    if is_customer_runtime_environment() or isinstance(self.runtime, DockerScanRuntime):
                         return scanner.run_contained(context.repo_path, self.runtime)
                     return scanner.run(context.repo_path)
 

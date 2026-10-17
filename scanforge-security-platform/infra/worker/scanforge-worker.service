@@ -1,0 +1,32 @@
+[Unit]
+Description=ScanForge Organization-Bound Host Scan Coordinator (ADR-011)
+Documentation=file:///opt/scanforge/docs/adr/ADR-011-beta-executor-and-github-ingress.md
+After=network-online.target docker.service
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=scanforge-worker
+Group=scanforge-worker
+SupplementaryGroups=docker
+WorkingDirectory=/opt/scanforge/apps/worker
+EnvironmentFile=/etc/scanforge/worker.env
+Environment=APP_ENV=private-beta
+Environment=AI_ENABLED=false
+Environment=WORKER_CONCURRENCY=1
+Environment=WORKER_WORKSPACE_ROOT=/var/lib/scanforge/workspaces
+ExecStartPre=/usr/bin/test -d /var/lib/scanforge/workspaces
+ExecStart=/opt/scanforge/apps/worker/.venv/bin/python -m app.worker.main
+Restart=always
+RestartSec=5
+TimeoutStopSec=45
+KillMode=control-group
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/scanforge/workspaces
+
+[Install]
+WantedBy=multi-user.target
