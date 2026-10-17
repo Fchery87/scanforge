@@ -1201,6 +1201,11 @@ export interface components {
             /** Canonical Fingerprint */
             canonical_fingerprint: string;
             /**
+             * Fingerprint Version
+             * @default fp.v2
+             */
+            fingerprint_version: string;
+            /**
              * Severity
              * @default medium
              */
@@ -1223,16 +1228,19 @@ export interface components {
             confidence_score?: number | null;
             /** Fixed Version */
             fixed_version?: string | null;
+            /** Advisory Id */
+            advisory_id?: string | null;
+            /** Package Ecosystem */
+            package_ecosystem?: string | null;
+            /** Package Name */
+            package_name?: string | null;
             /** Metadata Json */
             metadata_json?: {
                 [key: string]: unknown;
             } | null;
             instance?: components["schemas"]["CanonicalFindingInstance"] | null;
-            /**
-             * References
-             * @default []
-             */
-            references: components["schemas"]["CanonicalFindingReference"][];
+            /** References */
+            references?: components["schemas"]["CanonicalFindingReference"][];
         } & {
             [key: string]: unknown;
         };
@@ -2399,12 +2407,19 @@ export interface components {
         /** ScanCompletionRequest */
         ScanCompletionRequest: {
             /**
+             * Contract Version
+             * @default 2026-10-beta.v1
+             */
+            contract_version: string;
+            /**
              * Winning Attempt Id
              * Format: uuid
              */
             winning_attempt_id: string;
             /** Execution Revision */
             execution_revision: number;
+            /** Worker Incarnation Id */
+            worker_incarnation_id?: string | null;
             /** Findings */
             findings?: components["schemas"]["CanonicalFindingCandidate"][];
             /** Scanner Runs */
@@ -2467,8 +2482,25 @@ export interface components {
             scan_type: string;
             /** Status */
             status: string;
+            /**
+             * Contract Version
+             * @default 2026-10-beta.v1
+             */
+            contract_version: string;
             /** Branch Name */
             branch_name: string | null;
+            /** Full Ref Name */
+            full_ref_name?: string | null;
+            /**
+             * Branch Generation Number
+             * @default 1
+             */
+            branch_generation_number: number;
+            /**
+             * Ancestry Status
+             * @default unknown
+             */
+            ancestry_status: string;
             /** Commit Sha */
             commit_sha: string | null;
             /** Base Sha */
@@ -2483,6 +2515,25 @@ export interface components {
             summary_json: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Coverage Completeness
+             * @default unknown
+             */
+            coverage_completeness: string;
+            /**
+             * Closure Eligible
+             * @default false
+             */
+            closure_eligible: boolean;
+            /**
+             * Cleanup State
+             * @default not_required
+             */
+            cleanup_state: string;
+            /** Superseded By Scan Id */
+            superseded_by_scan_id?: string | null;
+            /** Supersession Reason */
+            supersession_reason?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -2522,8 +2573,25 @@ export interface components {
             scan_type: string;
             /** Status */
             status: string;
+            /**
+             * Contract Version
+             * @default 2026-10-beta.v1
+             */
+            contract_version: string;
             /** Branch Name */
             branch_name: string | null;
+            /** Full Ref Name */
+            full_ref_name?: string | null;
+            /**
+             * Branch Generation Number
+             * @default 1
+             */
+            branch_generation_number: number;
+            /**
+             * Ancestry Status
+             * @default unknown
+             */
+            ancestry_status: string;
             /** Commit Sha */
             commit_sha: string | null;
             /** Base Sha */
@@ -2538,6 +2606,25 @@ export interface components {
             summary_json: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Coverage Completeness
+             * @default unknown
+             */
+            coverage_completeness: string;
+            /**
+             * Closure Eligible
+             * @default false
+             */
+            closure_eligible: boolean;
+            /**
+             * Cleanup State
+             * @default not_required
+             */
+            cleanup_state: string;
+            /** Superseded By Scan Id */
+            superseded_by_scan_id?: string | null;
+            /** Supersession Reason */
+            supersession_reason?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -2633,6 +2720,28 @@ export interface components {
             scanner_version?: string | null;
             /** Status */
             status: string;
+            /** Outcome Status */
+            outcome_status?: string | null;
+            /** Parser Version */
+            parser_version?: string | null;
+            /** Rules Digest */
+            rules_digest?: string | null;
+            /** Db Digest */
+            db_digest?: string | null;
+            /** Db Published At */
+            db_published_at?: string | null;
+            /**
+             * Db Freshness State
+             * @default unverified
+             */
+            db_freshness_state: string;
+            /** Image Digest */
+            image_digest?: string | null;
+            /**
+             * Artifact Availability
+             * @default unavailable
+             */
+            artifact_availability: string;
             /** Duration Ms */
             duration_ms?: number | null;
             /** Exit Code */
@@ -2664,6 +2773,36 @@ export interface components {
             scanner_version: string | null;
             /** Status */
             status: string;
+            /**
+             * Outcome Status
+             * @default completed
+             */
+            outcome_status: string;
+            /** Parser Version */
+            parser_version?: string | null;
+            /** Rules Digest */
+            rules_digest?: string | null;
+            /** Db Digest */
+            db_digest?: string | null;
+            /** Db Published At */
+            db_published_at?: string | null;
+            /**
+             * Db Freshness State
+             * @default unverified
+             */
+            db_freshness_state: string;
+            /** Image Digest */
+            image_digest?: string | null;
+            /**
+             * Artifact Availability
+             * @default unavailable
+             */
+            artifact_availability: string;
+            /**
+             * Closure Eligible
+             * @default false
+             */
+            closure_eligible: boolean;
             /** Duration Ms */
             duration_ms: number | null;
             /** Exit Code */

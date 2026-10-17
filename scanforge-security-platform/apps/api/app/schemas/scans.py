@@ -45,13 +45,22 @@ class ScanResponse(BaseModel):
     trigger_type: str
     scan_type: str
     status: str
+    contract_version: str = "2026-10-beta.v1"
     branch_name: str | None
+    full_ref_name: str | None = None
+    branch_generation_number: int = 1
+    ancestry_status: str = "unknown"
     commit_sha: str | None
     base_sha: str | None = None
     pull_request_number: int | None
     requested_by_user_id: UUID | None
     error_message: str | None
     summary_json: dict | None
+    coverage_completeness: str = "unknown"
+    closure_eligible: bool = False
+    cleanup_state: str = "not_required"
+    superseded_by_scan_id: UUID | None = None
+    supersession_reason: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -64,6 +73,15 @@ class ScannerRunResponse(BaseModel):
     scanner_name: str
     scanner_version: str | None
     status: str
+    outcome_status: str = "completed"
+    parser_version: str | None = None
+    rules_digest: str | None = None
+    db_digest: str | None = None
+    db_published_at: datetime | None = None
+    db_freshness_state: str = "unverified"
+    image_digest: str | None = None
+    artifact_availability: str = "unavailable"
+    closure_eligible: bool = False
     duration_ms: int | None
     exit_code: int | None
     error_message: str | None
@@ -86,3 +104,4 @@ class ScanStatusUpdate(BaseModel):
     status: str | None = None
     error_message: str | None = None
     summary_json: dict | None = None
+

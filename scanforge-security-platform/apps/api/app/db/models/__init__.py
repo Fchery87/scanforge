@@ -3,6 +3,7 @@ from app.db.models.audit import AuditLog
 from app.db.models.export import Export
 from app.db.models.finding import (
     Finding,
+    FindingBranchObservation,
     FindingEvent,
     FindingInstance,
     FindingReference,
@@ -16,7 +17,11 @@ from app.db.models.organization import (
 )
 from app.db.models.policy import FindingSuppression, SuppressionRule
 from app.db.models.project import Project
-from app.db.models.repository import Repository, RepositoryIntegration
+from app.db.models.repository import (
+    Repository,
+    RepositoryBranchGeneration,
+    RepositoryIntegration,
+)
 from app.db.models.scan import Scan, ScanCompletionReceipt, ScannerRun
 from app.db.models.scan_schedule import ScanSchedule
 from app.db.models.user import User
@@ -27,6 +32,7 @@ __all__ = [
     "AuditLog",
     "Export",
     "Finding",
+    "FindingBranchObservation",
     "FindingEvent",
     "FindingInstance",
     "FindingReference",
@@ -38,6 +44,7 @@ __all__ = [
     "OrganizationMember",
     "Project",
     "Repository",
+    "RepositoryBranchGeneration",
     "RepositoryIntegration",
     "Scan",
     "ScanArtifact",
@@ -49,3 +56,4 @@ __all__ = [
     "WebhookDelivery",
     "WorkerIdentity",
 ]
+

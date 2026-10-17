@@ -3,16 +3,27 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+CURRENT_QUEUE_CONTRACT_VERSION = "2026-10-queue.v1"
+SUPPORTED_QUEUE_CONTRACT_VERSIONS: frozenset[str] = frozenset({CURRENT_QUEUE_CONTRACT_VERSION})
+
 ScanJobType = Literal["scan.repo.full", "scan.repo.diff", "scan.dependencies", "scan.secrets"]
 SCAN_JOB_TYPES: tuple[str, ...] = ("scan.repo.full", "scan.repo.diff", "scan.dependencies", "scan.secrets")
 
 
 class QueueJob(BaseModel):
+    contract_version: str = Field(default=CURRENT_QUEUE_CONTRACT_VERSION)
     job_type: str
     job_id: str
     payload: dict = Field(default_factory=dict)
     created_at: str
     stream_entry_id: str | None = Field(default=None, exclude=True)
+
+    @field_validator("contract_version")
+    @classmethod
+    def validate_contract_version(cls, version: str) -> str:
+        if version not in SUPPORTED_QUEUE_CONTRACT_VERSIONS:
+            raise ValueError(f"Unsupported queue contract_version: {version}")
+        return version
 
     @field_validator("payload")
     @classmethod
@@ -26,6 +37,7 @@ class QueueJob(BaseModel):
     def create(cls, job_type: ScanJobType, payload: dict) -> "QueueJob":
         scan_id = payload.get("scan_id", "")
         return cls(
+            contract_version=CURRENT_QUEUE_CONTRACT_VERSION,
             job_type=job_type,
             # A scan can be delivered more than once by Redis Streams.  The scan ID
             # remains the stable idempotency key across those deliveries.
@@ -33,3 +45,4 @@ class QueueJob(BaseModel):
             payload=payload,
             created_at=datetime.now(UTC).isoformat(),
         )
+

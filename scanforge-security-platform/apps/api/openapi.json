@@ -5444,7 +5444,16 @@
         "properties": {
           "canonical_fingerprint": {
             "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
             "title": "Canonical Fingerprint"
+          },
+          "fingerprint_version": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Fingerprint Version",
+            "default": "fp.v2"
           },
           "severity": {
             "type": "string",
@@ -5505,6 +5514,39 @@
             ],
             "title": "Fixed Version"
           },
+          "advisory_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Advisory Id"
+          },
+          "package_ecosystem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Package Ecosystem"
+          },
+          "package_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Package Name"
+          },
           "metadata_json": {
             "anyOf": [
               {
@@ -5532,8 +5574,7 @@
               "$ref": "#/components/schemas/CanonicalFindingReference"
             },
             "type": "array",
-            "title": "References",
-            "default": []
+            "title": "References"
           }
         },
         "additionalProperties": true,
@@ -8609,6 +8650,13 @@
       },
       "ScanCompletionRequest": {
         "properties": {
+          "contract_version": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Contract Version",
+            "default": "2026-10-beta.v1"
+          },
           "winning_attempt_id": {
             "type": "string",
             "format": "uuid",
@@ -8618,6 +8666,18 @@
             "type": "integer",
             "minimum": 0.0,
             "title": "Execution Revision"
+          },
+          "worker_incarnation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worker Incarnation Id"
           },
           "findings": {
             "items": {
@@ -8644,6 +8704,7 @@
             "title": "Artifact Uris"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "winning_attempt_id",
@@ -8753,6 +8814,11 @@
             "type": "string",
             "title": "Status"
           },
+          "contract_version": {
+            "type": "string",
+            "title": "Contract Version",
+            "default": "2026-10-beta.v1"
+          },
           "branch_name": {
             "anyOf": [
               {
@@ -8763,6 +8829,27 @@
               }
             ],
             "title": "Branch Name"
+          },
+          "full_ref_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Ref Name"
+          },
+          "branch_generation_number": {
+            "type": "integer",
+            "title": "Branch Generation Number",
+            "default": 1
+          },
+          "ancestry_status": {
+            "type": "string",
+            "title": "Ancestry Status",
+            "default": "unknown"
           },
           "commit_sha": {
             "anyOf": [
@@ -8831,6 +8918,44 @@
               }
             ],
             "title": "Summary Json"
+          },
+          "coverage_completeness": {
+            "type": "string",
+            "title": "Coverage Completeness",
+            "default": "unknown"
+          },
+          "closure_eligible": {
+            "type": "boolean",
+            "title": "Closure Eligible",
+            "default": false
+          },
+          "cleanup_state": {
+            "type": "string",
+            "title": "Cleanup State",
+            "default": "not_required"
+          },
+          "superseded_by_scan_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded By Scan Id"
+          },
+          "supersession_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersession Reason"
           },
           "created_at": {
             "type": "string",
@@ -8899,6 +9024,11 @@
             "type": "string",
             "title": "Status"
           },
+          "contract_version": {
+            "type": "string",
+            "title": "Contract Version",
+            "default": "2026-10-beta.v1"
+          },
           "branch_name": {
             "anyOf": [
               {
@@ -8909,6 +9039,27 @@
               }
             ],
             "title": "Branch Name"
+          },
+          "full_ref_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Ref Name"
+          },
+          "branch_generation_number": {
+            "type": "integer",
+            "title": "Branch Generation Number",
+            "default": 1
+          },
+          "ancestry_status": {
+            "type": "string",
+            "title": "Ancestry Status",
+            "default": "unknown"
           },
           "commit_sha": {
             "anyOf": [
@@ -8977,6 +9128,44 @@
               }
             ],
             "title": "Summary Json"
+          },
+          "coverage_completeness": {
+            "type": "string",
+            "title": "Coverage Completeness",
+            "default": "unknown"
+          },
+          "closure_eligible": {
+            "type": "boolean",
+            "title": "Closure Eligible",
+            "default": false
+          },
+          "cleanup_state": {
+            "type": "string",
+            "title": "Cleanup State",
+            "default": "not_required"
+          },
+          "superseded_by_scan_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded By Scan Id"
+          },
+          "supersession_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersession Reason"
           },
           "created_at": {
             "type": "string",
@@ -9259,6 +9448,83 @@
             "type": "string",
             "title": "Status"
           },
+          "outcome_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome Status"
+          },
+          "parser_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parser Version"
+          },
+          "rules_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rules Digest"
+          },
+          "db_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Db Digest"
+          },
+          "db_published_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Db Published At"
+          },
+          "db_freshness_state": {
+            "type": "string",
+            "title": "Db Freshness State",
+            "default": "unverified"
+          },
+          "image_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Digest"
+          },
+          "artifact_availability": {
+            "type": "string",
+            "title": "Artifact Availability",
+            "default": "unavailable"
+          },
           "duration_ms": {
             "anyOf": [
               {
@@ -9316,6 +9582,7 @@
             "title": "Metadata Json"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "scanner_name",
@@ -9353,6 +9620,82 @@
           "status": {
             "type": "string",
             "title": "Status"
+          },
+          "outcome_status": {
+            "type": "string",
+            "title": "Outcome Status",
+            "default": "completed"
+          },
+          "parser_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parser Version"
+          },
+          "rules_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rules Digest"
+          },
+          "db_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Db Digest"
+          },
+          "db_published_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Db Published At"
+          },
+          "db_freshness_state": {
+            "type": "string",
+            "title": "Db Freshness State",
+            "default": "unverified"
+          },
+          "image_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Digest"
+          },
+          "artifact_availability": {
+            "type": "string",
+            "title": "Artifact Availability",
+            "default": "unavailable"
+          },
+          "closure_eligible": {
+            "type": "boolean",
+            "title": "Closure Eligible",
+            "default": false
           },
           "duration_ms": {
             "anyOf": [
