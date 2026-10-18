@@ -42,6 +42,7 @@ CANDIDATE_MAX_COMPLETION_PAYLOAD_BYTES = 16 * 1024 * 1024
 CANDIDATE_MAX_FINDINGS_PER_SCAN = 10_000
 CANDIDATE_MAX_SCANNER_RUNS_PER_SCAN = 16
 CANDIDATE_MAX_REFERENCES_PER_FINDING = 64
+MIN_ABBREVIATED_COMMIT_SHA_LENGTH = 7
 
 FORBIDDEN_SUMMARY_AUTHORITY_KEYS: frozenset[str] = frozenset(
     {
@@ -119,7 +120,8 @@ def negotiate_contract_version(
         return CURRENT_EVIDENCE_CONTRACT_VERSION
     if version not in SUPPORTED_EVIDENCE_CONTRACT_VERSIONS:
         raise UnsupportedContractVersionError(
-            f"Unsupported evidence contract_version '{version}'; supported: {sorted(SUPPORTED_EVIDENCE_CONTRACT_VERSIONS)}"
+            f"Unsupported evidence contract_version '{version}'; supported: "
+            f"{sorted(SUPPORTED_EVIDENCE_CONTRACT_VERSIONS)}"
         )
     return version
 
@@ -224,7 +226,7 @@ def _is_scanner_db_fresh(run: ScannerRunCompletion, *, now: datetime) -> bool:
     return timedelta(0) <= age <= MAX_SCANNER_DB_AGE
 
 
-def derive_scan_evidence_decision(
+def derive_scan_evidence_decision(  # noqa: PLR0912, PLR0915
     data: ScanCompletionRequest,
     *,
     expected_scanners: list[str] | tuple[str, ...] | None = None,
@@ -267,7 +269,8 @@ def derive_scan_evidence_decision(
     for finding in data.findings:
         if len(finding.references) > CANDIDATE_MAX_REFERENCES_PER_FINDING:
             raise IngressBoundExceededError(
-                f"Finding references count {len(finding.references)} exceeds candidate bound {CANDIDATE_MAX_REFERENCES_PER_FINDING}"
+                f"Finding references count {len(finding.references)} exceeds candidate bound "
+                f"{CANDIDATE_MAX_REFERENCES_PER_FINDING}"
             )
 
     reasons: list[str] = []
@@ -333,7 +336,7 @@ def derive_scan_evidence_decision(
         coverage_completeness = "partial"
         scanner_runs_complete = False
 
-    if not commit_sha or len(commit_sha.strip()) < 7:
+    if not commit_sha or len(commit_sha.strip()) < MIN_ABBREVIATED_COMMIT_SHA_LENGTH:
         reasons.append("unverified_commit_revision")
     if ancestry_status not in {"verified_initial", "verified_descendant"}:
         reasons.append("non_descendant_ancestry")

@@ -1,5 +1,6 @@
 import logging
 from collections.abc import Callable
+from contextvars import ContextVar
 from uuid import UUID
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -21,9 +22,6 @@ AUDITED_PATHS = [
     "/suppression-rules",
     "/schedules",
 ]
-
-
-from contextvars import ContextVar
 
 _audit_user_var: ContextVar[str | None] = ContextVar("audit_user_id", default=None)
 _audit_org_var: ContextVar[str | None] = ContextVar("audit_org_id", default=None)

@@ -15,6 +15,7 @@ from app.db.models.organization import OrganizationIntegration
 from app.schemas.github import GitHubConnectRequest, GitHubOAuthCallbackRequest, GitHubRepoItem
 
 logger = logging.getLogger(__name__)
+GIT_COMMIT_SHA_LENGTH = 40
 
 
 class GitHubInstallationAccessError(PermissionError):
@@ -369,7 +370,7 @@ class GitHubService:
             )
         body = resp.json()
         resolved_sha = str(body.get("sha") or "").strip().lower()
-        if len(resolved_sha) != 40:
+        if len(resolved_sha) != GIT_COMMIT_SHA_LENGTH:
             raise GitHubRevisionNotFoundError("GitHub did not return a 40-character commit SHA")
         if expected_commit_sha and resolved_sha != expected_commit_sha.strip().lower():
             raise GitHubRevisionNotFoundError(

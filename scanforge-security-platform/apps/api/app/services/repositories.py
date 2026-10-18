@@ -10,6 +10,7 @@ from app.db.models import (
     OrganizationMember,
     Project,
     Repository,
+    RepositoryBranchGeneration,
     RepositoryIntegration,
 )
 from app.schemas.repositories import RepositoryConnect, RepositoryUpdate
@@ -47,7 +48,7 @@ class RepositoryService:
         )
         return result.scalar_one_or_none()
 
-    async def connect(
+    async def connect(  # noqa: PLR0912, PLR0915
         self,
         project_id: UUID,
         data: RepositoryConnect,
@@ -171,8 +172,6 @@ class RepositoryService:
             ref_service = RepositoryRefService(self.db)
             active_gen = await ref_service.get_active_generation(repo.id, full_ref_name)
             if active_gen is None:
-                from app.db.models.repository import RepositoryBranchGeneration
-
                 self.db.add(
                     RepositoryBranchGeneration(
                         repository_id=repo.id,

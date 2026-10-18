@@ -4,14 +4,12 @@ import hashlib
 import inspect
 import json
 import logging
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
-from uuid import UUID, uuid4
+from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 from sqlalchemy import func, or_, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.queue import QueueClient
 from app.contracts.queue import ScanJobType
@@ -20,6 +18,12 @@ from app.core.error_messages import GENERIC_QUEUE_ERROR
 from app.db.enums import DispatchObligationStatus
 from app.db.enums import ScanStatus as ScanStatusEnum
 from app.db.models import Project, Repository, Scan, ScanDispatchObligation
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+    from uuid import UUID
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -419,7 +423,7 @@ class ScanDispatchService:
             await self.db.refresh(obligation)
         return claimed
 
-    async def dispatch_claimed_obligation(
+    async def dispatch_claimed_obligation(  # noqa: PLR0911, PLR0912, PLR0915
         self,
         obligation_id: UUID | str,
         *,
@@ -473,7 +477,12 @@ class ScanDispatchService:
                 job_id=obligation.queue_job_id,
             )
         except Exception:
-            logger.error("Failed to dispatch obligation %s for scan %s", obligation.id, obligation.scan_id, exc_info=True)
+            logger.error(
+                "Failed to dispatch obligation %s for scan %s",
+                obligation.id,
+                obligation.scan_id,
+                exc_info=True,
+            )
             locked_obligation = (
                 await self.db.execute(
                     select(ScanDispatchObligation)

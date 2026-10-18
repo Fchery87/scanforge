@@ -34,7 +34,7 @@ class ScanService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create(
+    async def create(  # noqa: PLR0912, PLR0915
         self,
         repo_id: UUID,
         data: ScanCreate,

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from fastapi import HTTPException, status
 
-from app.schemas.scans import ScanCreate
+if TYPE_CHECKING:
+    from app.schemas.scans import ScanCreate
 
 BETA_CAPABILITIES: dict[str, bool] = {
     "exports": False,

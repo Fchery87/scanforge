@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-from fastapi import Request
+from typing import TYPE_CHECKING
+
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
 from app.services.evidence_contract import parse_strict_contract_json
+
+if TYPE_CHECKING:
+    from fastapi import Request
 
 
 class StrictCompletionRoute(APIRoute):

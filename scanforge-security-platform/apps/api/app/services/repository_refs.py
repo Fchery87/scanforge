@@ -13,19 +13,23 @@ Enforces:
 from __future__ import annotations
 
 import re
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
-from uuid import UUID
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.repository import Repository, RepositoryBranchGeneration
 
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+    from uuid import UUID
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
 EXACT_COMMIT_SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 HEX_COMMIT_SHA_RE = re.compile(r"^[0-9a-fA-F]{7,64}$")
+GIT_REF_CONTROL_CHARACTER_LIMIT = 32
 
 SCAN_TYPE_SCANNERS: dict[str, list[str]] = {
     "full": ["trivy", "gitleaks", "osv", "semgrep", "syft", "checkov", "grype"],
@@ -109,13 +113,17 @@ def normalize_branch_and_full_ref(
     if (
         not branch_name
         or branch_name.startswith("/")
-        or branch_name.endswith("/")
-        or branch_name.endswith(".lock")
+        or branch_name.endswith(("/", ".lock"))
         or ".." in branch_name
         or "//" in branch_name
         or "@{" in branch_name
         or "\\" in branch_name
-        or any(ch.isspace() or ord(ch) < 32 or ch in {"~", "^", ":", "?", "*", "["} for ch in branch_name)
+        or any(
+            ch.isspace()
+            or ord(ch) < GIT_REF_CONTROL_CHARACTER_LIMIT
+            or ch in {"~", "^", ":", "?", "*", "["}
+            for ch in branch_name
+        )
     ):
         raise RepositoryRefError(f"Invalid Git branch reference: {branch_or_ref!r}")
 
@@ -194,7 +202,7 @@ class RepositoryRefService:
         await self.db.flush()
         return active
 
-    async def resolve_and_advance_generation(
+    async def resolve_and_advance_generation(  # noqa: PLR0915
         self,
         *,
         repository_id: UUID | str,
