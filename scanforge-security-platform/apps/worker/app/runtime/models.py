@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from pathlib import Path
 import subprocess
 import threading
-from typing import Any, Callable, Protocol
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Protocol
 
 
 class ActiveExecutionHandle:
@@ -81,6 +82,7 @@ class ScanRuntimeResult:
     canceled: bool = False
     output_truncated: bool = False
     container_name: str = ""
+    image_digest: str | None = None
 
 
 class ScanRuntime(Protocol):

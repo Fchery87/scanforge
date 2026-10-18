@@ -75,7 +75,7 @@ class ScannerAdapter(ABC):
 
         output_directory = Path(mkdtemp(prefix=f"scan_{self.name}_output_"))
         try:
-            os.chmod(output_directory, 0o1777)
+            os.chmod(output_directory, 0o1777)  # noqa: S103  # scanner UID needs writes; sticky bit limits deletion
         except OSError:
             pass
         keep_output_dir = False
@@ -90,6 +90,8 @@ class ScannerAdapter(ABC):
             completed = runtime.run(request)
             result = self.parse_runtime_result(completed, output_directory)
             self._apply_provenance(result)
+            if completed.image_digest:
+                result.image_digest = completed.image_digest
             if self.name != "gitleaks" and result.artifact_paths:
                 result.output_directory = output_directory
                 keep_output_dir = True

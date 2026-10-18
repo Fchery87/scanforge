@@ -11,7 +11,6 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, or_, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.queue import QueueClient

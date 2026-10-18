@@ -14,7 +14,7 @@ from app.clients.r2 import R2Client
 from app.core.beta_capabilities import is_beta_capability_enabled
 from app.core.config import settings
 from app.db.enums import ScanStatus
-from app.db.models import OrganizationIntegration, Project, Repository, Scan
+from app.db.models import OrganizationIntegration, Project, Repository, RepositoryIntegration, Scan
 from app.db.models.scan import ScannerRun
 from app.db.session import get_db
 from app.middleware.service_auth import (

@@ -116,6 +116,11 @@ async def test_git_clone_environment_is_allowlisted(monkeypatch):
     captured: list = []
     _recording_run(monkeypatch, captured)
 
+    async def run_inline(function, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr("app.services.scan_pipeline.execution.asyncio.to_thread", run_inline)
+
     from app.services.scan_pipeline.execution import ScanExecutionStage
 
     stage = ScanExecutionStage(

@@ -18,11 +18,14 @@ class DockerScanRuntime:
     """Execute a scanner in a credential-free, network-isolated container."""
 
     def __init__(self, image: str, docker_binary: str = "docker") -> None:
-        if not image or not re.fullmatch(r".+@sha256:[0-9a-fA-F]{64}", image):
+        match = re.fullmatch(r".+@(sha256:[0-9a-fA-F]{64})", image or "")
+        image_id = re.fullmatch(r"sha256:[0-9a-fA-F]{64}", image or "")
+        if not match and not image_id:
             raise ValueError("scanner image must be pinned by digest")
         if not shutil.which(docker_binary):
             raise RuntimeError("Docker is required for the private-beta scanner runtime")
         self.image = image
+        self.image_digest = match.group(1) if match else image
         self.docker_binary = docker_binary
 
     @staticmethod
@@ -82,6 +85,46 @@ class DockerScanRuntime:
         except (OSError, subprocess.SubprocessError):
             return
 
+    def read_image_file(self, image_path: str, *, timeout_seconds: int = 30) -> str:
+        """Read a small immutable metadata file from the pinned image offline."""
+        if not re.fullmatch(r"/[A-Za-z0-9._/-]+", image_path) or ".." in image_path.split("/"):
+            raise ValueError("image metadata path must be an absolute normalized path")
+        command = [
+            self.docker_binary,
+            "run",
+            "--rm",
+            "--network=none",
+            "--read-only",
+            "--user",
+            "65532:65532",
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges:true",
+            "--pids-limit",
+            "16",
+            "--memory",
+            "64m",
+            "--cpus",
+            "0.25",
+            self.image,
+            "cat",
+            image_path,
+        ]
+        result = subprocess.run(  # noqa: S603
+            command,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            env={"PATH": "/usr/bin:/bin"},
+            check=False,
+        )
+        if result.returncode != 0:
+            raise RuntimeError("could not read scanner metadata from the pinned image")
+        if len(result.stdout.encode()) > 64 * 1024:
+            raise RuntimeError("scanner image metadata exceeds 64 KiB")
+        return result.stdout
+
     def run(self, request: ScanRuntimeRequest) -> ScanRuntimeResult:
         from app.runtime.base import prepare_scanner_output_directory
 
@@ -118,6 +161,7 @@ class DockerScanRuntime:
                 canceled=canceled,
                 output_truncated=truncated,
                 container_name=container_name,
+                image_digest=self.image_digest,
             )
         return ScanRuntimeResult(
             exit_code=process.returncode if process.returncode is not None else 1,
@@ -126,5 +170,6 @@ class DockerScanRuntime:
             duration_ms=int((time.monotonic() - started) * 1000),
             output_truncated=truncated,
             container_name=container_name,
+            image_digest=self.image_digest,
         )
 

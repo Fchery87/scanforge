@@ -9,7 +9,6 @@ ARG CHECKOV_VERSION=3.2.513
 ARG SYFT_VERSION=1.42.3
 ARG GRYPE_VERSION=0.110.0
 ARG OSV_SCANNER_VERSION=2.3.3
-ARG SCANNER_IMAGE_DIGEST=local-build
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl git jq tar \
@@ -35,19 +34,40 @@ RUN curl --fail --location --silent --show-error \
       -o /usr/local/bin/osv-scanner \
     && chmod 0555 /usr/local/bin/osv-scanner
 
+RUN trivy --version | grep -F "Version: ${TRIVY_VERSION}" \
+    && gitleaks version | grep -F "${GITLEAKS_VERSION}" \
+    && semgrep --version | grep -Fx "${SEMGREP_VERSION}" \
+    && checkov --version | grep -Fx "${CHECKOV_VERSION}" \
+    && syft version | grep -F "Version: ${SYFT_VERSION}" \
+    && grype version | grep -F "Version: ${GRYPE_VERSION}" \
+    && osv-scanner --version | grep -F "${OSV_SCANNER_VERSION}"
+
 COPY app/scanners/rules/ /opt/scanner-rules/
 
-RUN mkdir -p /opt/scanner-db/trivy /opt/scanner-db/grype /opt/scanner-db/osv /workspace/source /workspace/output \
+RUN mkdir -p /opt/scanner-db/trivy /opt/scanner-db/grype /opt/scanner-db/osv/osv-scanner /workspace/source /workspace/output \
     && trivy image --download-db-only --cache-dir /opt/scanner-db/trivy \
     && grype db update --db-root-dir /opt/scanner-db/grype \
-    && python3 -c 'import datetime, hashlib, json, pathlib; \
+    && curl --fail --location --silent --show-error \
+      https://osv-vulnerabilities.storage.googleapis.com/ecosystems.txt -o /tmp/osv-ecosystems.txt \
+    && tr -d '\r' < /tmp/osv-ecosystems.txt > /tmp/osv-ecosystems-clean.txt \
+    && while IFS= read -r ecosystem; do \
+      [ -n "$ecosystem" ] || continue; \
+      encoded_ecosystem="$(printf '%s' "$ecosystem" | jq -sRr @uri)"; \
+      mkdir -p "/opt/scanner-db/osv/osv-scanner/$ecosystem"; \
+      curl --fail --location --silent --show-error --retry 3 \
+        "https://osv-vulnerabilities.storage.googleapis.com/${encoded_ecosystem}/all.zip" \
+        -o "/opt/scanner-db/osv/osv-scanner/$ecosystem/all.zip" || exit 1; \
+    done < /tmp/osv-ecosystems-clean.txt \
+    && TRIVY_DB_DIGEST="sha256:$(find /opt/scanner-db/trivy -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d" " -f1)" \
+    GRYPE_DB_DIGEST="sha256:$(find /opt/scanner-db/grype -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d" " -f1)" \
+    OSV_DB_DIGEST="sha256:$(find /opt/scanner-db/osv -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d" " -f1)" \
+    python3 -c 'import datetime, hashlib, json, os, pathlib; \
 now = datetime.datetime.now(datetime.timezone.utc).isoformat(); \
 semgrep_rules = pathlib.Path("/opt/scanner-rules/semgrep-rules.yml").read_bytes(); \
 semgrep_digest = "sha256:" + hashlib.sha256(semgrep_rules).hexdigest(); \
 manifest = { \
   "schema_version": "2026-10-manifest.v1", \
   "generated_at": now, \
-  "image_digest": "'"$SCANNER_IMAGE_DIGEST"'", \
   "trivy": "'"$TRIVY_VERSION"'", \
   "gitleaks": "'"$GITLEAKS_VERSION"'", \
   "semgrep": "'"$SEMGREP_VERSION"'", \
@@ -56,13 +76,13 @@ manifest = { \
   "grype": "'"$GRYPE_VERSION"'", \
   "osv-scanner": "'"$OSV_SCANNER_VERSION"'", \
   "scanners": { \
-    "trivy": {"scanner_version": "'"$TRIVY_VERSION"'", "parser_version": "2026-10-parser.v1", "db_backed": True, "db_published_at": now, "db_digest": "sha256:trivy-db-" + "'"$TRIVY_VERSION"'"}, \
+    "trivy": {"scanner_version": "'"$TRIVY_VERSION"'", "parser_version": "2026-10-parser.v1", "db_backed": True, "db_published_at": now, "db_digest": os.environ["TRIVY_DB_DIGEST"]}, \
     "gitleaks": {"scanner_version": "'"$GITLEAKS_VERSION"'", "parser_version": "2026-10-parser.v1", "db_backed": False}, \
     "semgrep": {"scanner_version": "'"$SEMGREP_VERSION"'", "parser_version": "2026-10-parser.v1", "db_backed": False, "rules_digest": semgrep_digest}, \
     "checkov": {"scanner_version": "'"$CHECKOV_VERSION"'", "parser_version": "2026-10-parser.v1", "db_backed": False}, \
     "syft": {"scanner_version": "'"$SYFT_VERSION"'", "parser_version": "2026-10-parser.v1", "db_backed": False}, \
-    "grype": {"scanner_version": "'"$GRYPE_VERSION"'", "parser_version": "2026-10-parser.v1", "db_backed": True, "db_published_at": now, "db_digest": "sha256:grype-db-" + "'"$GRYPE_VERSION"'"}, \
-    "osv": {"scanner_version": "'"$OSV_SCANNER_VERSION"'", "parser_version": "2026-10-parser.v1", "db_backed": True, "db_published_at": now, "db_digest": "sha256:osv-db-" + "'"$OSV_SCANNER_VERSION"'"} \
+    "grype": {"scanner_version": "'"$GRYPE_VERSION"'", "parser_version": "2026-10-parser.v1", "db_backed": True, "db_published_at": now, "db_digest": os.environ["GRYPE_DB_DIGEST"]}, \
+    "osv": {"scanner_version": "'"$OSV_SCANNER_VERSION"'", "parser_version": "2026-10-parser.v1", "db_backed": True, "db_published_at": now, "db_digest": os.environ["OSV_DB_DIGEST"]} \
   } \
 }; \
 pathlib.Path("/opt/scanner-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")' \

@@ -206,3 +206,37 @@ def test_every_registered_scanner_implements_real_contained_arguments():
         args = adapter.runtime_arguments()
         assert args != ("--version",), f"{name} still uses version-only runtime_arguments"
         assert "--version" not in args, f"{name} runtime_arguments must execute analysis, not --version"
+
+
+def test_contained_result_records_the_image_digest_that_ran(tmp_path: Path):
+    from app.runtime.models import ScanRuntimeResult
+    from app.scanners.base import ScannerAdapter, ScannerResult
+
+    image_digest = "sha256:" + "d" * 64
+
+    class Adapter(ScannerAdapter):
+        name = "fixture"
+        binary_name = "fixture"
+
+        def run(self, repo_path: Path) -> ScannerResult:
+            raise NotImplementedError
+
+        def runtime_arguments(self) -> tuple[str, ...]:
+            return ("scan",)
+
+        def parse_runtime_result(self, completed, output_directory: Path) -> ScannerResult:
+            return ScannerResult(scanner_name=self.name, success=True, raw_output={})
+
+    class Runtime:
+        def run(self, request):
+            return ScanRuntimeResult(
+                exit_code=0,
+                stdout="",
+                stderr="",
+                duration_ms=1,
+                image_digest=image_digest,
+            )
+
+    result = Adapter().run_contained(tmp_path, Runtime())
+
+    assert result.image_digest == image_digest

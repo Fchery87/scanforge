@@ -1,25 +1,11 @@
 from logging.config import fileConfig
-from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
-
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.core.config import settings
 from app.db.base import Base
+from app.db.urls import make_sync_url
 import app.db.models  # noqa: F401
-
-
-def make_sync_url(url: str) -> str:
-    """Convert asyncpg URL to psycopg2-compatible sync URL."""
-    # Swap dialect driver
-    url = url.replace("+asyncpg", "")
-    # Strip params unsupported by psycopg2
-    parsed = urlparse(url)
-    params = parse_qs(parsed.query, keep_blank_values=True)
-    params.pop("channel_binding", None)
-    new_query = urlencode({k: v[0] for k, v in params.items()})
-    return urlunparse(parsed._replace(query=new_query))
-
 
 config = context.config
 config.set_main_option("sqlalchemy.url", make_sync_url(settings.DATABASE_URL))

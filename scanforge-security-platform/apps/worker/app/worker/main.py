@@ -209,10 +209,15 @@ class Worker:
 
 
 def main():
-    from app.runtime.base import build_scan_runtime, verify_host_coordinator_prerequisites
+    from app.runtime.base import (
+        build_scan_runtime,
+        provision_scanner_manifest,
+        verify_host_coordinator_prerequisites,
+    )
 
     verify_host_coordinator_prerequisites()
-    build_scan_runtime()
+    runtime = build_scan_runtime()
+    provision_scanner_manifest(runtime)
     concurrency = int(os.environ.get("WORKER_CONCURRENCY", "1"))
     worker = Worker(concurrency=concurrency)
 

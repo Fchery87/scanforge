@@ -3,12 +3,12 @@
   "generated_at": "2026-10-16T12:00:00+00:00",
   "image_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
   "trivy": "0.69.3",
-  "gitleaks": "8.30.1",
+  "gitleaks": "8.30.0",
   "semgrep": "1.156.0",
   "checkov": "3.2.513",
   "syft": "1.42.3",
   "grype": "0.110.0",
-  "osv-scanner": "1.9.2",
+  "osv-scanner": "2.3.3",
   "scanners": {
     "trivy": {
       "scanner_version": "0.69.3",
@@ -19,10 +19,10 @@
       "rules_digest": "sha256:trivy-checks-20261015"
     },
     "gitleaks": {
-      "scanner_version": "8.30.1",
+      "scanner_version": "8.30.0",
       "parser_version": "2026-10-parser.v1",
       "db_backed": false,
-      "rules_digest": "sha256:gitleaks-rules-8.30.1"
+      "rules_digest": "sha256:gitleaks-rules-8.30.0"
     },
     "semgrep": {
       "scanner_version": "1.156.0",
@@ -49,7 +49,7 @@
       "db_digest": "sha256:grype-db-20261015"
     },
     "osv": {
-      "scanner_version": "1.9.2",
+      "scanner_version": "2.3.3",
       "parser_version": "2026-10-parser.v1",
       "db_backed": true,
       "db_published_at": "2026-10-15T00:00:00+00:00",

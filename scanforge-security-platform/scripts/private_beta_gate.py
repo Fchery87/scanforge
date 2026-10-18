@@ -55,9 +55,14 @@ def local_checks() -> list[Check]:
 
 def run_check(check: Check, output: Path, *, reject_skips: bool = False) -> dict:
     environment = dict(os.environ)
-    for name in ("TEST_POSTGRES_URL", "R04_POSTGRES_URL", "REDIS_URL", "SCANFORGE_LIVE_DOCKER"):
+    test_database_url = environment.get("TEST_POSTGRES_URL") or environment.get("DATABASE_URL")
+    for name in ("TEST_POSTGRES_URL", "R04_POSTGRES_URL", "REDIS_URL", "SCANFORGE_LIVE_DOCKER", "SCANNER_IMAGE"):
         environment.pop(name, None)
     environment.update(check.environment)
+    if check.name == "api-tests":
+        environment["DATABASE_URL"] = test_database_url or "postgresql+asyncpg://test:test@127.0.0.1/scanforge_test"
+    elif check.name == "postgres-completion" and "R04_POSTGRES_URL" in environment:
+        environment["DATABASE_URL"] = environment["R04_POSTGRES_URL"]
     log = output / f"{check.name}.log"
     print(f"Running {check.name}", flush=True)
     try:
@@ -155,13 +160,18 @@ def main() -> int:
             (".venv/bin/python", "-m", "pytest", "tests/test_redis_stream_recovery_integration.py", "-q"))),
         ("live-docker", "SCANFORGE_LIVE_DOCKER", Check("live-docker", "apps/worker",
             (".venv/bin/python", "-m", "pytest", "tests/test_host_executor_integration.py::test_live_docker_container_isolation_and_mount_contract", "-q"))),
+        ("scanner-image", "SCANNER_IMAGE", Check("scanner-image", "apps/worker",
+            (".venv/bin/python", "-m", "pytest", "tests/test_real_scanner_fixtures.py::test_real_pinned_scanner_executables_positive_and_empty_fixtures", "-q"))),
     )
     for name, variable, check in integrations:
         enabled = bool(os.environ.get(variable))
         if variable == "SCANFORGE_LIVE_DOCKER":
             enabled = os.environ.get(variable) == "1"
         if enabled:
-            check = Check(check.name, check.directory, check.command, ((variable, os.environ[variable]),))
+            check_environment = ((variable, os.environ[variable]),)
+            if variable == "R04_POSTGRES_URL":
+                check_environment += (("DATABASE_URL", os.environ[variable]),)
+            check = Check(check.name, check.directory, check.command, check_environment)
             checks.append(run_check(check, args.output, reject_skips=True))
         else:
             checks.append({"name": name, "status": "unverified", "detail": f"{variable} not configured"})

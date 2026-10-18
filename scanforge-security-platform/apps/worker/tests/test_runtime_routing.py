@@ -24,6 +24,11 @@ class Adapter(ScannerAdapter):
 @pytest.mark.asyncio
 async def test_private_beta_scanners_use_contained_runtime(monkeypatch, tmp_path):
     monkeypatch.setenv("APP_ENV", "private-beta")
+
+    async def run_inline(function, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr("app.services.scan_pipeline.execution.asyncio.to_thread", run_inline)
     runtime = SimpleNamespace(called=False)
     registration = SimpleNamespace(adapter_factory=Adapter)
     monkeypatch.setattr(

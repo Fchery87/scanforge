@@ -91,7 +91,13 @@ class ScanOrchestrator:
         renewer = self._build_lease_renewer(context)
         try:
             execution = asyncio.create_task(self._execute_pipeline(job, context, renewer))
-            lease_watch = asyncio.create_task(renewer.wait_lost())
+            lease_watch = (
+                asyncio.create_task(renewer.wait_lost())
+                if renewer.is_enabled
+                else None
+            )
+            if lease_watch is None:
+                return await execution
             done, _pending = await asyncio.wait(
                 {execution, lease_watch}, return_when=asyncio.FIRST_COMPLETED
             )

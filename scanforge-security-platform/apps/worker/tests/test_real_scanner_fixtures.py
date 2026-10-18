@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import copy
 import json
-import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -262,57 +261,23 @@ async def test_real_pinned_scanner_executables_positive_and_empty_fixtures(
     monkeypatch,
     tmp_path: Path,
 ):
-    """Execute all 7 real scanner binaries installed on the host against positive and empty repos."""
-    monkeypatch.setenv(
-        "PATH",
-        f"/home/nochaserz/.local/bin:/home/nochaserz/go/bin:{Path('/usr/bin')}:{Path('/bin')}",
-    )
-    # External scanners may persist harmless CLI preferences. Keep those
-    # writes inside pytest's disposable temp directory.
-    monkeypatch.setenv("HOME", str(tmp_path / "scanner-home"))
-    monkeypatch.setenv("SCANNER_MANIFEST_PATH", str(MANIFEST_FIXTURE_PATH))
+    """Run all seven scanners from the digest-pinned image against positive and empty repos."""
+    import os
+
+    from app.runtime.base import provision_scanner_manifest
+    from app.runtime.docker import DockerScanRuntime
+
+    scanner_image = os.environ.get("SCANNER_IMAGE", "").strip()
+    if not scanner_image:
+        pytest.skip("SCANNER_IMAGE is required for live scanner-image verification")
+
+    runtime = DockerScanRuntime(scanner_image)
     monkeypatch.setenv("CHECKOV_FRAMEWORKS", "terraform")
     monkeypatch.setenv("CHECKOV_CHECKS", "CKV_AWS_20")
 
-    # Set up offline OSV database for PyPI requests==2.19.0 so osv-scanner runs with zero network
-    osv_db_dir = tmp_path / "osv_db"
-    pypi_db = osv_db_dir / "osv-scanner" / "PyPI"
-    pypi_db.mkdir(parents=True)
-    with zipfile.ZipFile(pypi_db / "all.zip", "w") as zf:
-        zf.writestr(
-            "CVE-2023-32681.json",
-            json.dumps(
-                {
-                    "schema_version": "1.6.0",
-                    "id": "CVE-2023-32681",
-                    "modified": "2026-10-15T00:00:00Z",
-                    "published": "2026-10-15T00:00:00Z",
-                    "summary": "Unintended leak of Proxy-Authorization header in requests",
-                    "severity": [
-                        {
-                            "type": "CVSS_V3",
-                            "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:C/C:H/I:N/A:N",
-                        }
-                    ],
-                    "affected": [
-                        {
-                            "package": {"ecosystem": "PyPI", "name": "requests"},
-                            "ranges": [
-                                {
-                                    "type": "ECOSYSTEM",
-                                    "events": [{"introduced": "0"}, {"fixed": "2.31.0"}],
-                                }
-                            ],
-                            "versions": ["2.19.0"],
-                        }
-                    ],
-                }
-            ),
-        )
-    monkeypatch.setenv("OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY", str(osv_db_dir))
-
     pos_repo = tmp_path / "positive_repo"
     pos_repo.mkdir()
+    pos_repo.chmod(0o755)
     (pos_repo / "requirements.txt").write_text("requests==2.19.0\n")
     (pos_repo / "main.tf").write_text(
         'resource "aws_s3_bucket" "public_bucket" {\n'
@@ -328,19 +293,23 @@ async def test_real_pinned_scanner_executables_positive_and_empty_fixtures(
 
     empty_repo = tmp_path / "empty_repo"
     empty_repo.mkdir()
+    empty_repo.chmod(0o755)
     (empty_repo / "README.md").write_text("# Clean Repository\n")
+
+    manifest_path = tmp_path / "scanner-manifest.json"
+    provision_scanner_manifest(runtime, manifest_path)
 
     pos_results = {}
     for name, registration in SCANNER_REGISTRY.items():
         adapter = registration.adapter_factory()
-        res = adapter.run(pos_repo)
+        res = adapter.run_contained(pos_repo, runtime)
         assert res.success is True, f"{name} failed on positive repo: {res.error}"
         assert res.outcome_status == "completed"
         findings = registration.normalize(res.raw_output, "repo-pos")
         assert len(findings) >= 1, f"{name} produced 0 normalized findings on positive repo"
         pos_results[name] = res
 
-        emp_res = adapter.run(empty_repo)
+        emp_res = adapter.run_contained(empty_repo, runtime)
         assert emp_res.success is True, f"{name} failed on empty repo: {emp_res.error}"
         assert emp_res.outcome_status == "completed"
         emp_findings = registration.normalize(emp_res.raw_output, "repo-empty")

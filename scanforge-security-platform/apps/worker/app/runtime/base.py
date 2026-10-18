@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 import os
-from pathlib import Path
 import re
 import shutil
+import subprocess
+import tempfile
+from pathlib import Path
 
 from app.runtime.docker import DockerScanRuntime
 from app.runtime.local import LocalScanRuntime
@@ -138,4 +141,50 @@ def build_scan_runtime() -> ScanRuntime:
             raise RuntimeError("git is required on the worker host coordinator")
         return runtime
     return LocalScanRuntime()
+
+
+def provision_scanner_manifest(runtime: ScanRuntime, path: Path | None = None) -> Path | None:
+    """Cache scanner provenance from the exact image the host coordinator will run."""
+    if not isinstance(runtime, DockerScanRuntime):
+        return None
+
+    try:
+        manifest = json.loads(runtime.read_image_file("/opt/scanner-manifest.json"))
+    except (json.JSONDecodeError, OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError("scanner image has no readable provenance manifest") from exc
+    if not isinstance(manifest, dict) or not isinstance(manifest.get("scanners"), dict):
+        raise RuntimeError("scanner image provenance manifest has an invalid structure")
+
+    from app.scanners.registry import SCANNER_REGISTRY
+
+    entries = manifest["scanners"]
+    if set(entries) != set(SCANNER_REGISTRY):
+        raise RuntimeError("scanner image provenance manifest does not cover every registered scanner")
+    for name, registration in SCANNER_REGISTRY.items():
+        entry = entries[name]
+        if not isinstance(entry, dict) or not entry.get("scanner_version"):
+            raise RuntimeError(f"scanner image provenance is missing the {name} version")
+        if registration.adapter_factory().db_backed and not (
+            entry.get("db_digest") and entry.get("db_published_at")
+        ):
+            raise RuntimeError(f"scanner image provenance is missing the {name} database identity")
+
+    manifest["image_digest"] = runtime.image_digest
+    destination = path or Path(
+        os.environ.get("SCANNER_MANIFEST_PATH", str(Path(tempfile.gettempdir()) / "scanforge-scanner-manifest.json"))
+    )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=".scanner-manifest-", dir=destination.parent)
+    try:
+        with os.fdopen(descriptor, "w") as temporary:
+            temporary.write(json.dumps(manifest, indent=2) + "\n")
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        os.chmod(temporary_name, 0o600)
+        os.replace(temporary_name, destination)
+    finally:
+        if os.path.exists(temporary_name):
+            os.unlink(temporary_name)
+    os.environ["SCANNER_MANIFEST_PATH"] = str(destination)
+    return destination
 

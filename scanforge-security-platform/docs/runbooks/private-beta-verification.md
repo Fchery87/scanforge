@@ -4,13 +4,22 @@ This runbook checks the secure private-beta specification. Local checks cannot a
 
 ## Run local checks
 
-Install the API and worker development dependencies in their `.venv` directories with `make api-install worker-install`. These targets use each application's `constraints.txt`. Render, Docker builds, and CI use the same Python constraints. Install web dependencies with `npm ci`. Run from `scanforge-security-platform`.
+Install the API and worker development dependencies in their `.venv` directories with `make api-install worker-install`. Install web dependencies with `npm ci`. Run from `scanforge-security-platform`.
 
 ```sh
 make private-beta-gate-local GATE_ARGS='--output /tmp/scanforge-beta-local'
 ```
 
 The gate runs API and worker lint and tests. It checks web lint, TypeScript, generated OpenAPI and web contracts, both web test suites, and a production webpack build. It also validates one migration head and audits dependencies. Python audits skip the local editable ScanForge packages and reject any reported dependency vulnerability. The web audit rejects high and critical vulnerabilities.
+
+To run the scanner integration, build the scanner image and point the gate at its immutable local image ID. The image build downloads scanner databases and excludes worker code, tests, and virtual environments from the Docker build context.
+
+```sh
+docker build -f apps/worker/Dockerfile.scanners -t scanforge-scanners:local apps/worker
+export SCANNER_IMAGE="$(docker image inspect scanforge-scanners:local --format '{{.Id}}')"
+```
+
+With `SCANNER_IMAGE` set, the gate runs all seven real scanners in the image with network access disabled. Without it, scanner-image verification is reported as unverified. At worker startup, the coordinator reads the manifest from that same pinned image, validates scanner and database identities, and caches it in a private temporary file before accepting jobs.
 
 The gate keeps native integration tests in separate processes. The regular API test fixtures use SQLite and must not change the native PostgreSQL models. To enable integrations, supply these environment variables.
 

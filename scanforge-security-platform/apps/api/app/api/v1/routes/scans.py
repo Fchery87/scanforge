@@ -72,7 +72,10 @@ async def create_scan(
         org_id, current_user.user_id, ["owner", "admin", "security_reviewer", "developer"]
     )
     if not has_permission:
-        raise HTTPException(status_code=403, detail="Developer, security reviewer, admin, or owner role required to trigger scans")
+        raise HTTPException(
+            status_code=403,
+            detail="Developer, security reviewer, admin, or owner role required to trigger scans",
+        )
 
     await get_repository_in_project_or_404(
         db,
@@ -183,7 +186,10 @@ async def cancel_scan(
         org_id, current_user.user_id, ["owner", "admin", "security_reviewer", "developer"]
     )
     if not has_permission:
-        raise HTTPException(status_code=403, detail="Developer, security reviewer, admin, or owner role required to cancel scans")
+        raise HTTPException(
+            status_code=403,
+            detail="Developer, security reviewer, admin, or owner role required to cancel scans",
+        )
 
     scan_service = ScanService(db)
     scan = await scan_service.get_by_id(scan_id, current_user.user_id)

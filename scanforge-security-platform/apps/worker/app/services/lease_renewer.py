@@ -95,6 +95,15 @@ class LeaseRenewer:
     def is_running(self) -> bool:
         return self._task is not None and not self._task.done()
 
+    @property
+    def is_enabled(self) -> bool:
+        """Whether this renewer has a complete identity and can report lease loss."""
+        return bool(
+            self.attempt_id
+            and self.execution_revision is not None
+            and self.worker_incarnation_id
+        )
+
     async def wait_lost(self) -> None:
         """Resolve once the lease is reported lost (never for disabled renewal)."""
         await self._lost_event.wait()

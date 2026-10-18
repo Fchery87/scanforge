@@ -180,6 +180,11 @@ async def test_failed_job_requeues_with_same_job_id():
     orchestrator._update_scan_status = fail_status
     orchestrator._execution.prepare_repository = explode_repo
 
+    async def scan_is_not_canceled(_context):
+        return False
+
+    orchestrator._is_canceled = scan_is_not_canceled
+
     async def load_context(job):
         return ScanContext(
             scan_id=job.payload["scan_id"],

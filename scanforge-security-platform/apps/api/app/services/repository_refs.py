@@ -12,10 +12,10 @@ Enforces:
 
 from __future__ import annotations
 
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-import re
 from typing import Any
 from uuid import UUID
 

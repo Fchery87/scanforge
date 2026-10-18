@@ -51,8 +51,8 @@ class GitleaksAdapter(ScannerAdapter):
             out = (result.stdout or "").strip()
             if out:
                 return out.splitlines()[0].replace("gitleaks version ", "").strip()
-        except Exception:
-            pass
+        except (OSError, subprocess.SubprocessError):
+            return super().get_version()
         return super().get_version()
 
     def runtime_arguments(self) -> tuple[str, ...]:
