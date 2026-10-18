@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.normalizers.grype import normalize_grype_output
 from app.scanners.checkov import CheckovAdapter
 from app.scanners.grype import GrypeAdapter
+from app.scanners.osv import OsvAdapter
 from app.scanners.semgrep import SemgrepAdapter
 from app.scanners.syft import SyftAdapter
 from app.scanners.trivy import TrivyAdapter
@@ -227,6 +228,13 @@ def test_every_registered_scanner_implements_real_contained_arguments():
         args = adapter.runtime_arguments()
         assert args != ("--version",), f"{name} still uses version-only runtime_arguments"
         assert "--version" not in args, f"{name} runtime_arguments must execute analysis, not --version"
+
+
+def test_osv_uses_v2_offline_vulnerability_flag():
+    args = OsvAdapter().runtime_arguments()
+
+    assert "--offline-vulnerabilities" in args
+    assert "--experimental-offline-vulnerabilities" not in args
 
 
 def test_contained_result_records_the_image_digest_that_ran(tmp_path: Path):

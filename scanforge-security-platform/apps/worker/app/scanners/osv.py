@@ -33,7 +33,7 @@ class OsvAdapter(ScannerAdapter):
     def runtime_arguments(self) -> tuple[str, ...]:
         return (
             "scan",
-            "--experimental-offline-vulnerabilities",
+            "--offline-vulnerabilities",
             "--no-ignore",
             "--format",
             "json",
@@ -177,7 +177,7 @@ class OsvAdapter(ScannerAdapter):
             extra_flags: list[str] = []
             local_db_dir = os.environ.get("OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY")
             if local_db_dir:
-                extra_flags.extend(["--experimental-offline-vulnerabilities", "--no-ignore"])
+                extra_flags.extend(["--offline-vulnerabilities", "--no-ignore"])
             cmd = [
                 self.binary_name,
                 *extra_flags,
