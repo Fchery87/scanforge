@@ -13,6 +13,26 @@ from app.scanners.syft import SyftAdapter
 from app.scanners.trivy import TrivyAdapter
 
 
+def test_trivy_sanitizes_a_read_only_scanner_output_file(monkeypatch, tmp_path: Path):
+    adapter = TrivyAdapter()
+    monkeypatch.setattr(adapter, "get_version", lambda: "0.69.3")
+    output_file = tmp_path / "scanner-results.json"
+    output_file.write_text('{"SchemaVersion":2,"Results":[]}')
+    output_file.chmod(0o444)
+    tmp_path.chmod(0o1777)
+
+    result = adapter._parse_output_file(
+        output_file,
+        exit_code=0,
+        timed_out=False,
+        duration_ms=1,
+        stderr="",
+    )
+
+    assert result.success is True
+    assert output_file.read_text() == '{"SchemaVersion":2,"Results":[]}'
+
+
 def test_checkov_adapter_uses_stdout_json_and_writes_artifact(monkeypatch, tmp_path: Path):
     adapter = CheckovAdapter()
     stdout_payload = json.dumps(
@@ -181,6 +201,7 @@ def test_grype_normalizer_handles_list_output():
 
 def test_incomplete_contained_scanner_adapter_fails_explicitly(tmp_path: Path):
     import pytest
+
     from app.scanners.base import ScannerAdapter, ScannerResult
 
     class IncompleteAdapter(ScannerAdapter):

@@ -6,7 +6,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from app.scanners.base import ScannerAdapter, ScannerResult
+from app.scanners.base import ScannerAdapter, ScannerResult, write_sanitized_output
 from app.security.proc_env import build_contained_env
 from app.security.secret_evidence import sanitize_scanner_output
 
@@ -114,7 +114,7 @@ class CheckovAdapter(ScannerAdapter):
                 )
             )
         sanitized = sanitize_scanner_output(self.name, parsed)
-        output_file.write_text(json.dumps(sanitized, indent=2))
+        write_sanitized_output(output_file, json.dumps(sanitized, indent=2))
         ok = exit_code in (0, 1) or bool(sanitized)
         return self._apply_provenance(
             ScannerResult(

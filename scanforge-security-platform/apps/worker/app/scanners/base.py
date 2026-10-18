@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from tempfile import mkdtemp
+from tempfile import NamedTemporaryFile, mkdtemp
 from typing import Any
 
 from app.security.proc_env import build_contained_env
@@ -17,6 +17,26 @@ from app.security.proc_env import build_contained_env
 DEFAULT_SCANNER_MANIFEST_PATH = Path("/opt/scanner-manifest.json")
 MAX_SCANNER_DB_AGE = timedelta(days=7)
 CURRENT_SCANNER_PARSER_VERSION = "2026-10-parser.v1"
+
+
+def write_sanitized_output(output_file: Path, content: str) -> None:
+    """Replace scanner-owned output with host-owned sanitized content."""
+    temporary_path: Path | None = None
+    try:
+        with NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            prefix=f".{output_file.name}.",
+            dir=output_file.parent,
+            delete=False,
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+            temporary.write(content)
+        os.replace(temporary_path, output_file)
+        temporary_path = None
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
 
 
 @dataclass
