@@ -12,10 +12,10 @@ make private-beta-gate-local GATE_ARGS='--output /tmp/scanforge-beta-local'
 
 The gate runs API and worker lint and tests. It checks web lint, TypeScript, generated OpenAPI and web contracts, both web test suites, and a production webpack build. It also validates one migration head and audits dependencies. Python audits skip the local editable ScanForge packages and reject any reported dependency vulnerability. The web audit rejects high and critical vulnerabilities.
 
-To run the scanner integration, build the scanner image and point the gate at its immutable local image ID. The image build downloads scanner databases and excludes worker code, tests, and virtual environments from the Docker build context.
+To run the scanner integration in a 32 GB disposable Codespace, build a test-only scanner image with the PyPI OSV database. The real-scanner fixture exercises PyPI dependencies. This reduced database image is for verification only and must not be deployed. Release builds omit the build argument and include all OSV ecosystems. The image excludes worker code, tests, and virtual environments from the Docker build context.
 
 ```sh
-docker build -f apps/worker/Dockerfile.scanners -t scanforge-scanners:local apps/worker
+docker build --build-arg OSV_ECOSYSTEMS=PyPI -f apps/worker/Dockerfile.scanners -t scanforge-scanners:local apps/worker
 export SCANNER_IMAGE="$(docker image inspect scanforge-scanners:local --format '{{.Id}}')"
 ```
 

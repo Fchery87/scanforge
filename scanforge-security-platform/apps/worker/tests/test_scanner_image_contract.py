@@ -53,6 +53,8 @@ def test_scanner_image_downloads_osv_offline_databases():
 
     assert "GRYPE_DB_CACHE_DIR=/opt/scanner-db/grype grype db update" in dockerfile
     assert "GRYPE_DB_ROOT_DIR" not in dockerfile
+    assert "ARG OSV_ECOSYSTEMS=all" in dockerfile
+    assert '"db_ecosystems": pathlib.Path("/tmp/osv-selected-ecosystems.txt").read_text().splitlines()' in dockerfile
     assert "https://osv-vulnerabilities.storage.googleapis.com/ecosystems.txt" in dockerfile
     assert 'encoded_ecosystem="$(printf \'%s\' "$ecosystem" | jq -sRr @uri)"' in dockerfile
     assert "https://osv-vulnerabilities.storage.googleapis.com/${encoded_ecosystem}/all.zip" in dockerfile

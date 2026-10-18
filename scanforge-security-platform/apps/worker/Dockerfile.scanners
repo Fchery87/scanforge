@@ -9,6 +9,8 @@ ARG CHECKOV_VERSION=3.2.513
 ARG SYFT_VERSION=1.42.3
 ARG GRYPE_VERSION=0.110.0
 ARG OSV_SCANNER_VERSION=2.3.3
+# "all" is the release-image default. A test-only build may select a subset.
+ARG OSV_ECOSYSTEMS=all
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl git jq tar \
@@ -50,8 +52,13 @@ RUN mkdir -p /opt/scanner-db/trivy /opt/scanner-db/grype /opt/scanner-db/osv/osv
     && curl --fail --location --silent --show-error \
       https://osv-vulnerabilities.storage.googleapis.com/ecosystems.txt -o /tmp/osv-ecosystems.txt \
     && tr -d '\r' < /tmp/osv-ecosystems.txt > /tmp/osv-ecosystems-clean.txt \
+    && : > /tmp/osv-selected-ecosystems.txt \
     && while IFS= read -r ecosystem; do \
       [ -n "$ecosystem" ] || continue; \
+      if [ "$OSV_ECOSYSTEMS" != "all" ]; then \
+        case ",$OSV_ECOSYSTEMS," in *,"$ecosystem",*) ;; *) continue ;; esac; \
+      fi; \
+      echo "$ecosystem" >> /tmp/osv-selected-ecosystems.txt; \
       encoded_ecosystem="$(printf '%s' "$ecosystem" | jq -sRr @uri)"; \
       mkdir -p "/opt/scanner-db/osv/osv-scanner/$ecosystem"; \
       curl --fail --location --silent --show-error --retry 3 \
@@ -82,7 +89,7 @@ manifest = { \
     "checkov": {"scanner_version": "'"$CHECKOV_VERSION"'", "parser_version": "2026-10-parser.v1", "db_backed": False}, \
     "syft": {"scanner_version": "'"$SYFT_VERSION"'", "parser_version": "2026-10-parser.v1", "db_backed": False}, \
     "grype": {"scanner_version": "'"$GRYPE_VERSION"'", "parser_version": "2026-10-parser.v1", "db_backed": True, "db_published_at": now, "db_digest": os.environ["GRYPE_DB_DIGEST"]}, \
-    "osv": {"scanner_version": "'"$OSV_SCANNER_VERSION"'", "parser_version": "2026-10-parser.v1", "db_backed": True, "db_published_at": now, "db_digest": os.environ["OSV_DB_DIGEST"]} \
+    "osv": {"scanner_version": "'"$OSV_SCANNER_VERSION"'", "parser_version": "2026-10-parser.v1", "db_backed": True, "db_published_at": now, "db_digest": os.environ["OSV_DB_DIGEST"], "db_ecosystems": pathlib.Path("/tmp/osv-selected-ecosystems.txt").read_text().splitlines()} \
   } \
 }; \
 pathlib.Path("/opt/scanner-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")' \
