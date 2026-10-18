@@ -38,8 +38,8 @@ RUN trivy --version | grep -F "Version: ${TRIVY_VERSION}" \
     && gitleaks version | grep -F "${GITLEAKS_VERSION}" \
     && semgrep --version | grep -Fx "${SEMGREP_VERSION}" \
     && checkov --version | grep -Fx "${CHECKOV_VERSION}" \
-    && syft version | grep -F "Version: ${SYFT_VERSION}" \
-    && grype version | grep -F "Version: ${GRYPE_VERSION}" \
+    && syft version | awk -v expected="${SYFT_VERSION}" '$1 == "Version:" && $2 == expected { found = 1 } END { exit !found }' \
+    && grype version | awk -v expected="${GRYPE_VERSION}" '$1 == "Version:" && $2 == expected { found = 1 } END { exit !found }' \
     && osv-scanner --version | grep -F "${OSV_SCANNER_VERSION}"
 
 COPY app/scanners/rules/ /opt/scanner-rules/
