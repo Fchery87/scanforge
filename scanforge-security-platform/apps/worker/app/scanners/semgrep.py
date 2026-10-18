@@ -47,9 +47,7 @@ class SemgrepAdapter(ScannerAdapter):
     def runtime_arguments(self) -> tuple[str, ...]:
         rules_target = os.environ.get(
             "SEMGREP_CONTAINER_RULES_PATH",
-            str(CONTAINER_SEMGREP_RULES_PATH)
-            if CONTAINER_SEMGREP_RULES_PATH.exists()
-            else str(self.local_rules_path()),
+            str(CONTAINER_SEMGREP_RULES_PATH),
         )
         return (
             "scan",

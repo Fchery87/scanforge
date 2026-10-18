@@ -230,6 +230,14 @@ def test_every_registered_scanner_implements_real_contained_arguments():
         assert "--version" not in args, f"{name} runtime_arguments must execute analysis, not --version"
 
 
+def test_semgrep_contained_scan_uses_rules_from_scanner_image(monkeypatch):
+    monkeypatch.delenv("SEMGREP_CONTAINER_RULES_PATH", raising=False)
+
+    args = SemgrepAdapter().runtime_arguments()
+
+    assert args[args.index("--config") + 1] == "/opt/scanner-rules/semgrep-rules.yml"
+
+
 def test_osv_uses_v2_offline_vulnerability_flag():
     args = OsvAdapter().runtime_arguments()
 
