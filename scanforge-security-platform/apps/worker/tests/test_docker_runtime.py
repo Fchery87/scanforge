@@ -32,6 +32,7 @@ def test_docker_runtime_requires_digest_and_builds_contained_command(tmp_path):
 
     assert command[:3] == ["docker", "run", "--rm"]
     assert command[command.index("--name") + 1].startswith("scanforge-scan-")
+    assert command[command.index("--env") + 1] == "HOME=/tmp"
     assert "65532:65532" in command
     assert "--read-only" in command
     assert "--network=none" in command

@@ -48,6 +48,8 @@ class DockerScanRuntime:
             container_name or self.new_container_name(),
             "--user",
             "65532:65532",
+            "--env",
+            "HOME=/tmp",
             "--read-only",
             "--network=none",
             "--cap-drop",
