@@ -46,7 +46,7 @@ COPY app/scanners/rules/ /opt/scanner-rules/
 
 RUN mkdir -p /opt/scanner-db/trivy /opt/scanner-db/grype /opt/scanner-db/osv/osv-scanner /workspace/source /workspace/output \
     && trivy image --download-db-only --cache-dir /opt/scanner-db/trivy \
-    && grype db update --db-root-dir /opt/scanner-db/grype \
+    && GRYPE_DB_CACHE_DIR=/opt/scanner-db/grype grype db update \
     && curl --fail --location --silent --show-error \
       https://osv-vulnerabilities.storage.googleapis.com/ecosystems.txt -o /tmp/osv-ecosystems.txt \
     && tr -d '\r' < /tmp/osv-ecosystems.txt > /tmp/osv-ecosystems-clean.txt \
@@ -91,7 +91,7 @@ pathlib.Path("/opt/scanner-manifest.json").write_text(json.dumps(manifest, inden
     && chmod -R a+rX /opt/scanner-db /opt/scanner-rules /opt/scanner-manifest.json
 
 ENV TRIVY_CACHE_DIR=/opt/scanner-db/trivy \
-    GRYPE_DB_ROOT_DIR=/opt/scanner-db/grype \
+    GRYPE_DB_CACHE_DIR=/opt/scanner-db/grype \
     OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY=/opt/scanner-db/osv \
     TRIVY_SKIP_DB_UPDATE=true \
     TRIVY_OFFLINE_SCAN=true \

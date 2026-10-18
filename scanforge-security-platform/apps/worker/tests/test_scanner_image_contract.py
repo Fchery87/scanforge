@@ -51,6 +51,8 @@ def test_scanner_image_build_versions_match_the_manifest_fixture():
 def test_scanner_image_downloads_osv_offline_databases():
     dockerfile = (Path(__file__).resolve().parents[1] / "Dockerfile.scanners").read_text()
 
+    assert "GRYPE_DB_CACHE_DIR=/opt/scanner-db/grype grype db update" in dockerfile
+    assert "GRYPE_DB_ROOT_DIR" not in dockerfile
     assert "https://osv-vulnerabilities.storage.googleapis.com/ecosystems.txt" in dockerfile
     assert 'encoded_ecosystem="$(printf \'%s\' "$ecosystem" | jq -sRr @uri)"' in dockerfile
     assert "https://osv-vulnerabilities.storage.googleapis.com/${encoded_ecosystem}/all.zip" in dockerfile
