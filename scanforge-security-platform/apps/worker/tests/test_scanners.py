@@ -238,6 +238,14 @@ def test_semgrep_contained_scan_uses_rules_from_scanner_image(monkeypatch):
     assert args[args.index("--config") + 1] == "/opt/scanner-rules/semgrep-rules.yml"
 
 
+def test_grype_contained_scan_uses_config_from_scanner_image(monkeypatch):
+    monkeypatch.delenv("GRYPE_CONTAINER_CONFIG_PATH", raising=False)
+
+    args = GrypeAdapter().runtime_arguments()
+
+    assert args[args.index("-c") + 1] == "/opt/scanner-rules/grype-config.yaml"
+
+
 def test_osv_uses_v2_offline_vulnerability_flag():
     args = OsvAdapter().runtime_arguments()
 

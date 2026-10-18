@@ -53,9 +53,7 @@ class GrypeAdapter(ScannerAdapter):
     def runtime_arguments(self) -> tuple[str, ...]:
         config_target = os.environ.get(
             "GRYPE_CONTAINER_CONFIG_PATH",
-            str(CONTAINER_GRYPE_CONFIG_PATH)
-            if CONTAINER_GRYPE_CONFIG_PATH.exists()
-            else str(self.local_config_path()),
+            str(CONTAINER_GRYPE_CONFIG_PATH),
         )
         return (
             "--quiet",
