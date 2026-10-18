@@ -89,8 +89,6 @@ def make_source_readable_for_scanner(source_dir: Path) -> None:
 def prepare_scanner_output_directory(output_dir: Path) -> Path:
     """Prepare a writable output directory for container UID 65532:65532."""
     output_dir.mkdir(parents=True, exist_ok=True)
-    if output_dir.parent.exists():
-        output_dir.parent.chmod(0o711)
     output_dir.chmod(0o1777)
     return output_dir
 

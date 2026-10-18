@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from app.clients.r2 import R2Client
+from app.runtime.base import prepare_scanner_output_directory
 from app.runtime.docker import DockerScanRuntime
 from app.runtime.local import LocalScanRuntime
 from app.runtime.models import ScanRuntimeRequest, ScanRuntimeResult
@@ -22,6 +23,14 @@ from app.services.scan_orchestrator import ScanOrchestrator
 from app.services.scan_pipeline.context import ScanContext
 
 IMAGE = "registry.example/scanner@sha256:" + "a" * 64
+
+
+def test_scanner_output_setup_does_not_change_shared_temp_permissions(tmp_path):
+    shared_parent_mode = tmp_path.stat().st_mode & 0o777
+
+    prepare_scanner_output_directory(tmp_path / "output")
+
+    assert tmp_path.stat().st_mode & 0o777 == shared_parent_mode
 
 
 def make_request(tmp_path: Path, **overrides) -> ScanRuntimeRequest:
