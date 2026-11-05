@@ -1,5 +1,9 @@
-import hashlib
 import re
+
+from app.normalizers.dependency_identity import (
+    DEPENDENCY_FINGERPRINT_VERSION,
+    compute_dependency_fingerprint,
+)
 
 SEVERITY_MAP = {
     "CRITICAL": "critical",
@@ -16,21 +20,6 @@ def _normalize_repo_path(path: str | None) -> str | None:
     cleaned = str(path).strip()
     cleaned = re.sub(r"^/workspace/source/?", "", cleaned)
     return cleaned or None
-
-
-def compute_vulnerability_fingerprint(
-    package_name: str,
-    installed_version: str,
-    advisory_id: str,
-    repo_id: str,
-) -> str:
-    components = [
-        package_name.lower(),
-        installed_version,
-        advisory_id,
-        repo_id,
-    ]
-    return hashlib.sha256("|".join(components).encode()).hexdigest()
 
 
 def _extract_fixed_version_from_vuln(vuln: dict, package_name: str) -> str | None:
@@ -175,11 +164,13 @@ def _build_osv_finding(
 
     severity = _get_severity(vuln)
     description = vuln.get("summary", "") or vuln.get("details", "")
-    fingerprint = compute_vulnerability_fingerprint(
+    fingerprint = compute_dependency_fingerprint(
+        repository_id=repository_id,
+        ecosystem=ecosystem,
         package_name=package_name,
         installed_version=installed_version,
         advisory_id=vuln_id,
-        repo_id=repository_id,
+        scanner="osv",
     )
 
     instance = {
@@ -197,6 +188,7 @@ def _build_osv_finding(
         "title": f"Vulnerable dependency: {package_name}@{installed_version}",
         "description": description,
         "canonical_fingerprint": fingerprint,
+        "fingerprint_version": DEPENDENCY_FINGERPRINT_VERSION,
         "primary_scanner": "osv",
         "confidence_score": 0.9,
         "fixed_version": fixed_version,

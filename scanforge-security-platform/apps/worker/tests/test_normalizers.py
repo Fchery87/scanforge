@@ -217,11 +217,15 @@ def test_semgrep_keeps_severity_and_confidence_separate():
     assert findings[0]["metadata_json"]["severity_source"] == "semgrep"
 
 
-def test_normalization_stage_preserves_conflicting_provider_values():
+def test_normalization_stage_preserves_conflicting_provider_values(monkeypatch):
+    from app.normalizers import dependency_identity
     from app.scanners.base import ScannerResult
     from app.services.scan_pipeline.context import ScanContext
     from app.services.scan_pipeline.normalization import NormalizationStage
 
+    # Scanners merge only through an explicit equivalence entry (ADR-014, #39).
+    monkeypatch.setitem(dependency_identity.SCANNER_EQUIVALENCE, "trivy", "shared")
+    monkeypatch.setitem(dependency_identity.SCANNER_EQUIVALENCE, "grype", "shared")
     context = ScanContext(
         scan_id="scan-1",
         organization_id="org-1",
@@ -263,7 +267,7 @@ def test_normalization_stage_preserves_conflicting_provider_values():
                         "artifact": {
                             "name": "requests",
                             "version": "2.19.0",
-                            "type": "python",
+                            "type": "pip",
                             "locations": [{"path": "requirements.txt"}],
                         },
                         "vulnerability": {

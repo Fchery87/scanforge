@@ -175,7 +175,7 @@ async def _seed_repo(session):
     return str(repo_id), str(project_id), user_id
 
 
-async def _seed_finding(session, repo_id, project_id, fingerprint, *, status="open"):
+async def _seed_finding(session, repo_id, project_id, fingerprint, *, status="open", fingerprint_version="fp.v3"):
     now = datetime.now(UTC)
     finding = Finding(
         project_id=project_id,
@@ -186,6 +186,7 @@ async def _seed_finding(session, repo_id, project_id, fingerprint, *, status="op
         title="t",
         description=None,
         canonical_fingerprint=fingerprint,
+        fingerprint_version=fingerprint_version,
         primary_scanner="trivy",
         first_seen_at=now,
         last_seen_at=now,
@@ -230,7 +231,9 @@ async def _add_runs(session, scan_id, runs):
         await session.flush()
 
 
-async def _observe(session, repo_id, project_id, fingerprint, *, branch=MAIN, commit, runs=OK_RUNS):
+async def _observe(
+    session, repo_id, project_id, fingerprint, *, branch=MAIN, commit, runs=OK_RUNS, fingerprint_version="fp.v3"
+):
     """Positive evidence: a comparable scan that reports the finding."""
     service = FindingService(session)
     scan = await _seed_scan(session, repo_id, project_id, branch=branch, commit=commit)
@@ -245,6 +248,7 @@ async def _observe(session, repo_id, project_id, fingerprint, *, branch=MAIN, co
                 "severity": "high",
                 "title": "t",
                 "canonical_fingerprint": fingerprint,
+                "fingerprint_version": fingerprint_version,
                 "primary_scanner": "trivy",
                 "confidence_score": 0.9,
             }
@@ -568,6 +572,43 @@ async def test_finding_without_recorded_presence_analyzer_is_not_closed(db_sessi
     assert await _absence(service, repo_id, project_id, commit="a" * 40) == 0
     assert await _absence(service, repo_id, project_id, commit="b" * 40) == 0
     assert (await _reload(db_session, finding)).status == "open"
+
+
+@pytest.mark.asyncio
+async def test_fp_v2_dependency_finding_is_preserved_and_not_closed_by_new_policy_absence(db_session):
+    """P1.5 (#39): the fp.v3 scan reports new identities, so the fp.v2 row is absent.
+
+    That absence comes from a policy change, not a fix: the finding keeps its
+    state and the uncredited absence is explained.
+    """
+    repo_id, project_id, _ = await _seed_repo(db_session)
+    fingerprint = "fp2-legacy-dependency"
+    finding = await _seed_finding(db_session, repo_id, project_id, fingerprint, fingerprint_version="fp.v2")
+    service = await _observe(
+        db_session, repo_id, project_id, fingerprint, commit="0" * 40, fingerprint_version="fp.v2"
+    )
+
+    assert await _absence(service, repo_id, project_id, commit="a" * 40) == 0
+    assert await _absence(service, repo_id, project_id, commit="b" * 40) == 0
+    assert await _absence(service, repo_id, project_id, commit="c" * 40) == 0
+
+    after = await _reload(db_session, finding)
+    assert after.status == "open"
+    assert after.fingerprint_version == "fp.v2"
+    events = [e for e in await _events(db_session, finding) if e.event_type == "absence_not_credited"]
+    assert len(events) == 1
+    assert events[0].metadata_json["baseline"]["fingerprint_version"] == "fp.v2"
+    assert events[0].metadata_json["current"]["fingerprint_version"] == "fp.v3"
+
+
+@pytest.mark.asyncio
+async def test_upsert_records_the_candidate_fingerprint_version(db_session):
+    repo_id, project_id, _ = await _seed_repo(db_session)
+    await _observe(db_session, repo_id, project_id, "fp3-new-dependency", commit="0" * 40)
+
+    result = await db_session.execute(select(Finding).where(Finding.canonical_fingerprint == "fp3-new-dependency"))
+    row = result.scalar_one()
+    assert row.fingerprint_version == "fp.v3"
 
 
 @pytest.mark.asyncio

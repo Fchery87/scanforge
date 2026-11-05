@@ -23,6 +23,15 @@ class CanonicalFindingReference(BaseModel):
 
 CURRENT_FINGERPRINT_VERSION = "fp.v2"
 
+# Categories whose identity policy has moved past CURRENT_FINGERPRINT_VERSION.
+# A finding recorded under an older policy is never comparable with analysis
+# under the category's current one (ADR-014).
+CATEGORY_FINGERPRINT_VERSIONS = {"vulnerability": "fp.v3"}
+
+
+def current_fingerprint_version(category: str | None) -> str:
+    return CATEGORY_FINGERPRINT_VERSIONS.get(category or "", CURRENT_FINGERPRINT_VERSION)
+
 
 class CanonicalFindingCandidate(BaseModel):
     model_config = ConfigDict(extra="forbid")
