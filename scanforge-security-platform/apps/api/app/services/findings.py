@@ -21,7 +21,7 @@ from app.db.models import (
     ScannerRun,
     User,
 )
-from app.schemas.canonical_findings import CanonicalFindingCandidate
+from app.schemas.canonical_findings import CURRENT_FINGERPRINT_VERSION, CanonicalFindingCandidate
 from app.schemas.findings import (
     FindingStats,
 )
@@ -29,10 +29,13 @@ from app.services.access_policies import FINDING_MUTATION_ROLES
 from app.services.audit_logs import AuditLogService
 from app.services.finding_lifecycle import (
     ABSENCE_THRESHOLD,
+    ANALYZER_BLOCK_KEY,
     POLICY_VERSION,
     REOPEN_CHECKPOINT_KEY,
     AbsenceBlockReason,
     absence_transition_target,
+    analyzer_comparability,
+    analyzer_signature,
     branch_obligation_counts,
     evaluate_scan_absence_evidence,
     observed_branches,
@@ -483,7 +486,77 @@ class FindingService:
             return True
         return any(status != ScanStatus.COMPLETED.value for status in statuses)
 
-    async def _apply_branch_absence(self, finding, scan, branch: str, present: set[str]) -> int:
+    async def _scanner_signatures_for_scan(self, scan_id: str) -> dict[str, dict]:
+        """Analyzer identity of every scanner that ran in this scan."""
+        result = await self.db.execute(select(ScannerRun).where(ScannerRun.scan_id == scan_id))
+        return {
+            run.scanner_name: analyzer_signature(
+                scanner_name=run.scanner_name,
+                scanner_version=run.scanner_version,
+                parser_version=run.parser_version,
+                rules_digest=run.rules_digest,
+                fingerprint_version=CURRENT_FINGERPRINT_VERSION,
+            )
+            for run in result.scalars().all()
+        }
+
+    async def _last_presence_signature(self, finding, branch: str) -> dict | None:
+        """Analyzer identity at the finding's most recent presence on this branch."""
+        if not finding.primary_scanner:
+            return None
+        result = await self.db.execute(
+            select(ScannerRun)
+            .join(FindingInstance, FindingInstance.scan_id == ScannerRun.scan_id)
+            .join(Scan, Scan.id == FindingInstance.scan_id)
+            .where(
+                FindingInstance.finding_id == finding.id,
+                Scan.branch_name == branch,
+                ScannerRun.scanner_name == finding.primary_scanner,
+            )
+            .order_by(Scan.created_at.desc())
+            .limit(1)
+        )
+        run = result.scalars().first()
+        if run is None:
+            return None
+        return analyzer_signature(
+            scanner_name=run.scanner_name,
+            scanner_version=run.scanner_version,
+            parser_version=run.parser_version,
+            rules_digest=run.rules_digest,
+            fingerprint_version=finding.fingerprint_version,
+        )
+
+    def _record_uncredited_absence(self, finding, scan, branch, reason, baseline, current) -> None:
+        """Explain a non-credited absence once per (branch, reason, current analyzer)."""
+        metadata = dict(finding.metadata_json or {})
+        blocks = dict(metadata.get(ANALYZER_BLOCK_KEY) or {})
+        marker = {"reason": reason.value, "current": current}
+        if blocks.get(branch) == marker:
+            return
+        blocks[branch] = marker
+        metadata[ANALYZER_BLOCK_KEY] = blocks
+        finding.metadata_json = metadata
+        self.db.add(
+            FindingEvent(
+                finding_id=finding.id,
+                event_type="absence_not_credited",
+                actor_user_id=None,
+                metadata_json={
+                    "scan_id": str(scan.id),
+                    "commit_sha": str(scan.commit_sha),
+                    "branch": branch,
+                    "policy": POLICY_VERSION,
+                    "blocked_by": [reason.value],
+                    "baseline": baseline,
+                    "current": current,
+                },
+            )
+        )
+
+    async def _apply_branch_absence(
+        self, finding, scan, branch: str, present: set[str], current_signatures: dict[str, dict]
+    ) -> int:
         """Record one branch-local absence and transition when eligible.
 
         Returns 1 when the finding state changed, else 0.
@@ -492,15 +565,22 @@ class FindingService:
             return 0
         metadata = dict(finding.metadata_json or {})
         known_branches = observed_branches(metadata)
-        if not known_branches:
-            # Unknown branch provenance blocks auto-closure.
-            return 0
         if branch not in known_branches:
-            # Absence on a branch where the finding was never seen is
-            # ignored for this finding.
+            # Unknown branch provenance (no observed branches) blocks
+            # auto-closure, and an absence on a branch where the finding was
+            # never seen is ignored for this finding.
             return 0
         if scan_precedes_checkpoint(scan.created_at, metadata.get(REOPEN_CHECKPOINT_KEY)):
             # Scan issued at/before a manual reopen decision.
+            return 0
+
+        baseline = await self._last_presence_signature(finding, branch)
+        current = current_signatures.get(finding.primary_scanner or "")
+        block = analyzer_comparability(baseline, current)
+        if block is not None:
+            # An analyzer difference may explain the absence; it is not
+            # remediation evidence (ADR-014).
+            self._record_uncredited_absence(finding, scan, branch, block, baseline, current)
             return 0
 
         metadata, counted = record_qualifying_absence(
@@ -590,13 +670,14 @@ class FindingService:
         if await self._scan_has_incomplete_scanner_evidence(str(scan.id)):
             return 0
 
+        current_signatures = await self._scanner_signatures_for_scan(str(scan.id))
         present = await self._scan_persisted_fingerprints(str(scan.id))
         present = present | set(seen_fingerprints or [])
 
         branch = scan.branch_name
         updated = 0
         for finding in await self._list_open_findings_for_repository(repository_id):
-            updated += await self._apply_branch_absence(finding, scan, branch, present)
+            updated += await self._apply_branch_absence(finding, scan, branch, present, current_signatures)
 
         if updated:
             if commit:

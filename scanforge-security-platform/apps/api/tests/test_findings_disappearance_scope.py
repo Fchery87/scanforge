@@ -88,7 +88,9 @@ FULL_HEALTH = {
 }
 MAIN = "refs/heads/main"
 DEV = "refs/heads/dev"
-OK_RUNS = (("trivy", "completed"), ("gitleaks", "completed"))
+TRIVY_V1 = {"scanner_version": "0.56.2", "parser_version": "2026-10-parser.v1", "rules_digest": None}
+GITLEAKS_V1 = {"scanner_version": "8.21.2", "parser_version": "2026-10-parser.v1", "rules_digest": "sha256:gl-rules-a"}
+OK_RUNS = (("trivy", "completed", TRIVY_V1), ("gitleaks", "completed", GITLEAKS_V1))
 
 
 def _health(**overrides):
@@ -212,10 +214,27 @@ async def _seed_scan(session, repo_id, project_id, *, branch=MAIN, commit, scan_
     return scan
 
 
-async def _observe(session, repo_id, project_id, fingerprint, *, branch=MAIN, commit):
+async def _add_runs(session, scan_id, runs):
+    """Committed scanner-run evidence, as completion persists it before findings."""
+    for name, status, signature in runs:
+        session.add(
+            ScannerRun(
+                id=str(uuid4()),
+                scan_id=str(scan_id),
+                scanner_name=name,
+                status=ScanStatus(status),
+                **signature,
+            )
+        )
+        # One row per flush keeps inserts single-row on both dialects.
+        await session.flush()
+
+
+async def _observe(session, repo_id, project_id, fingerprint, *, branch=MAIN, commit, runs=OK_RUNS):
     """Positive evidence: a comparable scan that reports the finding."""
     service = FindingService(session)
     scan = await _seed_scan(session, repo_id, project_id, branch=branch, commit=commit)
+    await _add_runs(session, scan.id, runs)
     await service.upsert_from_scan(
         scan_id=str(scan.id),
         repository_id=repo_id,
@@ -254,14 +273,7 @@ async def _absence(
     scan = await _seed_scan(
         session, repo_id, project_id, branch=branch, commit=commit, created_at=created_at
     )
-    for name, status in run_statuses:
-        session.add(
-            ScannerRun(
-                id=str(uuid4()), scan_id=str(scan.id), scanner_name=name, status=ScanStatus(status)
-            )
-        )
-        # One row per flush keeps inserts single-row on both dialects.
-        await session.flush()
+    await _add_runs(session, scan.id, run_statuses)
     return await service.mark_not_observed_after_scan(
         repository_id=repo_id,
         scan_id=str(scan.id),
@@ -293,7 +305,7 @@ async def test_non_comparable_scan_does_not_disappear_finding(db_session):
         project_id,
         commit="c" * 40,
         summary=_health(complete=False, failed=["gitleaks"]),
-        run_statuses=(("trivy", "completed"), ("gitleaks", "failed")),
+        run_statuses=(("trivy", "completed", TRIVY_V1), ("gitleaks", "failed", GITLEAKS_V1)),
     )
 
     assert updated == 0
@@ -488,6 +500,73 @@ async def test_scan_without_committed_scanner_runs_is_ineligible(db_session):
     updated = await _absence(service, repo_id, project_id, commit="a" * 40, run_statuses=())
 
     assert updated == 0
+    assert (await _reload(db_session, finding)).status == "open"
+
+
+TRIVY_V2 = {**TRIVY_V1, "scanner_version": "0.57.0"}
+UPGRADED_RUNS = (("trivy", "completed", TRIVY_V2), ("gitleaks", "completed", GITLEAKS_V1))
+
+
+@pytest.mark.asyncio
+async def test_analyzer_upgrade_absences_never_close_finding(db_session):
+    """P1.1 (#33): an analyzer change is not remediation evidence (ADR-014)."""
+    repo_id, project_id, _ = await _seed_repo(db_session)
+    fingerprint = "fp-analyzer-upgrade"
+    finding = await _seed_finding(db_session, repo_id, project_id, fingerprint)
+    service = await _observe(db_session, repo_id, project_id, fingerprint, commit="0" * 40)
+
+    assert await _absence(service, repo_id, project_id, commit="a" * 40, run_statuses=UPGRADED_RUNS) == 0
+    assert await _absence(service, repo_id, project_id, commit="b" * 40, run_statuses=UPGRADED_RUNS) == 0
+
+    after = await _reload(db_session, finding)
+    assert after.status == "open"
+    series = after.metadata_json["absence_series"][MAIN]["qualifying_absences"]
+    assert series == []
+
+
+@pytest.mark.asyncio
+async def test_uncredited_absence_is_explained_once_per_analyzer(db_session):
+    repo_id, project_id, _ = await _seed_repo(db_session)
+    fingerprint = "fp-analyzer-event"
+    finding = await _seed_finding(db_session, repo_id, project_id, fingerprint)
+    service = await _observe(db_session, repo_id, project_id, fingerprint, commit="0" * 40)
+
+    await _absence(service, repo_id, project_id, commit="a" * 40, run_statuses=UPGRADED_RUNS)
+    await _absence(service, repo_id, project_id, commit="b" * 40, run_statuses=UPGRADED_RUNS)
+
+    events = [e for e in await _events(db_session, finding) if e.event_type == "absence_not_credited"]
+    assert len(events) == 1
+    assert events[0].metadata_json["blocked_by"] == ["analyzer_not_comparable"]
+    assert events[0].metadata_json["baseline"]["scanner_version"] == "0.56.2"
+    assert events[0].metadata_json["current"]["scanner_version"] == "0.57.0"
+
+
+@pytest.mark.asyncio
+async def test_reobservation_under_new_analyzer_restores_credit(db_session):
+    repo_id, project_id, _ = await _seed_repo(db_session)
+    fingerprint = "fp-analyzer-rebaseline"
+    finding = await _seed_finding(db_session, repo_id, project_id, fingerprint)
+    service = await _observe(db_session, repo_id, project_id, fingerprint, commit="0" * 40)
+    await _absence(service, repo_id, project_id, commit="a" * 40, run_statuses=UPGRADED_RUNS)
+
+    await _observe(db_session, repo_id, project_id, fingerprint, commit="1" * 40, runs=UPGRADED_RUNS)
+    assert await _absence(service, repo_id, project_id, commit="b" * 40, run_statuses=UPGRADED_RUNS) == 1
+    assert await _absence(service, repo_id, project_id, commit="c" * 40, run_statuses=UPGRADED_RUNS) == 1
+    assert (await _reload(db_session, finding)).status == "fixed"
+
+
+@pytest.mark.asyncio
+async def test_finding_without_recorded_presence_analyzer_is_not_closed(db_session):
+    repo_id, project_id, _ = await _seed_repo(db_session)
+    fingerprint = "fp-legacy-presence"
+    finding = await _seed_finding(db_session, repo_id, project_id, fingerprint)
+    legacy_runs = (
+        ("trivy", "completed", {"scanner_version": None, "parser_version": None, "rules_digest": None}),
+    )
+    service = await _observe(db_session, repo_id, project_id, fingerprint, commit="0" * 40, runs=legacy_runs)
+
+    assert await _absence(service, repo_id, project_id, commit="a" * 40) == 0
+    assert await _absence(service, repo_id, project_id, commit="b" * 40) == 0
     assert (await _reload(db_session, finding)).status == "open"
 
 

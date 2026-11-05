@@ -34,7 +34,7 @@ Spec: [issue #32](https://github.com/Fchery87/scanforge/issues/32). Each slice i
 | ID | Task | Issues | Depends on | Pilot-blocking | Status | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | P0 | Documentation cleanup, ADR-018, this plan | — | — | yes | Done | Branch `docs/product-redirection`; [cleanup report](../reviews/2026-11-04-cleanup-report.md) |
-| P1.1 | Absence credit requires comparable analyzers (G1) | #33 | — | yes | Not started | |
+| P1.1 | Absence credit requires comparable analyzers (G1) | #33 | — | yes | Done (branch `fix/33-comparable-analysis-absence`, `ea4c26b` + fix commit) | Focused suites (Step 11): 57 passed, 1 skipped (PostgreSQL case, `R05_POSTGRES_URL` unset), 1 failed in isolation; the failure predates this work (#57). Full suite: 271 passed, 8 skipped (baseline 257 passed, 8 skipped). `ruff check app` clean. Step 12: the completion path commits not-credited/untransitioned absence metadata (`scan_completion.py` commits after the `commit=False` call); the `commit=True` path skips its commit when nothing transitions, reachable only via the uncalled `mark_not_observed_for_completed_scan` wrapper (latent, not fixed) |
 | P1.2 | Clone isolation and exact-SHA requirement (G4, G5) | #34 | — | yes | Not started | |
 | P1.3 | Verify carried-forward M07/M08 acceptance | #35 (M07), #36 (M08 fencing) | — | yes | Not started | |
 | P1.4 | Primary dependency engine evaluation | #37 | — | yes | Not started | |
@@ -827,7 +827,7 @@ Two design-partner repositories plus ScanForge, each with at least two weeks of 
 
 ## Open questions to resolve during execution
 
-1. Do counted-but-untransitioned absences reach the database in the completion path (P1.1 Step 12)?
+1. ~~Do counted-but-untransitioned absences reach the database in the completion path (P1.1 Step 12)?~~ Yes; see the P1.1 tracker row. The `commit=True` path's latent gap remains.
 2. Does the nested `scanforge-security-platform/.github/` Dependabot/Renovate configuration run at all? If not, move it to the Git root `.github/` in a separate change.
 3. B11 (`/findings/trend` shadowing) appears open; confirm with an assembled-router test and fix as a small independent slice.
 4. 19 harness stashes, about 25 stale branches and two prunable worktrees need a separate, approval-gated Git housekeeping inventory.
