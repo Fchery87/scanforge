@@ -318,3 +318,35 @@ async def test_execution_context_reports_non_fork_runs_as_trusted_heads(db_sessi
     )
 
     assert served["head_is_fork"] is False
+
+
+@pytest.mark.asyncio
+async def test_execution_context_exposes_pull_request_number_for_shadow_runs(db_session):
+    """#52: the worker gates framework review packs on pull-request runs only."""
+    scan, org_id = await _seed_scan(db_session)
+    scan.trigger_type = "pull_request"
+    scan.pull_request_number = 7
+    await db_session.commit()
+
+    served = await internal.get_scan_execution_context(
+        presented_identity=None,
+        scan_id=UUID(str(scan.id)),
+        principal=_principal(org_id),
+        db=db_session,
+    )
+
+    assert served["pull_request_number"] == 7
+
+
+@pytest.mark.asyncio
+async def test_execution_context_has_no_pull_request_number_for_branch_scans(db_session):
+    scan, org_id = await _seed_scan(db_session)
+
+    served = await internal.get_scan_execution_context(
+        presented_identity=None,
+        scan_id=UUID(str(scan.id)),
+        principal=_principal(org_id),
+        db=db_session,
+    )
+
+    assert served["pull_request_number"] is None

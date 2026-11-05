@@ -50,6 +50,7 @@ Server-side policy: [beta_capabilities.py](../apps/api/app/core/beta_capabilitie
 | Automatic default-branch push scans | Enabled | Via durable dispatch |
 | Finding triage, history, assignment | Enabled | |
 | PR review, diff scans | Disabled | Shadow review is the next milestone ([ADR-018](adr/ADR-018-developer-first-security-review-direction.md)) |
+| FastAPI review pack (`fastapi.v1`) | Shadow PR runs only | Detection-gated context strategy: retrieval of identity/organization-scope dependencies plus three low-confidence Semgrep authorization/tenant-scope questions. Not comprehensive detection; unsupported cases are listed in `UNSUPPORTED_CASES` in [fastapi_pack.py](../apps/worker/app/review_packs/fastapi_pack.py). Pack id, version and rules digest are recorded in the run summary and the Semgrep scanner run metadata |
 | Scheduled scans, exports, suppression rules | Disabled | Deferred |
 | Grades, numeric risk scores, policy enforcement | Disabled | Deferred |
 | AI assistance | Disabled | ADR-017 |

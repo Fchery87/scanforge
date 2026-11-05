@@ -19,6 +19,17 @@ class PersistenceStage:
         self.api_base_url = api_base_url
         self.worker_credential = worker_credential
 
+    @staticmethod
+    def _run_metadata(context: ScanContext, scanner_name: str, uploads_by_scanner: dict) -> dict:
+        metadata = dict(uploads_by_scanner.get(scanner_name) or {})
+        if scanner_name == "semgrep" and context.review_packs:
+            # Review-pack rules run inside the Semgrep run; record which pack versions it used.
+            metadata["review_packs"] = [
+                {"id": p["id"], "version": p["version"], "rules_digest": p["rules_digest"]}
+                for p in context.review_packs
+            ]
+        return metadata
+
     async def complete_scan(self, context: ScanContext) -> None:
         run_uploads_by_scanner = (context.artifact_uris or {}).get("scanner_runs") or {}
         async with httpx.AsyncClient() as client:
@@ -60,7 +71,7 @@ class PersistenceStage:
                                 (run_uploads_by_scanner.get(name) or {}).get("artifact_uri")
                                 or (run_uploads_by_scanner.get(name) or {}).get("raw_output_uri")
                             ),
-                            "metadata_json": dict(run_uploads_by_scanner.get(name) or {}),
+                            "metadata_json": self._run_metadata(context, name, run_uploads_by_scanner),
                         }
                         for name, result in context.scanner_results.items()
                     ],

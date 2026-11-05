@@ -677,6 +677,7 @@ async def get_scan_execution_context(
         "ancestry_status": ancestry_status,
         "commit_sha": scan.commit_sha,
         "head_is_fork": bool(getattr(scan, "head_is_fork", False)),
+        "pull_request_number": getattr(scan, "pull_request_number", None),
         "status": scan.status.value,
         "user_id": str(scan.requested_by_user_id) if scan.requested_by_user_id else None,
         "attempt_id": locked_scan.current_attempt_id,

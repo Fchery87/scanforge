@@ -21,6 +21,11 @@ class SemgrepAdapter(ScannerAdapter):
     binary_env_var = "SEMGREP_BINARY"
     db_backed = False
 
+    def __init__(self) -> None:
+        super().__init__()
+        # (local file, path relative to the rules root) for each active review pack (#52).
+        self.review_pack_rules: list[tuple[Path, Path]] = []
+
     def local_rules_path(self) -> Path:
         override = os.environ.get("SEMGREP_RULES_PATH")
         if override:
@@ -34,6 +39,17 @@ class SemgrepAdapter(ScannerAdapter):
         if rules_file.exists():
             return "sha256:" + hashlib.sha256(rules_file.read_bytes()).hexdigest()
         return super().default_rules_digest()
+
+    def resolve_provenance(self, *, now=None) -> dict:
+        provenance = super().resolve_provenance(now=now)
+        if self.review_pack_rules:
+            # Pack rules are part of the analyzer: a different rule set must never look comparable.
+            digests = sorted(
+                hashlib.sha256(local.read_bytes()).hexdigest() for local, _relative in self.review_pack_rules
+            )
+            combined = "|".join([str(provenance["rules_digest"] or ""), *digests])
+            provenance["rules_digest"] = "sha256:" + hashlib.sha256(combined.encode()).hexdigest()
+        return provenance
 
     def get_version(self) -> str:
         entry = self._read_manifest_entry()
@@ -49,6 +65,9 @@ class SemgrepAdapter(ScannerAdapter):
             "SEMGREP_CONTAINER_RULES_PATH",
             str(CONTAINER_SEMGREP_RULES_PATH),
         )
+        pack_configs: list[str] = []
+        for _local, relative in self.review_pack_rules:
+            pack_configs += ["--config", str(Path(rules_target).parent / relative)]
         return (
             "scan",
             "--json",
@@ -58,6 +77,7 @@ class SemgrepAdapter(ScannerAdapter):
             "1",
             "--config",
             rules_target,
+            *pack_configs,
             "--json-output",
             "/workspace/output/semgrep-results.json",
             "/workspace/source",
@@ -177,6 +197,7 @@ class SemgrepAdapter(ScannerAdapter):
         output_file = repo_path / "semgrep-results.json"
         try:
             config_arg = str(self.local_rules_path()) if self.local_rules_path().exists() else "auto"
+            pack_configs = [arg for local, _relative in self.review_pack_rules for arg in ("--config", str(local))]
             result = subprocess.run(
                 [
                     self.binary_name,
@@ -188,6 +209,7 @@ class SemgrepAdapter(ScannerAdapter):
                     "1",
                     "--config",
                     config_arg,
+                    *pack_configs,
                     "--json-output",
                     "semgrep-results.json",
                     str(repo_path),

@@ -305,6 +305,7 @@ class ScanOrchestrator:
             ancestry_status=data.get("ancestry_status") or "unknown",
             commit_sha=data.get("commit_sha"),
             head_is_fork=bool(data.get("head_is_fork", False)),
+            pull_request_number=data.get("pull_request_number"),
             user_id=data.get("user_id"),
             job_id=job.job_id,
             expected_scanners=data.get("expected_scanners"),
@@ -321,7 +322,9 @@ class ScanOrchestrator:
         completed = [n for n, r in context.scanner_results.items() if r.success]
         failed = [n for n, r in context.scanner_results.items() if not r.success]
         missing = [n for n in expected if n not in context.scanner_results]
+        review_packs = {"review_packs": list(context.review_packs)} if context.review_packs else {}
         return {
+            **review_packs,
             "finding_count": len(context.findings),
             "critical_count": context.critical_count,
             "high_count": context.high_count,

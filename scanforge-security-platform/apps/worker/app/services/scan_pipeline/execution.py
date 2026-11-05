@@ -14,6 +14,7 @@ import httpx
 
 from app.clients.r2 import R2Client
 from app.core.logging import get_logger
+from app.review_packs import detect_review_packs
 from app.runtime.base import (
     enforce_directory_quota,
     is_customer_runtime_environment,
@@ -242,6 +243,12 @@ class ScanExecutionStage:
     async def run_scanners(self, context: ScanContext, scan_type: str) -> dict:
         results: dict[str, ScannerResult] = {}
         scanner_names = scanners_for_scan_type(scan_type)
+        # Framework review packs contribute context to shadow PR analysis only (#52).
+        context.review_packs = []
+        active_packs = []
+        if getattr(context, "pull_request_number", None) is not None and context.repo_path is not None:
+            active_packs = detect_review_packs(context.repo_path)
+            context.review_packs = [pack.to_record() for pack in active_packs]
 
         async def run_single(scanner_name: str) -> tuple[str, ScannerResult]:
             registration = SCANNER_REGISTRY.get(scanner_name)
@@ -250,6 +257,8 @@ class ScanExecutionStage:
                     scanner_name=scanner_name, success=True, raw_output={}, artifact_paths=[]
                 )
             scanner = registration.adapter_factory()
+            if scanner_name == "semgrep":
+                scanner.review_pack_rules = [(pack.rules_path, pack.rules_relative_path) for pack in active_packs]
             version = scanner.get_version() if hasattr(scanner, "get_version") else None
             run_id = await self._create_scanner_run(context, scanner_name, version)
             if run_id:
