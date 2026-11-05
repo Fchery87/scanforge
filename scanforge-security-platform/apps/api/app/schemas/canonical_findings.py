@@ -14,6 +14,8 @@ class CanonicalFindingInstance(BaseModel):
 
 
 class CanonicalFindingReference(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     type: str = "unknown"
     value: str = ""
     url: str | None = None
@@ -23,7 +25,7 @@ CURRENT_FINGERPRINT_VERSION = "fp.v2"
 
 
 class CanonicalFindingCandidate(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
     canonical_fingerprint: str = Field(min_length=1, max_length=255)
     fingerprint_version: str = Field(default=CURRENT_FINGERPRINT_VERSION, min_length=1, max_length=32)
