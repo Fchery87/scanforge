@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import settings
 from app.db.enums import DispatchObligationStatus
 from app.db.enums import ScanStatus as ScanStatusEnum
 from app.db.models import (
@@ -367,7 +368,9 @@ class ScanService:
                     business_identity_key=business_identity_key,
                     request_idempotency_key=None,
                     webhook_delivery_id=webhook_delivery_id,
+                    not_before_seconds=settings.PR_SHADOW_DEBOUNCE_SECONDS,
                 )
+                await dispatch_service.supersede_obsolete_pr_shadow_runs(new_scan=scan)
                 await self.db.flush()
         except IntegrityError:
             raced = await dispatch_service.find_existing_automatic_scan(
