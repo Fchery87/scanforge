@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from uuid import UUID
+
 from fastapi import HTTPException, status
+
+from app.core.config import settings
 
 if TYPE_CHECKING:
     from app.schemas.scans import ScanCreate
@@ -12,6 +16,8 @@ BETA_CAPABILITIES: dict[str, bool] = {
     "suppression_rules": False,
     "scan_schedules": False,
     "pr_review": False,
+    # Shadow PR analysis is gated per organization (PR_SHADOW_ORGANIZATION_IDS), never globally.
+    "pr_shadow": False,
     "diff_scans": False,
     "ai_assistance": False,
     "scorecard_grades": False,
@@ -25,6 +31,24 @@ SUPPORTED_BETA_SCAN_TYPES: frozenset[str] = frozenset({"full", "dependencies", "
 
 def is_beta_capability_enabled(capability: str) -> bool:
     return bool(BETA_CAPABILITIES.get(capability, False))
+
+
+def is_pr_shadow_enabled(organization_id: UUID | str) -> bool:
+    """pr_shadow: private PR analysis for allowlisted organizations only.
+
+    Independent of pr_review (publication), which stays disabled.
+    """
+    try:
+        wanted = UUID(str(organization_id))
+    except ValueError:
+        return False
+    for raw in (settings.PR_SHADOW_ORGANIZATION_IDS or "").split(","):
+        try:
+            if UUID(raw.strip()) == wanted:
+                return True
+        except ValueError:
+            continue
+    return False
 
 
 def require_beta_capability(capability: str, detail: str | None = None) -> None:

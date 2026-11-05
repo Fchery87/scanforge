@@ -1,12 +1,13 @@
 import hashlib
 import json
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from app.core.beta_capabilities import is_beta_capability_enabled
+from app.core.beta_capabilities import is_beta_capability_enabled, is_pr_shadow_enabled
 from app.core.config import settings
 from app.core.webhook import verify_github_webhook_async
 from app.db.enums import ScanTriggerType
@@ -14,12 +15,17 @@ from app.db.models import Project, Repository, RepositoryIntegration, WebhookDel
 from app.db.session import AsyncSession, get_db
 from app.schemas.scans import ScanCreate
 from app.services.audit_logs import AuditLogService
+from app.services.github import GitHubService
 from app.services.github_pr_advisory import build_pr_advisory_payload
+from app.services.repository_refs import RepositoryRefError, validate_commit_sha
 from app.services.scan_dispatch import ScanDispatchService
 from app.services.scan_lifecycle import ScanLifecycleService
 from app.services.scans import ScanService
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
+
+PR_ANALYSIS_ACTIONS = frozenset({"opened", "reopened", "synchronize"})
 
 
 def _webhook_event_digest(*, event: str, repository_id: UUID, payload: dict) -> str:
@@ -226,6 +232,86 @@ async def _handle_pull_request_event(
     return response
 
 
+def _pull_request_head_is_fork(pull_request: dict) -> bool:
+    """A head from any repository other than the base repository is untrusted.
+
+    A missing head repository (deleted fork) is treated as a fork.
+    """
+    head_repo = (pull_request.get("head") or {}).get("repo") or {}
+    base_repo = (pull_request.get("base") or {}).get("repo") or {}
+    head_name = head_repo.get("full_name")
+    return not head_name or head_name != base_repo.get("full_name")
+
+
+async def _resolve_merge_base(db: AsyncSession, *, integration, repo, base_sha: str, head_sha: str) -> str | None:
+    """Provider-resolved merge-base, or None. Never guessed."""
+    try:
+        receipt = await GitHubService(db).compare_commits(
+            integration.installation_id, repo.owner_name, repo.repo_name, base_sha, head_sha
+        )
+        return validate_commit_sha(receipt.get("merge_base_sha"), require_exact=True)
+    except Exception:  # noqa: BLE001 - an unresolved merge-base is recorded as unknown
+        logger.warning("Could not resolve merge-base for %s", repo.full_name, exc_info=True)
+        return None
+
+
+async def _handle_pull_request_shadow_event(
+    db: AsyncSession,
+    delivery_row: WebhookDelivery,
+    *,
+    org_id: UUID,
+    repo,
+    integration,
+    payload: dict,
+    event: str,
+    delivery: str,
+) -> dict:
+    """pr_shadow: private analysis of the full repository at PR head. Never publishes."""
+    pull_request = payload.get("pull_request") or {}
+    head_sha = (pull_request.get("head") or {}).get("sha")
+    base_sha = (pull_request.get("base") or {}).get("sha")
+    try:
+        validate_commit_sha(head_sha, require_exact=True)
+        validate_commit_sha(base_sha, require_exact=True)
+    except RepositoryRefError:
+        response = {"status": "ignored", "event": event, "reason": "invalid_head_sha"}
+        delivery_row.response_json = response
+        await db.commit()
+        return response
+
+    merge_base_sha = await _resolve_merge_base(
+        db, integration=integration, repo=repo, base_sha=base_sha, head_sha=head_sha
+    )
+    scan, _, _ = await ScanService(db).create_pr_shadow(
+        repo.id,
+        pull_request_number=int(pull_request["number"]),
+        head_sha=head_sha,
+        base_sha=base_sha,
+        merge_base_sha=merge_base_sha,
+        is_fork=_pull_request_head_is_fork(pull_request),
+        commit=False,
+        webhook_delivery_id=delivery,
+    )
+    response = await _record_scan_delivery(
+        AuditLogService(db),
+        delivery_row,
+        scan=scan,
+        org_id=org_id,
+        event=event,
+        delivery=delivery,
+        metadata_json={
+            "event": event,
+            "delivery": delivery,
+            "pull_request_number": pull_request.get("number"),
+            "trigger": "github_pull_request_shadow",
+        },
+        response={"status": "queued", "scan_id": str(scan.id), "mode": "shadow"},
+    )
+    await db.commit()
+    await ScanDispatchService(db).dispatch_for_scan(scan.id)
+    return response
+
+
 @router.post("/github/{org_id}/{project_id}/{repository_id}")
 async def github_webhook(
     org_id: UUID,
@@ -314,11 +400,20 @@ async def github_webhook(
             delivery=delivery,
         )
 
-    if (
-        event == "pull_request"
-        and is_beta_capability_enabled("pr_review")
-        and payload.get("action") in {"opened", "reopened", "synchronize"}
-    ):
+    pr_analysis_action = payload.get("action") in PR_ANALYSIS_ACTIONS
+    if event == "pull_request" and pr_analysis_action and is_pr_shadow_enabled(org_id):
+        return await _handle_pull_request_shadow_event(
+            db,
+            delivery_row,
+            org_id=org_id,
+            repo=repo,
+            integration=integration,
+            payload=payload,
+            event=event,
+            delivery=delivery,
+        )
+
+    if event == "pull_request" and is_beta_capability_enabled("pr_review") and pr_analysis_action:
         return await _handle_pull_request_event(
             db,
             delivery_row,

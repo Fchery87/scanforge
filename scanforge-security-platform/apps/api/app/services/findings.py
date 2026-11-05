@@ -332,6 +332,10 @@ class FindingService:
         repository = await self.db.get(Repository, repository_id)
         repository_importance = getattr(repository, "importance", "normal") or "normal"
         scan_row = await self.db.get(Scan, str(scan_id))
+        if scan_row is not None and scan_row.trigger_type == "pull_request":
+            # Shadow PR analysis is stored on the run only (completion summary and
+            # artifacts). It never creates, reopens or closes baseline findings.
+            return 0, 0
         presence_branch = getattr(scan_row, "branch_name", None) if scan_row else None
 
         for finding_input in normalized_findings:
@@ -660,6 +664,7 @@ class FindingService:
 
         scan_context = {
             "scan_type": scan.scan_type,
+            "trigger_type": scan.trigger_type,
             "branch_name": scan.branch_name,
             "commit_sha": scan.commit_sha,
             "scanner_health": (scan_summary or {}).get("scanner_health"),

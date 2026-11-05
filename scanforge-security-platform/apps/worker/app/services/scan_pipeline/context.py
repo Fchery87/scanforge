@@ -32,6 +32,7 @@ class ScanContext:
     branch_generation_number: int = 1
     ancestry_status: str = "unknown"
     verified_commit_sha: str | None = None
+    head_is_fork: bool = False
     critical_count: int = 0
     high_count: int = 0
     scan_failed: bool = False

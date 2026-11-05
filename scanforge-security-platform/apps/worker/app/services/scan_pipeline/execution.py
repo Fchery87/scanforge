@@ -26,6 +26,7 @@ from app.scanners.registry import SCANNER_REGISTRY, scanners_for_scan_type
 from app.security.proc_env import build_git_env
 from app.security.redaction import redact_sensitive_text
 from app.security.secret_evidence import safe_artifact_key
+from app.security.untrusted_config import remove_untrusted_scanner_config
 from app.services.scan_pipeline.context import ScanContext
 
 _log = get_logger(__name__)
@@ -201,6 +202,9 @@ class ScanExecutionStage:
                 )
             context.verified_commit_sha = checked_out_sha
             context.commit_sha = checked_out_sha
+            if getattr(context, "head_is_fork", False):
+                # Fork heads never choose how they are scanned.
+                remove_untrusted_scanner_config(repo_dir)
             make_source_readable_for_scanner(repo_dir)
             enforce_directory_quota(repo_dir, MAX_SOURCE_WORKSPACE_BYTES, label="repository workspace")
         except subprocess.TimeoutExpired as exc:

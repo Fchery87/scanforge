@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     GITHUB_PRIVATE_KEY: str = ""
     GITHUB_WEBHOOK_SECRET: str = ""
     GITHUB_STATE_SIGNING_SECRET: str = ""
+    # Comma-separated organization UUIDs allowed to run private shadow PR analysis (pr_shadow).
+    PR_SHADOW_ORGANIZATION_IDS: str = ""
 
     INTERNAL_API_KEY: str = ""
     WORKER_CREDENTIAL_PEPPER: str = ""

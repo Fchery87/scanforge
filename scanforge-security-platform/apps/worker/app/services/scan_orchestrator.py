@@ -296,6 +296,7 @@ class ScanOrchestrator:
             branch_generation_number=int(data.get("branch_generation_number") or 1),
             ancestry_status=data.get("ancestry_status") or "unknown",
             commit_sha=data.get("commit_sha"),
+            head_is_fork=bool(data.get("head_is_fork", False)),
             user_id=data.get("user_id"),
             job_id=job.job_id,
             expected_scanners=data.get("expected_scanners"),

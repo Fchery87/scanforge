@@ -240,6 +240,7 @@ async def test_load_scan_context_fetches_authoritative_context(monkeypatch):
                 },
                 "branch": "main",
                 "commit_sha": "deadbeef",
+                "head_is_fork": True,
                 "user_id": None,
             }
 
@@ -265,6 +266,7 @@ async def test_load_scan_context_fetches_authoritative_context(monkeypatch):
     assert context.scan_id == "scan-1"
     assert context.organization_id == "org-1"
     assert context.branch == "main"
+    assert context.head_is_fork is True
     assert context.expected_scanners == ["trivy", "osv", "syft", "grype"]
     assert context.coverage_scope == {
         "branch": "main",
