@@ -18,6 +18,7 @@ from app.schemas.scans import (
     ScanDetailResponse,
     ScanResponse,
 )
+from app.services.artifact_finalization import ArtifactFinalizationService
 from app.services.organizations import OrganizationService
 from app.services.scan_dispatch import ScanCapacityExceededError
 from app.services.scan_lifecycle import ScanLifecycleService
@@ -166,7 +167,15 @@ async def download_scan_artifact(
     if not run or not run.artifact_uri:
         raise HTTPException(status_code=404, detail="Artifact not found")
 
-    return RedirectResponse(url=_get_r2_client().generate_presigned_url(run.artifact_uri))
+    # Only verified, unerased artifacts of this scan are signable; a stored
+    # reference alone never authorizes a presigned URL.
+    client = _get_r2_client()
+    storage_uri = await ArtifactFinalizationService(db, client).downloadable_uri(
+        str(scan_id), str(org_id), run.artifact_uri
+    )
+    if storage_uri is None:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    return RedirectResponse(url=client.generate_presigned_url(storage_uri))
 
 
 @router.post("/{scan_id}/cancel", response_model=ScanResponse)

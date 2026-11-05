@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +26,12 @@ from app.schemas.canonical_findings import CanonicalFindingCandidate
 from app.schemas.notifications import NotificationCreate
 from app.schemas.scan_completion import ScanCompletionRequest
 from app.schemas.scans import ScanStatusUpdate
+from app.services.artifact_finalization import (
+    MAX_ARTIFACT_BYTES,
+    ArtifactFinalizationError,
+    ArtifactFinalizationService,
+    valid_component,
+)
 from app.services.evidence_contract import EvidenceContractError
 from app.services.findings import FindingService
 from app.services.github import GitHubService
@@ -198,9 +204,9 @@ async def create_artifact_upload_url(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan not found")
     scan, project = scan_project
     assert_live_execution_authority(scan, principal, attempt)
-    if data.size_bytes < 0 or data.size_bytes > 50 * 1024 * 1024:
+    if data.size_bytes < 0 or data.size_bytes > MAX_ARTIFACT_BYTES:
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Artifact too large")
-    if not _valid_artifact_component(data.scanner_name) or not _valid_artifact_component(data.filename):
+    if not valid_component(data.scanner_name) or not valid_component(data.filename):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid artifact path")
     if data.content_type not in {
         "application/json",
@@ -210,29 +216,62 @@ async def create_artifact_upload_url(
     }:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported artifact type")
 
-    key = (
-        f"scan-artifacts/{project.organization_id}/{scan.id}/"
-        f"{data.scanner_name}/{data.filename}"
-    )
-    client = R2Client(
+    try:
+        return await ArtifactFinalizationService(db, _artifact_store()).stage(
+            organization_id=str(project.organization_id),
+            scan_id=str(scan.id),
+            attempt_id=attempt.attempt_id,
+            scanner_name=data.scanner_name,
+            filename=data.filename,
+            content_type=data.content_type,
+            size_bytes=data.size_bytes,
+        )
+    except ArtifactFinalizationError as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e)) from e
+
+
+class ArtifactFinalizeRequest(BaseModel):
+    checksum_sha256: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-fA-F]{64}$")
+
+
+@router.post("/scans/{scan_id}/artifacts/{artifact_id}/finalize")
+async def finalize_artifact(
+    scan_id: UUID,
+    artifact_id: UUID,
+    data: ArtifactFinalizeRequest,
+    principal: WorkerPrincipal = Depends(require_capability("artifacts:write")),
+    attempt: ExecutionAttemptIdentity = Depends(require_execution_attempt_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        scan_project = await ScanService(db).authorize_scan_access(
+            scan_id,
+            caller_organization_id=principal.organization_id,
+        )
+    except ScanAuthorizationError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
+    if scan_project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan not found")
+    scan, project = scan_project
+    assert_live_execution_authority(scan, principal, attempt)
+    try:
+        return await ArtifactFinalizationService(db, _artifact_store()).finalize(
+            organization_id=str(project.organization_id),
+            scan_id=str(scan.id),
+            attempt_id=attempt.attempt_id,
+            artifact_id=str(artifact_id),
+            checksum_sha256=data.checksum_sha256,
+        )
+    except ArtifactFinalizationError as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e)) from e
+
+
+def _artifact_store() -> R2Client:
+    return R2Client(
         endpoint=settings.R2_ENDPOINT,
         bucket=settings.R2_BUCKET,
         access_key_id=settings.R2_ACCESS_KEY_ID,
         secret_access_key=settings.R2_SECRET_ACCESS_KEY,
-    )
-    return {
-        "key": key,
-        "upload_url": client.generate_presigned_upload_url(key, data.content_type),
-    }
-
-
-def _valid_artifact_component(value: str) -> bool:
-    return (
-        bool(value)
-        and value not in {".", ".."}
-        and "/" not in value
-        and "\\" not in value
-        and "\x00" not in value
     )
 
 
@@ -385,8 +424,14 @@ async def update_scanner_run(
             duration_ms=data.duration_ms,
             exit_code=data.exit_code,
             error_message=data.error_message,
-            artifact_uri=data.artifact_uri,
-            metadata_json=data.metadata_json,
+            # Worker-claimed storage references are never trusted: artifact
+            # references are set only from verified artifacts at completion.
+            artifact_uri=None,
+            metadata_json=(
+                {k: v for k, v in data.metadata_json.items() if not k.endswith("_uri")}
+                if data.metadata_json
+                else None
+            ),
             attempt_id=attempt.attempt_id,
             execution_revision=attempt.execution_revision,
             caller_organization_id=principal.organization_id,

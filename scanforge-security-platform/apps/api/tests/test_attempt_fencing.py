@@ -96,11 +96,16 @@ def _route_calls(scan_id, run_id, ctx):
             f"{base}/artifacts/upload-url",
             {"scanner_name": "semgrep", "filename": "out.json", "size_bytes": 10},
         ),
+        "artifact_finalize": (
+            "POST",
+            f"{base}/artifacts/{uuid4()}/finalize",
+            {"checksum_sha256": "0" * 64},
+        ),
         "heartbeat": ("POST", f"{base}/heartbeat", body_identity),
     }
 
 
-ROUTES = ["status", "scanner_run_create", "scanner_run_update", "findings", "artifact_upload", "heartbeat"]
+ROUTES = ["status", "scanner_run_create", "scanner_run_update", "findings", "artifact_upload", "artifact_finalize", "heartbeat"]
 
 
 def _tamper(ctx, how):

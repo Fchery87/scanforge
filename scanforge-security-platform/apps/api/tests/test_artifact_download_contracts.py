@@ -101,6 +101,11 @@ async def test_download_scan_artifact_uses_presigned_url(monkeypatch):
         "_get_r2_client",
         lambda: SimpleNamespace(generate_presigned_url=lambda key: f"https://signed.example/{key}"),
     )
+    monkeypatch.setattr(
+        scans,
+        "ArtifactFinalizationService",
+        lambda _db, _store: SimpleNamespace(downloadable_uri=AsyncMock(side_effect=lambda _s, _o, uri: uri)),
+    )
 
     response = await scans.download_scan_artifact(
         org_id=org_id,
@@ -112,3 +117,32 @@ async def test_download_scan_artifact_uses_presigned_url(monkeypatch):
     )
 
     assert response.headers["location"] == "https://signed.example/scans/123/trivy/output.json"
+
+
+@pytest.mark.asyncio
+async def test_download_refuses_artifact_without_verified_reference(monkeypatch):
+    org_id, project_id, scan_id, run_id = uuid4(), uuid4(), uuid4(), uuid4()
+    scan = SimpleNamespace(
+        project_id=project_id,
+        scanner_runs=[SimpleNamespace(id=run_id, artifact_uri="scan-artifacts/other-org/x/trivy/o.json")],
+    )
+    monkeypatch.setattr(scans, "get_project_in_org_or_404", AsyncMock())
+    monkeypatch.setattr(scans, "ScanService", lambda _db: SimpleNamespace(get_by_id=AsyncMock(return_value=scan)))
+    monkeypatch.setattr(scans, "_get_r2_client", lambda: SimpleNamespace())
+    monkeypatch.setattr(
+        scans,
+        "ArtifactFinalizationService",
+        lambda _db, _store: SimpleNamespace(downloadable_uri=AsyncMock(return_value=None)),
+    )
+
+    with pytest.raises(scans.HTTPException) as excinfo:
+        await scans.download_scan_artifact(
+            org_id=org_id,
+            project_id=project_id,
+            scan_id=scan_id,
+            run_id=run_id,
+            current_user=SimpleNamespace(user_id=uuid4()),
+            db=object(),
+        )
+
+    assert excinfo.value.status_code == 404

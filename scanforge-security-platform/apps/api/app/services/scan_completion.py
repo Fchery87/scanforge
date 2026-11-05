@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.enums import ScanStatus
 from app.db.models import Project, Scan, ScanCompletionReceipt, ScannerRun
 from app.schemas.scan_completion import ScanCompletionRequest
+from app.services.artifact_finalization import ArtifactFinalizationService
 from app.services.evidence_contract import (
     compute_canonical_evidence_digest,
     derive_scan_evidence_decision,
@@ -107,6 +108,7 @@ class ScanCompletionService:
                 scan,
                 data,
                 digest,
+                organization_id=organization_id,
                 worker_principal_id=worker_principal_id,
             )
         except Exception:
@@ -148,9 +150,14 @@ class ScanCompletionService:
         data: ScanCompletionRequest,
         digest: str,
         *,
+        organization_id: UUID,
         worker_principal_id: str | None,
     ) -> dict:
         scan_id = scan.id
+        # Worker-claimed artifact references are replaced by verified ones (#43).
+        data = await ArtifactFinalizationService(self.db, None).reconcile_completion_artifacts(
+            str(scan_id), str(organization_id), data
+        )
         decision = derive_scan_evidence_decision(
             data,
             expected_scanners=getattr(scan, "expected_scanners_json", None),

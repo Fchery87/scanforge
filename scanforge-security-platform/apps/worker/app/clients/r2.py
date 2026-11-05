@@ -48,6 +48,12 @@ class R2Client:
             "content_type": content_type,
             "size_bytes": len(content),
         }
+        headers = {
+            "X-Worker-Credential": self.worker_credential,
+            "X-Scan-Attempt-Id": attempt_id,
+            "X-Scan-Execution-Revision": str(execution_revision),
+            "X-Scan-Worker-Incarnation-Id": worker_incarnation_id,
+        }
         async with httpx.AsyncClient(
             timeout=self.request_timeout,
             follow_redirects=False,
@@ -55,17 +61,15 @@ class R2Client:
             response = await client.post(
                 f"{self.api_base_url}/api/v1/internal/scans/{scan_id}/artifacts/upload-url",
                 json=request,
-                headers={
-                    "X-Worker-Credential": self.worker_credential,
-                    "X-Scan-Attempt-Id": attempt_id,
-                    "X-Scan-Execution-Revision": str(execution_revision),
-                    "X-Scan-Worker-Incarnation-Id": worker_incarnation_id,
-                },
+                headers=headers,
             )
             response.raise_for_status()
             upload = response.json()
-            expected_key = f"scan-artifacts/{organization_id}/{scan_id}/{scanner_name}/{filename}"
-            if upload["key"] != expected_key:
+            staging_prefix = f"scan-staging/{organization_id}/{scan_id}/{attempt_id}/"
+            if not (
+                upload["key"].startswith(staging_prefix)
+                and upload["key"].endswith(f"/{scanner_name}/{filename}")
+            ):
                 raise RuntimeError("API returned an artifact key outside the requested tenant scope")
             uploaded = await client.put(
                 upload["upload_url"],
@@ -73,7 +77,16 @@ class R2Client:
                 headers={"Content-Type": content_type},
             )
             uploaded.raise_for_status()
-            return upload["key"]
+            # The staged object is untrusted until the API verifies and
+            # publishes it; only the immutable reference it returns is usable.
+            finalized = await client.post(
+                f"{self.api_base_url}/api/v1/internal/scans/{scan_id}/artifacts/"
+                f"{upload['artifact_id']}/finalize",
+                json={"checksum_sha256": hashlib.sha256(content).hexdigest()},
+                headers=headers,
+            )
+            finalized.raise_for_status()
+            return finalized.json()["storage_uri"]
 
     async def upload_file(
         self,
