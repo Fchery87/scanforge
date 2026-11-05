@@ -44,6 +44,7 @@ class AbsenceBlockReason(StrEnum):
     HUMAN_BLOCK_STATE = "human_block_state"
     ANALYZER_NOT_COMPARABLE = "analyzer_not_comparable"
     ANALYZER_BASELINE_UNKNOWN = "analyzer_baseline_unknown"
+    PULL_REQUEST_SHADOW = "pull_request_shadow"
 
 
 class FindingWorkflowState(StrEnum):
@@ -96,6 +97,9 @@ def evaluate_scan_absence_evidence(scan_context: Mapping[str, object] | None) ->
 
     if context.get("scan_type") != "full":
         reasons.append(AbsenceBlockReason.SCAN_TYPE_NOT_FULL)
+    if context.get("trigger_type") == "pull_request":
+        # Shadow PR analysis examines proposed code, not the tracked branch.
+        reasons.append(AbsenceBlockReason.PULL_REQUEST_SHADOW)
     if not context.get("commit_sha"):
         reasons.append(AbsenceBlockReason.MISSING_COMMIT_SHA)
     if not context.get("branch_name"):

@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
@@ -10,11 +11,22 @@ from sqlalchemy.orm import selectinload
 
 from app.db.enums import DispatchObligationStatus
 from app.db.enums import ScanStatus as ScanStatusEnum
-from app.db.models import Organization, OrganizationMember, Project, Repository, Scan, ScannerRun
+from app.db.models import (
+    Organization,
+    OrganizationIntegration,
+    OrganizationMember,
+    Project,
+    Repository,
+    Scan,
+    ScannerRun,
+)
 from app.schemas.scans import ScanCreate
+from app.services.github import GitHubService
 from app.services.repository_refs import (
     SCAN_TYPE_SCANNERS,
+    RepositoryRefError,
     RepositoryRefService,
+    validate_commit_sha,
 )
 from app.services.scan_dispatch import (
     DEFAULT_MAX_PENDING_MANUAL_PER_REPO,
@@ -22,6 +34,10 @@ from app.services.scan_dispatch import (
     ScanDispatchService,
     compute_automatic_business_identity,
 )
+
+logger = logging.getLogger(__name__)
+
+PR_SHADOW_COMPARISON_STRATEGY = "head_vs_merge_base"
 
 
 class ScanAuthorizationError(Exception):
@@ -88,6 +104,15 @@ class ScanService:
                 organization_id=project.organization_id,
                 repository_id=repo.id,
             )
+
+        if (
+            revision_resolver is None
+            and data.trigger_type in ("manual", "scheduled")
+            and not (data.commit_sha or "").strip()
+        ):
+            # The worker refuses to scan without an exact SHA (#34), so the API
+            # resolves the branch head now instead of queueing a scan that must fail.
+            revision_resolver = self._head_revision_resolver(repo, project)
 
         ref_service = RepositoryRefService(self.db)
         if (
@@ -223,6 +248,138 @@ class ScanService:
             await self.db.commit()
             await self.db.refresh(scan)
 
+        return scan, repo, project
+
+    def _head_revision_resolver(
+        self, repo: Repository, project: Project
+    ) -> Callable[[str, str | None], Awaitable[str]]:
+        async def resolve(branch_name: str, _expected_sha: str | None) -> str:
+            integration = (
+                await self.db.execute(
+                    select(OrganizationIntegration).where(
+                        OrganizationIntegration.organization_id == project.organization_id
+                    )
+                )
+            ).scalar_one_or_none()
+            if integration is None or not integration.installation_id:
+                raise RepositoryRefError(
+                    "Cannot resolve an exact commit: no GitHub installation is connected for this organization"
+                )
+            try:
+                return await GitHubService(self.db).resolve_branch_commit(
+                    integration.installation_id, repo.owner_name, repo.repo_name, branch_name
+                )
+            except Exception as exc:
+                logger.warning("Head revision lookup failed for %s@%s", repo.full_name, branch_name, exc_info=True)
+                raise RepositoryRefError(
+                    f"Could not resolve an exact commit for branch {branch_name!r}"
+                ) from exc
+
+        return resolve
+
+    async def create_pr_shadow(
+        self,
+        repo_id: UUID,
+        *,
+        pull_request_number: int,
+        head_sha: str | None,
+        base_sha: str | None,
+        merge_base_sha: str | None,
+        is_fork: bool,
+        commit: bool = True,
+        webhook_delivery_id: str | None = None,
+    ) -> tuple[Scan, Repository, Project]:
+        """Create a private shadow analysis run of the full repository at a PR head.
+
+        Records base, head, merge-base and the comparison strategy. The run lives in a
+        pull-request ref namespace (``refs/pull/<n>/head``) with no branch name, so a
+        fork's branch can never alias a real branch of the base repository, and it
+        never reaches the branch-scoped absence lifecycle. Nothing here publishes to
+        GitHub.
+        """
+        head = validate_commit_sha(head_sha, require_exact=True)
+        base = validate_commit_sha(base_sha, require_exact=True) if base_sha else None
+        merge_base = validate_commit_sha(merge_base_sha, require_exact=True) if merge_base_sha else None
+
+        repo = (
+            await self.db.execute(
+                select(Repository).where(Repository.id == repo_id).execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
+        if not repo:
+            raise ValueError("Repository not found")
+        if not repo.is_active or getattr(repo, "lifecycle_state", "connected") != "connected":
+            raise ValueError("Repository is not active or requires authorization revalidation")
+        project = await self.db.get(Project, repo.project_id)
+        if not project:
+            raise ValueError("Project not found")
+
+        full_ref_name = f"refs/pull/{int(pull_request_number)}/head"
+        expected_scanners = list(SCAN_TYPE_SCANNERS["full"])
+        dispatch_service = ScanDispatchService(self.db)
+        business_identity_key = compute_automatic_business_identity(
+            organization_id=project.organization_id,
+            repository_id=repo.id,
+            trigger_type="pull_request",
+            scan_type="full",
+            full_ref_name=full_ref_name,
+            branch_generation_number=1,
+            commit_sha=head,
+            coverage_scope="pull_request_shadow",
+            expected_scanners=expected_scanners,
+        )
+        existing = await dispatch_service.find_existing_automatic_scan(
+            repository_id=repo.id, business_identity_key=business_identity_key
+        )
+        if existing is not None:
+            return existing[0], repo, project
+
+        scan = Scan(
+            id=str(uuid4()),
+            project_id=repo.project_id,
+            repository_id=repo_id,
+            trigger_type="pull_request",
+            scan_type="full",
+            status=ScanStatusEnum.QUEUED,
+            dispatch_state=DispatchObligationStatus.AWAITING_DISPATCH.value,
+            branch_name=None,
+            full_ref_name=full_ref_name,
+            branch_generation_number=1,
+            ancestry_status="unknown",
+            commit_sha=head,
+            base_sha=base,
+            merge_base_sha=merge_base,
+            comparison_strategy=PR_SHADOW_COMPARISON_STRATEGY,
+            head_is_fork=bool(is_fork),
+            pull_request_number=int(pull_request_number),
+            requested_by_user_id=None,
+            expected_scanners_json=expected_scanners,
+            summary_json={"coverage_scope": "pull_request_shadow"},
+        )
+        try:
+            async with self.db.begin_nested():
+                self.db.add(scan)
+                await self.db.flush()
+                await dispatch_service.create_obligation_for_scan(
+                    scan=scan,
+                    repo=repo,
+                    project=project,
+                    business_identity_key=business_identity_key,
+                    request_idempotency_key=None,
+                    webhook_delivery_id=webhook_delivery_id,
+                )
+                await self.db.flush()
+        except IntegrityError:
+            raced = await dispatch_service.find_existing_automatic_scan(
+                repository_id=repo.id, business_identity_key=business_identity_key
+            )
+            if raced is not None:
+                return raced[0], repo, project
+            raise
+
+        if commit:
+            await self.db.commit()
+            await self.db.refresh(scan)
         return scan, repo, project
 
     async def get_by_id(

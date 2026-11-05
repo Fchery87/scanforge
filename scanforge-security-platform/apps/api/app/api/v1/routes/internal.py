@@ -526,6 +526,17 @@ async def get_repository_clone_url(
         raise HTTPException(status_code=409, detail={"code": "stale_attempt"})
     assert_live_execution_authority(scan, principal, attempt)
 
+    clone_url = f"https://github.com/{repo.owner_name}/{repo.repo_name}.git"
+    if getattr(scan, "head_is_fork", False):
+        # Fork PR heads are untrusted: no installation token, no privileged credential.
+        # Only content reachable without credentials can be acquired; anything else
+        # fails closed at the worker.
+        return {
+            "clone_url": clone_url,
+            "auth_header": "",
+            "external_repo_id": getattr(repo, "external_repo_id", None),
+        }
+
     result = await db.execute(
         select(OrganizationIntegration).where(OrganizationIntegration.organization_id == project.organization_id)
     )
@@ -565,7 +576,6 @@ async def get_repository_clone_url(
         raise HTTPException(status_code=404, detail="Repository is not accessible to the GitHub installation")
     token = await gh._get_installation_token(integration.installation_id)
 
-    clone_url = f"https://github.com/{repo.owner_name}/{repo.repo_name}.git"
     basic_auth = base64.b64encode(f"x-access-token:{token}".encode()).decode()
 
     return {
@@ -666,6 +676,7 @@ async def get_scan_execution_context(
         "branch_generation_number": branch_generation_number,
         "ancestry_status": ancestry_status,
         "commit_sha": scan.commit_sha,
+        "head_is_fork": bool(getattr(scan, "head_is_fork", False)),
         "status": scan.status.value,
         "user_id": str(scan.requested_by_user_id) if scan.requested_by_user_id else None,
         "attempt_id": locked_scan.current_attempt_id,

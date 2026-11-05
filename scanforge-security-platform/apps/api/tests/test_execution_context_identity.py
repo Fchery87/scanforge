@@ -293,3 +293,28 @@ async def test_route_completion_with_stale_identity_is_a_typed_conflict(db_sessi
         await db_session.execute(select(func.count()).select_from(ScanCompletionReceipt))
     ).scalar_one()
     assert receipts == 1
+
+
+@pytest.mark.asyncio
+async def test_execution_context_tells_the_worker_when_the_head_is_a_fork(db_session):
+    """Shadow PR runs (#46): the worker must know a fork head is untrusted."""
+    scan, org_id = await _seed_scan(db_session)
+    scan.head_is_fork = True
+    await db_session.commit()
+
+    served = await internal.get_scan_execution_context(
+        presented_identity=None, scan_id=UUID(str(scan.id)), principal=_principal(org_id), db=db_session
+    )
+
+    assert served["head_is_fork"] is True
+
+
+@pytest.mark.asyncio
+async def test_execution_context_reports_non_fork_runs_as_trusted_heads(db_session):
+    scan, org_id = await _seed_scan(db_session)
+
+    served = await internal.get_scan_execution_context(
+        presented_identity=None, scan_id=UUID(str(scan.id)), principal=_principal(org_id), db=db_session
+    )
+
+    assert served["head_is_fork"] is False
