@@ -342,7 +342,9 @@ async def test_is_canceled_adopts_latest_issued_identity(monkeypatch):
         job_id="job-1",
         attempt_id="stale-attempt",
         execution_revision=1,
+        worker_incarnation_id="incarnation-1",
     )
+    sent = {}
 
     class Response:
         def raise_for_status(self):
@@ -363,6 +365,7 @@ async def test_is_canceled_adopts_latest_issued_identity(monkeypatch):
             return None
 
         async def get(self, url, headers, timeout):
+            sent.update(headers)
             return Response()
 
     monkeypatch.setattr("app.services.scan_orchestrator.httpx.AsyncClient", Client)
@@ -370,6 +373,10 @@ async def test_is_canceled_adopts_latest_issued_identity(monkeypatch):
     canceled = await orchestrator._is_canceled(context)
 
     assert canceled is False
+    # The refetch proves the identity the worker holds (#36).
+    assert sent["X-Scan-Attempt-Id"] == "stale-attempt"
+    assert sent["X-Scan-Execution-Revision"] == "1"
+    assert sent["X-Scan-Worker-Incarnation-Id"] == "incarnation-1"
     assert context.attempt_id == "fresh-attempt"
     assert context.execution_revision == 2
 

@@ -65,6 +65,7 @@ class ScanLeaseService:
         *,
         terminal_statuses: frozenset,
         worker_owner: str,
+        presented_identity: tuple[str, int | None, str | None] | None = None,
     ) -> tuple[Scan, str]:
         """Grant execution authority for a non-terminal scan.
 
@@ -86,8 +87,23 @@ class ScanLeaseService:
         )
         if lease_valid:
             if previous_owner == worker_owner:
-                # The live owner refetching its context keeps its identity:
-                # authority is idempotent, never re-minted.
+                # Only a caller that proves it holds the live identity gets it
+                # back.  A same-principal process that presents nothing, or a
+                # superseded identity, must not adopt the live incarnation's
+                # write authority: it waits for expiry like any other claimant.
+                if presented_identity is None:
+                    raise LeaseConflict(
+                        "lease_active",
+                        current_owner=previous_owner,
+                        remaining_seconds=(lease_expires_at - now).total_seconds(),
+                    )
+                presented_attempt, presented_revision, presented_incarnation = presented_identity
+                if (
+                    presented_attempt != scan.current_attempt_id
+                    or presented_revision != scan.execution_revision
+                    or presented_incarnation != scan.worker_incarnation_id
+                ):
+                    raise LeaseConflict("stale_attempt", current_owner=previous_owner)
                 return scan, "active_lease_returned"
             remaining = (lease_expires_at - now).total_seconds()
             logger.info(
