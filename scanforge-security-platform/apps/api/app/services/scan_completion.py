@@ -9,11 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.enums import ScanStatus
 from app.db.models import Project, Scan, ScanCompletionReceipt, ScannerRun
 from app.schemas.scan_completion import ScanCompletionRequest
+from app.services.audit_logs import AuditLogService
 from app.services.evidence_contract import (
     compute_canonical_evidence_digest,
     derive_scan_evidence_decision,
 )
-from app.services.audit_logs import AuditLogService
 from app.services.findings import FindingService
 
 
