@@ -8,7 +8,7 @@
 
 **Tech stack:** Existing Next.js/React/TypeScript/Zod, FastAPI/Pydantic, SQLAlchemy/Alembic/PostgreSQL, Redis Streams, S3-compatible object storage, GitHub App, Linux/container runtime, and seven registered scanners.
 
-**Status:** Not started. Confirmed design, not verified implementation.
+**Status:** Closed on 2026-11-04 and archived. M00–M06 landed with the commits below; M07 and part of M08 landed in `b2065f8` without tracker evidence. Unfinished work is carried forward, re-triaged, in the [redirection implementation plan](../../plans/2026-11-04-redirection-implementation-plan.md). This file is historical and non-authoritative.
 
 **Authority:** [Confirmed Q1–Q54 and finding dispositions](../reviews/2026-10-16-roadmap-grilling.md), ADR-010 through ADR-017, and CONTEXT.md. This plan replaces conflicting execution scope/order in earlier readiness plans; preserve their historical receipts and verify any reused work. It does not authorize infrastructure purchases, customer onboarding, production deployment, destructive drills, merges, or external messages.
 
@@ -48,10 +48,10 @@ Before commercial launch, review privacy/support/subprocessor disclosures and tr
 | M02 | Service access and transactional audit | M00 | Done | `f24ad50` (M02 auth/audit/membership/security suites 45p, OpenAPI parity 2p) |
 | M03 | Versioned execution/evidence domain | M00 | Done | `1985b9a` (M03 contract/queue suites 17p, OpenAPI parity 2p, Alembic `0024`) |
 | M04 | Safe host coordinator and runtime | M03 | Done | `7ca87e4` (34p/1s host/runtime/containment; live Docker container skipped on docker-free host) |
-| M05 | Real scanner commands, safe parsing and redaction | M04 | In progress | Pending |
-| M06 | Immutable repository/ref identity | M02, M03 | Not started | Pending |
-| M07 | Durable dispatch and trigger identity | M03, M06 | Not started | Pending |
-| M08 | Attempt fencing, cancellation and cleanup | M02, M04, M07 | Not started | Pending |
+| M05 | Real scanner commands, safe parsing and redaction | M04 | Done | `d567a36`, plus scanner fixes `8e78e50`…`bb7406a` |
+| M06 | Immutable repository/ref identity | M02, M03 | Done | `c79090a` |
+| M07 | Durable dispatch and trigger identity | M03, M06 | Landed in code, acceptance unverified | `b2065f8` (`scan_dispatch.py`, dispatch cron, 5 tests); checklist below never ticked |
+| M08 | Attempt fencing, cancellation and cleanup | M02, M04, M07 | Partial | `b2065f8` (`test_internal_attempt_fencing.py`, 2 tests); cleanup durability not started |
 | M09 | Immutable artifacts and atomic completion | M02, M05, M08 | Not started | Pending |
 | M10 | Finding identity, ordering and human decisions | M06, M09 | Not started | Pending |
 | M11 | Verified GitHub ingress and reconciliation | M02, M06, M07, M08 | Not started | Pending |

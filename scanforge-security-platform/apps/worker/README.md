@@ -1,6 +1,6 @@
 # Worker
 
-Python worker for scan execution, scheduling, and maintenance tasks.
+Python worker for scan execution and maintenance tasks. Recurring scheduling is deferred and disabled.
 
 ## Responsibilities
 
@@ -16,7 +16,7 @@ Python worker for scan execution, scheduling, and maintenance tasks.
 ## Entry Points
 
 - `app.worker.main`: main queue consumer
-- `app.worker.scheduler`: scheduled scan dispatch
+- `app.worker.scheduler`: scheduled scan dispatch (deferred; not deployed)
 - `app.worker.maintenance`: queue cleanup and operational utilities
 
 ## Run Locally

@@ -1,6 +1,6 @@
 # Current implementation architecture
 
-This describes source present in the repository, including known defects. It does not certify a deployed installation. The accepted target architecture appears separately below; cleanup has not implemented it.
+This describes source present in the repository, including known defects. It does not certify a deployed installation. Status entries were re-verified by source reading on 2026-11-04 at `main` `f5a47dd` unless marked otherwise; "source-verified" means the code was read, not that a deployed system was observed. Product direction is the [product charter](PRODUCT_CHARTER.md); execution order is the [redirection implementation plan](plans/2026-11-04-redirection-implementation-plan.md).
 
 ## Components and entry points
 
@@ -8,51 +8,86 @@ This describes source present in the repository, including known defects. It doe
 | --- | --- |
 | Next.js web | [App Router](../apps/web/app), [auth helpers](../apps/web/lib/auth), [token retrieval](../apps/web/lib/auth/api-token.ts), and [API client](../apps/web/lib/api.ts): browser workflows and authenticated API requests. |
 | FastAPI | [main.py](../apps/api/app/main.py) installs middleware and mounts [v1 routes](../apps/api/app/api/v1/router.py) under `/api/v1`. [JWT middleware](../apps/api/app/middleware/auth.py) and [service authentication](../apps/api/app/middleware/service_auth.py) authenticate users and workers. |
-| PostgreSQL | [SQLAlchemy models](../apps/api/app/db/models) and [Alembic migrations](../apps/api/alembic/versions): organizations, access, repositories, scans, findings, occurrences, decisions, and completion receipts. |
+| PostgreSQL | [SQLAlchemy models](../apps/api/app/db/models) and [Alembic migrations](../apps/api/alembic/versions) (head `0024`): organizations, access, repositories, scans, dispatch obligations, findings, occurrences, decisions, and completion receipts. |
+| Dispatch | [Dispatch service](../apps/api/app/services/scan_dispatch.py) and [dispatch entry point](../apps/api/app/dispatch_main.py): durable obligations, leased claiming, automatic-scan supersession within a branch generation. |
 | Queue and worker | [Queue client](../apps/worker/app/clients/queue.py), [worker loop](../apps/worker/app/worker/main.py), and [orchestrator](../apps/worker/app/services/scan_orchestrator.py): organization-scoped Streams consumption, attempts, scanner stages, and completion calls. |
-| Scanner execution | [Registry](../apps/worker/app/scanners/registry.py), [adapters](../apps/worker/app/scanners), [runtime selection](../apps/worker/app/runtime/base.py), and [Docker runtime](../apps/worker/app/runtime/docker.py). Registration is not proof of working contained analysis. |
-| Object storage | [API R2 client](../apps/api/app/clients/r2.py) and [worker storage client](../apps/worker/app/clients/r2.py): scanner artifact transfer and signed downloads. |
-| GitHub | [GitHub service](../apps/api/app/services/github.py), [connection routes](../apps/api/app/api/v1/routes/github.py), and [webhooks](../apps/api/app/api/v1/routes/webhooks.py): installation access, repository listing, and scan triggers. |
+| Scanner execution | [Registry](../apps/worker/app/scanners/registry.py), [adapters](../apps/worker/app/scanners), [runtime selection](../apps/worker/app/runtime/base.py), [Docker runtime](../apps/worker/app/runtime/docker.py), and [bounded streaming](../apps/worker/app/runtime/containment.py). |
+| Object storage | [API R2 client](../apps/api/app/clients/r2.py) and [worker storage client](../apps/worker/app/clients/r2.py): presigned artifact transfer and signed downloads. Workers hold no storage-account credentials. |
+| GitHub | [GitHub service](../apps/api/app/services/github.py), [connection routes](../apps/api/app/api/v1/routes/github.py), [repository refs](../apps/api/app/services/repository_refs.py), and [webhooks](../apps/api/app/api/v1/routes/webhooks.py): installation access, repository authority, exact revisions, and push-triggered scans. |
+
+## Deployment topology (from configuration, not observed)
+
+- [render.yaml](../render.yaml): the API web service, a weekly maintenance cron, and a per-minute `scanforge-scan-dispatch` cron. No worker or scheduler service runs on Render.
+- Scanner execution runs on a dedicated Linux host per organization ([ADR-009](adr/ADR-009-dedicated-workers-for-private-beta.md), [ADR-011](adr/ADR-011-beta-executor-and-github-ingress.md)), supervised by [scanforge-worker.service](../infra/worker/scanforge-worker.service) and provisioned by [provision_worker_host.sh](../scripts/provision_worker_host.sh).
+- The Next.js app deploys to Vercel ([notes](../infra/vercel/vercel-notes.md)). Redis Streams and R2 layouts are described in [infra](../infra).
+- CI is the Git-root workflow `../.github/workflows/ci.yml`. The nested `.github/` (Dependabot/Renovate) is not at the repository root, and GitHub may not read it; this is unverified.
 
 ## Scan and finding flow
 
-A manual request enters [scan routes](../apps/api/app/api/v1/routes/scans.py) and [lifecycle service](../apps/api/app/services/scan_lifecycle.py). The API stores the scan and attempts queue dispatch. The worker retrieves API-owned context, prepares a repository, runs adapters, handles artifacts, normalizes outputs, and sends completion evidence.
+A manual request or default-branch push enters the [scan routes](../apps/api/app/api/v1/routes/scans.py) or webhooks and the [lifecycle service](../apps/api/app/services/scan_lifecycle.py). The API persists the scan and a dispatch obligation; the dispatcher enqueues it. The worker retrieves API-owned context, fetches and verifies the exact commit, runs adapters, sanitizes and uploads artifacts, normalizes outputs, and submits completion evidence.
 
-[Execution](../apps/worker/app/services/scan_pipeline/execution.py), [normalization](../apps/worker/app/services/scan_pipeline/normalization.py), and [persistence](../apps/worker/app/services/scan_pipeline/persistence.py) are separate stages. [API completion](../apps/api/app/services/scan_completion.py) commits evidence and a replay receipt. [Finding persistence](../apps/api/app/services/findings.py) distinguishes a canonical issue from scan occurrences; [lifecycle policy](../apps/api/app/services/finding_lifecycle.py) handles observations and dispositions.
+[API completion](../apps/api/app/services/scan_completion.py) derives completeness and closure eligibility server-side ([evidence contract](../apps/api/app/services/evidence_contract.py)) and commits evidence with a replay receipt. [Finding persistence](../apps/api/app/services/findings.py) separates canonical findings from occurrences; [lifecycle policy](../apps/api/app/services/finding_lifecycle.py) records qualifying absences only for full scans with every expected scanner healthy, and closes a finding after two distinct-commit absences on every observed branch.
 
-The registry maps full scans to Trivy, Gitleaks, OSV, Semgrep, Syft, Checkov, and Grype; dependency scans to Trivy/OSV/Syft/Grype; diff scans to Gitleaks/Semgrep/Checkov; secret scans to Gitleaks. The following defects prevent treating that mapping as reliable coverage.
+## Trust boundaries
 
-## Confirmed review gaps
+| Boundary | Enforced by | Status |
+| --- | --- | --- |
+| Tenant identity and authorization | API services and [access policies](../apps/api/app/services/access_policies.py); organization-scoped worker identities | Source-verified (M02) |
+| Workers submit evidence, not decisions | Server-derived `closure_eligible`/coverage in the [evidence contract](../apps/api/app/services/evidence_contract.py) | Source-verified |
+| Scanner process has no credentials | [Allowlisted environment](../apps/worker/app/security/proc_env.py) | Source-verified |
+| Scanner container isolation | Digest-pinned image, `--network=none`, `--read-only`, dropped capabilities, `no-new-privileges`, non-root UID, pids/memory/tmpfs limits ([docker.py](../apps/worker/app/runtime/docker.py)); local runtime refused in customer environments ([base.py](../apps/worker/app/runtime/base.py)) | Source-verified; live container not exercised on 2026-11-04 |
+| Source acquisition | `https://github.com` origin only, no redirects, no submodules, exact-SHA fetch and verify ([execution.py](../apps/worker/app/services/scan_pipeline/execution.py)) | Source-verified, with gaps G4 and G5 below |
+| Optional AI | `AI_ENABLED` default false; server capability `ai_assistance` disabled; [ADR-017](adr/ADR-017-authoritative-evidence-and-optional-ai.md) | Disabled |
+| Secret evidence | [Secret sanitization](../apps/worker/app/security/secret_evidence.py) before persistence; no secret values in fingerprints | Source-verified (M05) |
 
-These references preserve the original B1–B12 findings. Acceptance requirements and dispositions are in the [October decision record](reviews/2026-10-16-roadmap-grilling.md).
+## Supported capability matrix
 
-| Finding | Current implementation gap and source |
-| --- | --- |
-| B1 | [Adapter base](../apps/worker/app/scanners/base.py) defaults contained arguments to `--version`; OSV, Semgrep, Syft, Checkov, and Grype inherit that behavior instead of contained analysis. |
-| B2 | [Artifact handling](../apps/worker/app/services/scan_pipeline/execution.py) clears Gitleaks data before normalization. [Secret sanitization](../apps/worker/app/security/secret_evidence.py) and [Trivy normalization](../apps/worker/app/normalizers/trivy.py) disagree on field names. |
-| B3 | [Worker image](../apps/worker/Dockerfile) and [beta Compose](../infra/worker/docker-compose.beta.yml) do not establish the Git/container-runtime/workspace permissions required by the contained executor. |
-| B4 | [Contained adapter cleanup](../apps/worker/app/scanners/base.py) removes output directories before later artifact upload uses their paths. |
-| B5 | [Repository preparation and changed-file collection](../apps/worker/app/services/scan_pipeline/execution.py) clone a branch tip rather than verify the recorded commit and compare `HEAD~1` instead of the recorded PR base. |
-| B6 | [Repository UI](<../apps/web/app/(dashboard)/dashboard/[org_id]/projects/[project_id]/repositories/page.tsx>) omits installation identity required by [connection persistence](../apps/api/app/services/repositories.py); push webhooks create scans without lifecycle enqueueing. |
-| B7 | [GitHub Check payload builders](../apps/api/app/services/github_checks.py) lack a publication workflow; webhook response data is not a posted GitHub review. |
-| B8 | [Handwritten client schemas](../apps/web/lib/api-schemas.ts) and [client methods](../apps/web/lib/api.ts) disagree with scorecard, nullable integration, and finding-event responses. |
-| B9 | [Export schemas](../apps/api/app/schemas/exports.py), [service](../apps/api/app/services/exports.py), and dashboard disagree; no complete generation workflow connects pending requests to downloadable results. |
-| B10 | [Suppression-rule CRUD](../apps/api/app/api/v1/routes/suppression_rules.py) stores rules without demonstrated ingestion enforcement; expiry is not persisted as requested. |
-| B11 | [Router ordering](../apps/api/app/api/v1/router.py) lets dynamic finding detail shadow `/findings/trend`. |
-| B12 | [Schedule service](../apps/api/app/services/scan_schedules.py) does not evaluate stored cron expressions or safely claim occurrences across concurrent schedulers. |
+Server-side policy: [beta_capabilities.py](../apps/api/app/core/beta_capabilities.py). "Enabled" means reachable, not release-verified.
 
-Additional release blockers include installation ownership verification, finding mutation authorization before commits, audit path matching, artifact ownership validation, temporal finding ordering, cancellation/containment limits, stale risk summaries, and mismatched release-gate test inventory. See the [finding dispositions](reviews/2026-10-16-roadmap-grilling.md) and [implementation tasks](plans/2026-10-16-managed-beta-implementation-plan.md). No current test-pass claim is implied here.
+| Capability | State | Notes |
+| --- | --- | --- |
+| Manual full / dependency / secret scans | Enabled | Seven scanners on full scans |
+| Automatic default-branch push scans | Enabled | Via durable dispatch |
+| Finding triage, history, assignment | Enabled | |
+| PR review, diff scans | Disabled | Shadow review is the next milestone ([ADR-018](adr/ADR-018-developer-first-security-review-direction.md)) |
+| Scheduled scans, exports, suppression rules | Disabled | Deferred |
+| Grades, numeric risk scores, policy enforcement | Disabled | Deferred |
+| AI assistance | Disabled | ADR-017 |
+| Language/framework support matrix | Not yet published | Required by the charter before pilot claims |
 
-## AI and error handling
+## Review gap status
 
-The [AI stage](../apps/worker/app/services/ai_investigation/stage.py) has [Anthropic](../apps/worker/app/services/ai_investigation/anthropic_provider.py) and [Ollama](../apps/worker/app/services/ai_investigation/ollama_provider.py) providers. `AI_ENABLED` defaults to false; private-beta policy prohibits enabling it. It explains existing normalized findings using metadata rather than independently reviewing repository code. The awaited stage and [fingerprint cache](../apps/worker/app/services/ai_investigation/cache.py) do not yet implement the accepted independent, versioned, tenant-scoped AI job design.
+Original B1–B12 findings and their dispositions are in the [October decision record](reviews/2026-10-16-roadmap-grilling.md).
 
-The API [global exception handler](../apps/api/app/main.py) logs exceptions and returns a generic internal error. [Generic error constants](../apps/api/app/core/error_messages.py), [error-sanitization regression tests](../apps/api/tests/test_error_sanitization.py), and the [advisory exception-handler checker](../apps/api/scripts/check_exception_handlers.py) exist. These mechanisms do not prove every error boundary is safe or that every audit event is durable.
+| ID | Original gap | Status 2026-11-04 |
+| --- | --- | --- |
+| B1 | Adapters ran `--version` instead of analysis | Fixed in source (M05, `d567a36`) |
+| B2 | Gitleaks evidence cleared before normalization; field-name mismatch | Fixed in source (M05): sanitized output retained for normalization |
+| B3 | Worker image lacked Git/runtime/workspace permissions | Addressed (M04): host coordinator plus provisioning script; live host not verified |
+| B4 | Output directories removed before upload | Fixed in source (M05) |
+| B5 | Branch tip instead of recorded commit; `HEAD~1` diff base | Exact-SHA fetch fixed (M06). Branch-tip fallback when no SHA (G5) and `HEAD~1` diff base remain; diff scans disabled |
+| B6 | UI omitted installation identity; push scans not enqueued | Push enqueue fixed (M07 dispatch). UI path unverified (October M11/M12) |
+| B7 | Check payloads without publication | Open; PR review disabled |
+| B8 | Handwritten client schemas disagree with API | Open (October M12) |
+| B9 | Export workflow incomplete | Open; exports disabled |
+| B10 | Suppression rules not enforced at ingestion | Open; suppression disabled |
+| B11 | `/findings/{finding_id}` shadows `/findings/trend` | Appears open: the findings router is included before the trend router and `finding_id` is a UUID path parameter ([router.py](../apps/api/app/api/v1/router.py)); runtime not verified |
+| B12 | Schedules ignore cron expressions; unsafe concurrent claiming | Open; schedules disabled |
 
-## Accepted target, not implemented status
+## Gaps found during the 2026-11-04 discovery
 
-[ADR-010 through ADR-017](adr/) define a managed security-operations beta for three to five organizations: a dedicated Linux host per organization, supervised coordinator, isolated offline scanner containers, exact revision identity, durable dispatch, fenced attempts, ordered observations, immutable evidence, transactional authorization/audit, and verified cleanup.
+| ID | Gap | Source |
+| --- | --- | --- |
+| G1 | Qualifying absences ignore analyzer comparability: a rules/parser/fingerprint-policy change can produce two absences and close a finding as `fixed` | [findings.py](../apps/api/app/services/findings.py) `mark_not_observed_after_scan`; [finding_lifecycle.py](../apps/api/app/services/finding_lifecycle.py) |
+| G2 | Semgrep and Gitleaks fingerprints include line numbers; moved code creates a new finding while the old one accrues absences | [semgrep.py](../apps/worker/app/normalizers/semgrep.py), [gitleaks.py](../apps/worker/app/normalizers/gitleaks.py) |
+| G3 | Trivy, OSV and Grype share identical dependency fingerprint inputs without ecosystem or scanner, implicitly merging cross-scanner results (ADR-014 requires tested equivalence) | [trivy.py](../apps/worker/app/normalizers/trivy.py), [osv.py](../apps/worker/app/normalizers/osv.py), [grype.py](../apps/worker/app/normalizers/grype.py) |
+| G4 | Git subprocesses inherit `HOME` and do not disable system/global Git configuration, so host Git filters or URL rewrites can apply to untrusted checkouts | [proc_env.py](../apps/worker/app/security/proc_env.py), [execution.py](../apps/worker/app/services/scan_pipeline/execution.py) |
+| G5 | With no `commit_sha`, the worker clones the branch tip instead of failing | [execution.py](../apps/worker/app/services/scan_pipeline/execution.py) `prepare_repository` |
+| G6 | Absence requires all seven scanners healthy, so one failing capability blocks reassessment of every capability | [finding_lifecycle.py](../apps/api/app/services/finding_lifecycle.py) `evaluate_scan_absence_evidence` |
+| G7 | The AI stage is awaited inside the scan pipeline rather than a separate job (ADR-017); disabled | [scan_orchestrator.py](../apps/worker/app/services/scan_orchestrator.py) |
 
-Initial scope retains onboarding, manual full scans, automatic default-branch push scans, finding review/history/triage, assignment and due dates, honest coverage, and audit records. Scheduling, automated suppression, exports, grades/numeric scores, PR publication, and AI remain deferred until their separate requirements pass. Existing endpoints are not evidence that these features meet those requirements.
+## Error handling
 
-The [October plan](plans/2026-10-16-managed-beta-implementation-plan.md) owns execution order and required evidence. [CONTEXT.md](../CONTEXT.md) owns domain vocabulary. The [single setup guide](../RUNNING_LOCALLY.md) describes development; [runbooks](runbooks/) describe operator procedures. Historical September evidence remains linked from the [root index](../README.md).
+The API [global exception handler](../apps/api/app/main.py) logs exceptions and returns a generic internal error. [Generic error constants](../apps/api/app/core/error_messages.py), [error-sanitization tests](../apps/api/tests/test_error_sanitization.py), and the [advisory exception-handler checker](../apps/api/scripts/check_exception_handlers.py) exist. They do not prove every error boundary is safe or that every audit event is durable.
+
+[CONTEXT.md](../CONTEXT.md) owns domain vocabulary. The [setup guide](../RUNNING_LOCALLY.md) describes development; [runbooks](runbooks/) describe operator procedures.

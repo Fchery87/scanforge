@@ -2,10 +2,8 @@
 
 ## Bucket Prefixes
 
-- `scan-artifacts/{project_id}/{scan_id}/raw/`
-- `scan-artifacts/{project_id}/{scan_id}/logs/`
-- `exports/{organization_id}/{export_id}/`
-- `sboms/{project_id}/{scan_id}/`
+- `scan-artifacts/{organization_id}/{scan_id}/{scanner_name}/{filename}`: sanitized scanner artifacts. Keys are issued by the API ([internal routes](../../apps/api/app/api/v1/routes/internal.py)) and checked by the worker ([r2 client](../../apps/worker/app/clients/r2.py)).
+- `exports/` and `sboms/` are reserved by the lifecycle rule for the disabled export capability and possible future SBOM output; no current code writes to them.
 
 ## Artifact Retention
 
