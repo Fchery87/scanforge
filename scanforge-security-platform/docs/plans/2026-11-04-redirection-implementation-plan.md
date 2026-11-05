@@ -724,6 +724,24 @@ No new behavior. Turn "landed in code" into evidence or into explicit gaps.
 - Walk the archived October M07 and M08 checklists item by item. For each item, cite the test that proves it or mark it missing.
 - Missing M07 items become sub-tasks here. Missing M08 fencing items (progress, findings, uploads, heartbeat routes, not only completion) become sub-tasks here. M08 cleanup durability moves to P1.7.
 
+#### M07 acceptance evidence (#35)
+
+Tests are in `apps/api/tests/test_scan_dispatch.py` (SQLite, queue emulator) and `apps/api/tests/test_scan_dispatch_postgres.py` (disposable PostgreSQL 16, real concurrency; skipped when no PostgreSQL binaries or `DISPATCH_POSTGRES_URL`/`R04_POSTGRES_URL` are available).
+
+| M07 checklist item | Status | Evidence |
+| --- | --- | --- |
+| Queue outage after scan creation retains an awaiting-dispatch obligation and recovers on retry | Proven | `test_queue_outage_retains_awaiting_dispatch_and_recovers_on_retry` |
+| Crash after queue delivery before acknowledgement is idempotent on reclaim | Proven | `test_crash_after_queue_delivery_before_ack_is_idempotent_on_reclaim` |
+| Trigger, scan and obligation persist in one transaction | Proven (scan + obligation); fixed (savepoint) | `test_scan_and_obligation_commit_or_roll_back_together`. Fixed: a losing duplicate used `rollback()` on the caller's session, discarding the webhook delivery row and expiring loaded rows; `ScanService.create` now isolates scan + obligation insert in a savepoint |
+| Idempotent leased dispatcher with retries and visible awaiting-dispatch state | Proven | `test_postgres_concurrent_dispatchers_claim_each_obligation_once_with_zero_stranded`, `test_dispatcher_restart_reclaims_expired_lease_and_delivers_once`, outage test above |
+| Equivalent automatic business identity incl. scope/coverage context | Proven | `test_automatic_business_identity_and_manual_idempotency_vs_deliberate_rerun`, `test_concurrent_duplicate_automatic_triggers_yield_one_scan_and_one_obligation` |
+| Manual request idempotency separate from deliberate reruns | Fixed + proven | `test_concurrent_manual_requests_split_idempotent_duplicates_from_deliberate_reruns` (concurrent same-key requests previously raised `MissingGreenlet`) |
+| Bounded admission | Proven (SQLite) | `test_bounded_admission_and_explicit_supersession_of_unstarted_automatic_work` |
+| Explicit supersession of unstarted automatic work within a generation; manual work never coalesced | Proven | same test; `test_burst_with_concurrent_dispatchers_leaves_no_stranded_obligation` (manual scan survives a burst) |
+| Concurrent dispatchers, duplicates, restarts and bursts: one authoritative scan per equivalent trigger, zero stranded obligations | Fixed + proven on PostgreSQL | the three PostgreSQL tests above. Fixed: concurrent first pushes to a ref raced on `uq_repo_branch_generation` (500); `RepositoryRefService.resolve_and_advance_generation` now takes a per-ref `pg_advisory_xact_lock` so ref transitions, the scan and its obligation serialize |
+
+Not run: real Upstash Redis (the queue path uses the in-memory emulator `InMemoryUpstashQueue`); the Docker integration stack (`infra/testing/docker-compose.integration.yml`) because Docker is not accessible to this user, so a native PostgreSQL 16 cluster was used instead.
+
 Acceptance: a table in this plan listing every M07/M08 checklist item as proven (with test) or open. Commit the table only (`docs: verify M07/M08 acceptance (P1.3)`).
 
 ### Task P1.4: Primary dependency engine evaluation
