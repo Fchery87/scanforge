@@ -1,0 +1,99 @@
+{
+  "schema_version": "2026-11-dependency-eval-results.v1",
+  "status": "NOT RUN",
+  "note": "Skeleton only. No scanner has been executed; every cell is NOT RUN.",
+  "engines": {
+    "trivy": {
+      "npm-vulnerable": {
+        "status": "NOT RUN"
+      },
+      "npm-clean": {
+        "status": "NOT RUN"
+      },
+      "pypi-requirements-vulnerable": {
+        "status": "NOT RUN"
+      },
+      "pypi-requirements-clean": {
+        "status": "NOT RUN"
+      },
+      "pypi-poetry-vulnerable": {
+        "status": "NOT RUN"
+      },
+      "pypi-poetry-clean": {
+        "status": "NOT RUN"
+      },
+      "monorepo-duplicate": {
+        "status": "NOT RUN"
+      }
+    },
+    "osv": {
+      "npm-vulnerable": {
+        "status": "NOT RUN"
+      },
+      "npm-clean": {
+        "status": "NOT RUN"
+      },
+      "pypi-requirements-vulnerable": {
+        "status": "NOT RUN"
+      },
+      "pypi-requirements-clean": {
+        "status": "NOT RUN"
+      },
+      "pypi-poetry-vulnerable": {
+        "status": "NOT RUN"
+      },
+      "pypi-poetry-clean": {
+        "status": "NOT RUN"
+      },
+      "monorepo-duplicate": {
+        "status": "NOT RUN"
+      }
+    },
+    "grype": {
+      "npm-vulnerable": {
+        "status": "NOT RUN"
+      },
+      "npm-clean": {
+        "status": "NOT RUN"
+      },
+      "pypi-requirements-vulnerable": {
+        "status": "NOT RUN"
+      },
+      "pypi-requirements-clean": {
+        "status": "NOT RUN"
+      },
+      "pypi-poetry-vulnerable": {
+        "status": "NOT RUN"
+      },
+      "pypi-poetry-clean": {
+        "status": "NOT RUN"
+      },
+      "monorepo-duplicate": {
+        "status": "NOT RUN"
+      }
+    },
+    "syft": {
+      "npm-vulnerable": {
+        "status": "NOT RUN"
+      },
+      "npm-clean": {
+        "status": "NOT RUN"
+      },
+      "pypi-requirements-vulnerable": {
+        "status": "NOT RUN"
+      },
+      "pypi-requirements-clean": {
+        "status": "NOT RUN"
+      },
+      "pypi-poetry-vulnerable": {
+        "status": "NOT RUN"
+      },
+      "pypi-poetry-clean": {
+        "status": "NOT RUN"
+      },
+      "monorepo-duplicate": {
+        "status": "NOT RUN"
+      }
+    }
+  }
+}

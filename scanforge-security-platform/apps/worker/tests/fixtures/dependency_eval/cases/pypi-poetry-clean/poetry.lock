@@ -1,0 +1,20 @@
+[[package]]
+name = "requests"
+version = "2.32.3"
+description = "fixture"
+optional = false
+python-versions = "*"
+files = []
+
+[[package]]
+name = "pyyaml"
+version = "6.0.2"
+description = "fixture"
+optional = false
+python-versions = "*"
+files = []
+
+[metadata]
+lock-version = "2.0"
+python-versions = "^3.10"
+content-hash = "0000000000000000000000000000000000000000000000000000000000000000"

@@ -1,0 +1,9 @@
+{
+  "name": "eval-npm-clean",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "lodash": "4.17.21",
+    "minimist": "1.2.8"
+  }
+}
