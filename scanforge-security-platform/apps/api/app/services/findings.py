@@ -27,6 +27,7 @@ from app.schemas.findings import (
 )
 from app.services.access_policies import FINDING_MUTATION_ROLES
 from app.services.audit_logs import AuditLogService
+from app.services.evidence_contract import CAPABILITY_SCANNERS, capability_for_scanner
 from app.services.finding_lifecycle import (
     ABSENCE_THRESHOLD,
     ANALYZER_BLOCK_KEY,
@@ -480,15 +481,36 @@ class FindingService:
         )
         return set(result.scalars().all())
 
-    async def _scan_has_incomplete_scanner_evidence(self, scan_id: str) -> bool:
-        """Committed ScannerRun rows must show healthy coverage (D3)."""
-        result = await self.db.execute(select(ScannerRun.status).where(ScannerRun.scan_id == scan_id))
-        statuses = [getattr(status, "value", status) for status in result.scalars().all()]
+    async def _scan_has_incomplete_scanner_evidence(self, scan_id: str, capability: str | None = None) -> bool:
+        """Committed ScannerRun rows must show healthy coverage (D3).
+
+        With a capability only that capability's scanner runs are judged (P1.6).
+        """
+        result = await self.db.execute(
+            select(ScannerRun.scanner_name, ScannerRun.status).where(ScannerRun.scan_id == scan_id)
+        )
+        in_scope = CAPABILITY_SCANNERS.get(capability or "")
+        statuses = [
+            getattr(status, "value", status)
+            for name, status in result.all()
+            if capability is None or name in (in_scope or ())
+        ]
         if not statuses:
             # No committed scanner outcome: missing evidence is ineligible,
             # never assumed clean.
             return True
         return any(status != ScanStatus.COMPLETED.value for status in statuses)
+
+    async def _capability_may_credit_absence(
+        self, scan, scan_context: dict, capability: str | None, cache: dict[str | None, bool]
+    ) -> bool:
+        """Per-capability absence eligibility for one scan, evaluated once per capability."""
+        if capability not in cache:
+            eligible, _ = evaluate_scan_absence_evidence(scan_context, capability=capability)
+            cache[capability] = eligible and not await self._scan_has_incomplete_scanner_evidence(
+                str(scan.id), capability
+            )
+        return cache[capability]
 
     async def _scanner_signatures_for_scan(self, scan_id: str) -> dict[str, dict]:
         """Analyzer identity of every scanner that ran in this scan."""
@@ -669,11 +691,12 @@ class FindingService:
             "commit_sha": scan.commit_sha,
             "scanner_health": (scan_summary or {}).get("scanner_health"),
         }
-        eligible, _ = evaluate_scan_absence_evidence(scan_context)
-        if not eligible:
+        # Scan-level gates (type, ref, commit, PR shadow) apply to every capability; scanner
+        # health is judged per finding capability so one failed scanner blocks only its own.
+        _, reasons = evaluate_scan_absence_evidence({**scan_context, "scanner_health": None})
+        if any(reason != AbsenceBlockReason.SCANNER_EVIDENCE_INCOMPLETE for reason in reasons):
             return 0
-        if await self._scan_has_incomplete_scanner_evidence(str(scan.id)):
-            return 0
+        capability_cache: dict[str | None, bool] = {}
 
         current_signatures = await self._scanner_signatures_for_scan(str(scan.id))
         present = await self._scan_persisted_fingerprints(str(scan.id))
@@ -682,6 +705,10 @@ class FindingService:
         branch = scan.branch_name
         updated = 0
         for finding in await self._list_open_findings_for_repository(repository_id):
+            if finding.canonical_fingerprint not in present and not await self._capability_may_credit_absence(
+                scan, scan_context, capability_for_scanner(finding.primary_scanner), capability_cache
+            ):
+                continue
             updated += await self._apply_branch_absence(finding, scan, branch, present, current_signatures)
 
         if updated:

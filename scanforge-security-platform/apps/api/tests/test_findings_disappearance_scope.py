@@ -175,7 +175,7 @@ async def _seed_repo(session):
     return str(repo_id), str(project_id), user_id
 
 
-async def _seed_finding(session, repo_id, project_id, fingerprint, *, status="open"):
+async def _seed_finding(session, repo_id, project_id, fingerprint, *, status="open", scanner="trivy"):
     now = datetime.now(UTC)
     finding = Finding(
         project_id=project_id,
@@ -186,7 +186,7 @@ async def _seed_finding(session, repo_id, project_id, fingerprint, *, status="op
         title="t",
         description=None,
         canonical_fingerprint=fingerprint,
-        primary_scanner="trivy",
+        primary_scanner=scanner,
         first_seen_at=now,
         last_seen_at=now,
     )
@@ -230,7 +230,7 @@ async def _add_runs(session, scan_id, runs):
         await session.flush()
 
 
-async def _observe(session, repo_id, project_id, fingerprint, *, branch=MAIN, commit, runs=OK_RUNS):
+async def _observe(session, repo_id, project_id, fingerprint, *, branch=MAIN, commit, runs=OK_RUNS, scanner="trivy"):
     """Positive evidence: a comparable scan that reports the finding."""
     service = FindingService(session)
     scan = await _seed_scan(session, repo_id, project_id, branch=branch, commit=commit)
@@ -245,7 +245,7 @@ async def _observe(session, repo_id, project_id, fingerprint, *, branch=MAIN, co
                 "severity": "high",
                 "title": "t",
                 "canonical_fingerprint": fingerprint,
-                "primary_scanner": "trivy",
+                "primary_scanner": scanner,
                 "confidence_score": 0.9,
             }
         ],
@@ -304,8 +304,10 @@ async def test_non_comparable_scan_does_not_disappear_finding(db_session):
         repo_id,
         project_id,
         commit="c" * 40,
-        summary=_health(complete=False, failed=["gitleaks"]),
-        run_statuses=(("trivy", "completed", TRIVY_V1), ("gitleaks", "failed", GITLEAKS_V1)),
+        # The finding's own capability (trivy -> dependencies) failed; since #41 an unrelated
+        # failure (gitleaks) no longer blocks it, see test_capability_scoped_absence.py.
+        summary=_health(complete=False, failed=["trivy"], completed=["gitleaks"]),
+        run_statuses=(("trivy", "failed", TRIVY_V1), ("gitleaks", "completed", GITLEAKS_V1)),
     )
 
     assert updated == 0

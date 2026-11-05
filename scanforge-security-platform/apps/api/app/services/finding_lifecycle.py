@@ -19,6 +19,8 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
 
+from app.services.evidence_contract import CAPABILITY_SCANNERS
+
 ABSENCE_THRESHOLD = 2
 POLICY_VERSION = "scan-evidence-v1"
 
@@ -85,12 +87,18 @@ def transition_event_for_state(state: str) -> str:
     return TRANSITION_EVENTS[validate_workflow_state(state)]
 
 
-def evaluate_scan_absence_evidence(scan_context: Mapping[str, object] | None) -> tuple[bool, list[str]]:
-    """Decide whether a completed scan may authorize any absence observation.
+def evaluate_scan_absence_evidence(
+    scan_context: Mapping[str, object] | None, capability: str | None = None
+) -> tuple[bool, list[str]]:
+    """Decide whether a completed scan may authorize an absence observation.
 
     Failed or missing scanner evidence is treated as committed evidence (D3):
-    a scan without explicit complete, healthy coverage for every expected
-    scanner is ineligible and never proves a finding disappeared.
+    a scan without explicit healthy coverage is ineligible and never proves a
+    finding disappeared.  Without ``capability`` every expected scanner must be
+    healthy.  With a finding's capability (P1.6) only that capability's expected
+    scanners are judged, so an unrelated failure cannot block it and an
+    unrelated success cannot prove it; a capability with no expected scanner in
+    the scan is ineligible.
     """
     context = scan_context or {}
     reasons: list[str] = []
@@ -113,13 +121,21 @@ def evaluate_scan_absence_evidence(scan_context: Mapping[str, object] | None) ->
         completed = set(health.get("completed") or [])
         failed = set(health.get("failed") or [])
         missing = set(health.get("missing") or [])
-        if (
-            not expected
-            or failed
-            or missing
-            or not set(expected).issubset(completed)
-            or health.get("complete") is not True
-        ):
+        if capability is not None:
+            in_scope = set(CAPABILITY_SCANNERS.get(capability, ()))
+            expected = [name for name in expected if name in in_scope]
+            failed &= in_scope
+            missing &= in_scope
+            incomplete = not expected or failed or missing or not set(expected).issubset(completed)
+        else:
+            incomplete = (
+                not expected
+                or failed
+                or missing
+                or not set(expected).issubset(completed)
+                or health.get("complete") is not True
+            )
+        if incomplete:
             reasons.append(AbsenceBlockReason.SCANNER_EVIDENCE_INCOMPLETE)
 
     return (not reasons, reasons)

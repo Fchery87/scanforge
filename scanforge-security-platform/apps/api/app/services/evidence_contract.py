@@ -34,6 +34,24 @@ KNOWN_BETA_SCANNERS: frozenset[str] = frozenset(
         "grype",
     }
 )
+# Capability scope for absence eligibility (P1.6). Mirrors CAPABILITY_REGISTRY in
+# apps/worker/app/scanners/registry.py; each side has a test pinning its map.
+CAPABILITY_SCANNERS: dict[str, tuple[str, ...]] = {
+    "secrets": ("gitleaks",),
+    "sast": ("semgrep",),
+    "dependencies": ("trivy", "osv", "osv-scanner", "syft", "grype"),
+    "iac": ("checkov",),
+}
+
+
+def capability_for_scanner(scanner_name: str | None) -> str | None:
+    name = (scanner_name or "").strip().lower()
+    for capability, scanners in CAPABILITY_SCANNERS.items():
+        if name in scanners:
+            return capability
+    return None
+
+
 DATABASE_BACKED_SCANNERS: frozenset[str] = frozenset({"trivy", "grype", "osv", "osv-scanner"})
 MAX_SCANNER_DB_AGE = timedelta(days=7)
 
