@@ -303,7 +303,7 @@ async def test_execution_context_tells_the_worker_when_the_head_is_a_fork(db_ses
     await db_session.commit()
 
     served = await internal.get_scan_execution_context(
-        scan_id=UUID(str(scan.id)), principal=_principal(org_id), db=db_session
+        presented_identity=None, scan_id=UUID(str(scan.id)), principal=_principal(org_id), db=db_session
     )
 
     assert served["head_is_fork"] is True
@@ -314,7 +314,7 @@ async def test_execution_context_reports_non_fork_runs_as_trusted_heads(db_sessi
     scan, org_id = await _seed_scan(db_session)
 
     served = await internal.get_scan_execution_context(
-        scan_id=UUID(str(scan.id)), principal=_principal(org_id), db=db_session
+        presented_identity=None, scan_id=UUID(str(scan.id)), principal=_principal(org_id), db=db_session
     )
 
     assert served["head_is_fork"] is False

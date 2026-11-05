@@ -332,7 +332,7 @@ class FindingService:
         repository = await self.db.get(Repository, repository_id)
         repository_importance = getattr(repository, "importance", "normal") or "normal"
         scan_row = await self.db.get(Scan, str(scan_id))
-        if scan_row is not None and scan_row.trigger_type == "pull_request":
+        if scan_row is not None and getattr(scan_row, "trigger_type", None) == "pull_request":
             # Shadow PR analysis is stored on the run only (completion summary and
             # artifacts). It never creates, reopens or closes baseline findings.
             return 0, 0
