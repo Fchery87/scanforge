@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
@@ -10,10 +11,20 @@ from sqlalchemy.orm import selectinload
 
 from app.db.enums import DispatchObligationStatus
 from app.db.enums import ScanStatus as ScanStatusEnum
-from app.db.models import Organization, OrganizationMember, Project, Repository, Scan, ScannerRun
+from app.db.models import (
+    Organization,
+    OrganizationIntegration,
+    OrganizationMember,
+    Project,
+    Repository,
+    Scan,
+    ScannerRun,
+)
 from app.schemas.scans import ScanCreate
+from app.services.github import GitHubService
 from app.services.repository_refs import (
     SCAN_TYPE_SCANNERS,
+    RepositoryRefError,
     RepositoryRefService,
     validate_commit_sha,
 )
@@ -24,6 +35,8 @@ from app.services.scan_dispatch import (
     compute_automatic_business_identity,
 )
 
+
+logger = logging.getLogger(__name__)
 
 PR_SHADOW_COMPARISON_STRATEGY = "head_vs_merge_base"
 
@@ -92,6 +105,15 @@ class ScanService:
                 organization_id=project.organization_id,
                 repository_id=repo.id,
             )
+
+        if (
+            revision_resolver is None
+            and data.trigger_type in ("manual", "scheduled")
+            and not (data.commit_sha or "").strip()
+        ):
+            # The worker refuses to scan without an exact SHA (#34), so the API
+            # resolves the branch head now instead of queueing a scan that must fail.
+            revision_resolver = self._head_revision_resolver(repo, project)
 
         ref_service = RepositoryRefService(self.db)
         if (
@@ -228,6 +250,33 @@ class ScanService:
             await self.db.refresh(scan)
 
         return scan, repo, project
+
+    def _head_revision_resolver(
+        self, repo: Repository, project: Project
+    ) -> Callable[[str, str | None], Awaitable[str]]:
+        async def resolve(branch_name: str, _expected_sha: str | None) -> str:
+            integration = (
+                await self.db.execute(
+                    select(OrganizationIntegration).where(
+                        OrganizationIntegration.organization_id == project.organization_id
+                    )
+                )
+            ).scalar_one_or_none()
+            if integration is None or not integration.installation_id:
+                raise RepositoryRefError(
+                    "Cannot resolve an exact commit: no GitHub installation is connected for this organization"
+                )
+            try:
+                return await GitHubService(self.db).resolve_branch_commit(
+                    integration.installation_id, repo.owner_name, repo.repo_name, branch_name
+                )
+            except Exception as exc:
+                logger.warning("Head revision lookup failed for %s@%s", repo.full_name, branch_name, exc_info=True)
+                raise RepositoryRefError(
+                    f"Could not resolve an exact commit for branch {branch_name!r}"
+                ) from exc
+
+        return resolve
 
     async def create_pr_shadow(
         self,
