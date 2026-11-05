@@ -145,6 +145,7 @@ async def test_get_scan_execution_context_loads_authoritative_scan_context(monke
         "ancestry_status": "unknown",
         "commit_sha": "deadbeef",
         "head_is_fork": False,
+        "pull_request_number": None,
         "status": scan.status.value,
         "user_id": str(user_id),
         "attempt_id": result["attempt_id"],
