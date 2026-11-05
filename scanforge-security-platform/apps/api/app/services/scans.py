@@ -35,7 +35,6 @@ from app.services.scan_dispatch import (
     compute_automatic_business_identity,
 )
 
-
 logger = logging.getLogger(__name__)
 
 PR_SHADOW_COMPARISON_STRATEGY = "head_vs_merge_base"

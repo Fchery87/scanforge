@@ -310,7 +310,7 @@ class FindingService:
         )
         return result.scalar_one()
 
-    async def upsert_from_scan(
+    async def upsert_from_scan(  # noqa: PLR0912
         self,
         scan_id: str,
         repository_id: str,

@@ -250,7 +250,7 @@ async def _resolve_merge_base(db: AsyncSession, *, integration, repo, base_sha: 
             integration.installation_id, repo.owner_name, repo.repo_name, base_sha, head_sha
         )
         return validate_commit_sha(receipt.get("merge_base_sha"), require_exact=True)
-    except Exception:  # noqa: BLE001 - an unresolved merge-base is recorded as unknown
+    except Exception:
         logger.warning("Could not resolve merge-base for %s", repo.full_name, exc_info=True)
         return None
 
@@ -313,7 +313,7 @@ async def _handle_pull_request_shadow_event(
 
 
 @router.post("/github/{org_id}/{project_id}/{repository_id}")
-async def github_webhook(
+async def github_webhook(  # noqa: PLR0911, PLR0912
     org_id: UUID,
     project_id: UUID,
     repository_id: UUID,
