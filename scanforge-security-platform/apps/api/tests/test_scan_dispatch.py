@@ -495,7 +495,7 @@ async def test_bounded_admission_and_explicit_supersession_of_unstarted_automati
     assert auto_scan_1.coverage_completeness == "skipped_superseded"
     assert auto_scan_1.closure_eligible is False
     assert auto_scan_1.summary_json["superseded"] is True
-    assert len(auto_scan_1.summary_json["skipped_scanners"]) == 7
+    assert len(auto_scan_1.summary_json["skipped_scanners"]) == 5  # ADR-019 default full-scan set
     assert auto_scan_1.summary_json["fabricated_observations"] is False
     assert manual_scan.status == ScanStatusEnum.QUEUED
     assert manual_scan.dispatch_state == DispatchObligationStatus.AWAITING_DISPATCH.value

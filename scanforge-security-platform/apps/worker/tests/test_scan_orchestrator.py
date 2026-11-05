@@ -160,7 +160,8 @@ def test_scan_type_mappings_include_checkov_and_grype():
     orchestrator = ScanOrchestrator(queue=DummyQueue(), r2=DummyR2())
 
     assert "checkov" in orchestrator._get_scanners_for_type("scan.repo.full")
-    assert "grype" in orchestrator._get_scanners_for_type("scan.repo.full")
+    # ADR-019: Grype is registered but not part of the default full scan.
+    assert "grype" not in orchestrator._get_scanners_for_type("scan.repo.full")
     assert "checkov" in orchestrator._get_scanners_for_type("scan.repo.diff")
     assert "grype" in orchestrator._get_scanners_for_type("scan.dependencies")
 
