@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     GITHUB_STATE_SIGNING_SECRET: str = ""
     # Comma-separated organization UUIDs allowed to run private shadow PR analysis (pr_shadow).
     PR_SHADOW_ORGANIZATION_IDS: str = ""
+    # Seconds a new shadow PR run waits before dispatch so a burst of pushes settles on the latest head.
+    PR_SHADOW_DEBOUNCE_SECONDS: int = 30
 
     INTERNAL_API_KEY: str = ""
     WORKER_CREDENTIAL_PEPPER: str = ""
