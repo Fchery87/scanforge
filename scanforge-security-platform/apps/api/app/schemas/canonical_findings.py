@@ -21,21 +21,24 @@ class CanonicalFindingReference(BaseModel):
     url: str | None = None
 
 
-# Default policy for scanners not listed below. Policy versions are per scanner
-# so one scanner can move to a new identity policy without making the others'
-# findings non-comparable (ADR-014).
 CURRENT_FINGERPRINT_VERSION = "fp.v2"
 
-SCANNER_FINGERPRINT_VERSIONS: dict[str, str] = {
-    "semgrep": "fp.v3",
-    "checkov": "fp.v3",
-    "gitleaks": "fp.v3",
-}
+# Categories whose identity policy has moved past CURRENT_FINGERPRINT_VERSION.
+# A finding recorded under an older policy is never comparable with analysis
+# under the category's current one (ADR-014).
+CATEGORY_FINGERPRINT_VERSIONS = {"vulnerability": "fp.v3"}
 
 
-def fingerprint_version_for_scanner(scanner_name: str | None) -> str:
-    """Fingerprint policy a scanner's findings are produced under today."""
-    return SCANNER_FINGERPRINT_VERSIONS.get(scanner_name or "", CURRENT_FINGERPRINT_VERSION)
+# Scanners whose every finding is identified under a newer policy regardless of
+# category (Semgrep emits vulnerability and code-quality findings; Trivy's
+# secret and IaC findings stay on the default policy).
+SCANNER_FINGERPRINT_VERSIONS = {"semgrep": "fp.v3", "checkov": "fp.v3", "gitleaks": "fp.v3"}
+
+
+def current_fingerprint_version(category: str | None, scanner: str | None = None) -> str:
+    if scanner in SCANNER_FINGERPRINT_VERSIONS:
+        return SCANNER_FINGERPRINT_VERSIONS[scanner]
+    return CATEGORY_FINGERPRINT_VERSIONS.get(category or "", CURRENT_FINGERPRINT_VERSION)
 
 
 class CanonicalFindingCandidate(BaseModel):

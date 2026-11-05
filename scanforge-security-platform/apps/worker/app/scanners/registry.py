@@ -22,6 +22,16 @@ SCAN_MODE_REGISTRY: dict[str, list[str]] = {
 }
 
 
+# Scanner -> capability for absence eligibility (P1.6). Mirrored by CAPABILITY_SCANNERS in the API
+# evidence contract; the API owns the decision, this map only keeps the two sides legible together.
+CAPABILITY_REGISTRY: dict[str, list[str]] = {
+    "secrets": ["gitleaks"],
+    "sast": ["semgrep"],
+    "dependencies": ["trivy", "osv", "syft", "grype"],
+    "iac": ["checkov"],
+}
+
+
 def _build_registry() -> dict[str, ScannerRegistration]:
     from app.normalizers.checkov import normalize_checkov_output
     from app.normalizers.gitleaks import normalize_gitleaks_output
