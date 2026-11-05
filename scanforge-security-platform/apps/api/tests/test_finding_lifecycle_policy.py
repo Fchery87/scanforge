@@ -6,10 +6,15 @@ regressions live in test_findings_disappearance_scope.py.
 """
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from app.services.finding_lifecycle import (
     ABSENCE_THRESHOLD,
+    ANALYZER_SIGNATURE_FIELDS,
     AbsenceBlockReason,
     absence_transition_target,
+    analyzer_comparability,
+    analyzer_signature,
     branch_obligation_counts,
     clear_absence_series,
     evaluate_scan_absence_evidence,
@@ -188,3 +193,55 @@ def test_scan_precedes_checkpoint_blocks_older_or_equal_scans():
 def test_scan_without_timestamp_cannot_prove_it_postdates_checkpoint():
     checkpoint = datetime.now(UTC).isoformat()
     assert scan_precedes_checkpoint(None, checkpoint) is True
+
+
+# P1.1 (#33): absence credit requires comparable analysis (ADR-014).
+
+BASE_SIGNATURE = {
+    "scanner_name": "semgrep",
+    "scanner_version": "1.90.0",
+    "parser_version": "2026-10-parser.v1",
+    "rules_digest": "sha256:rules-a",
+    "fingerprint_version": "fp.v2",
+}
+
+
+def test_identical_analyzer_signatures_are_comparable():
+    baseline = analyzer_signature(**BASE_SIGNATURE)
+    current = analyzer_signature(**BASE_SIGNATURE)
+    assert analyzer_comparability(baseline, current) is None
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("scanner_name", "gitleaks"),
+        ("scanner_version", "1.91.0"),
+        ("parser_version", "2026-11-parser.v2"),
+        ("rules_digest", "sha256:rules-b"),
+        ("fingerprint_version", "fp.v3"),
+    ],
+)
+def test_any_analyzer_change_is_not_comparable(field, value):
+    baseline = analyzer_signature(**BASE_SIGNATURE)
+    current = analyzer_signature(**{**BASE_SIGNATURE, field: value})
+    assert analyzer_comparability(baseline, current) == AbsenceBlockReason.ANALYZER_NOT_COMPARABLE
+
+
+def test_missing_baseline_is_unknown_not_comparable():
+    current = analyzer_signature(**BASE_SIGNATURE)
+    assert analyzer_comparability(None, current) == AbsenceBlockReason.ANALYZER_BASELINE_UNKNOWN
+
+
+@pytest.mark.parametrize("field", ["scanner_version", "parser_version"])
+def test_unrecorded_versions_are_never_comparable(field):
+    unrecorded = analyzer_signature(**{**BASE_SIGNATURE, field: None})
+    complete = analyzer_signature(**BASE_SIGNATURE)
+    assert analyzer_comparability(unrecorded, unrecorded) == AbsenceBlockReason.ANALYZER_BASELINE_UNKNOWN
+    assert analyzer_comparability(complete, unrecorded) == AbsenceBlockReason.ANALYZER_NOT_COMPARABLE
+    assert analyzer_comparability(complete, None) == AbsenceBlockReason.ANALYZER_NOT_COMPARABLE
+
+
+def test_signature_fields_exclude_database_and_image_digests():
+    assert "db_digest" not in ANALYZER_SIGNATURE_FIELDS
+    assert "image_digest" not in ANALYZER_SIGNATURE_FIELDS

@@ -19,11 +19,14 @@ class CanonicalFindingReference(BaseModel):
     url: str | None = None
 
 
+CURRENT_FINGERPRINT_VERSION = "fp.v2"
+
+
 class CanonicalFindingCandidate(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     canonical_fingerprint: str = Field(min_length=1, max_length=255)
-    fingerprint_version: str = Field(default="fp.v2", min_length=1, max_length=32)
+    fingerprint_version: str = Field(default=CURRENT_FINGERPRINT_VERSION, min_length=1, max_length=32)
     severity: str = "medium"
     category: str = "unknown"
     title: str = "Untitled Finding"

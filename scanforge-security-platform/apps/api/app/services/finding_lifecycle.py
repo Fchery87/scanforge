@@ -42,6 +42,8 @@ class AbsenceBlockReason(StrEnum):
     MANUAL_REOPEN_CHECKPOINT = "manual_reopen_checkpoint"
     UNRESOLVED_BRANCH_OBLIGATION = "unresolved_branch_obligation"
     HUMAN_BLOCK_STATE = "human_block_state"
+    ANALYZER_NOT_COMPARABLE = "analyzer_not_comparable"
+    ANALYZER_BASELINE_UNKNOWN = "analyzer_baseline_unknown"
 
 
 class FindingWorkflowState(StrEnum):
@@ -201,6 +203,62 @@ def branch_obligation_counts(metadata: Mapping[str, object] | None) -> dict[str,
     for branch in observed_branches(meta):
         counts[branch] = len(_absence_entry(meta, branch)["qualifying_absences"])
     return counts
+
+
+ANALYZER_SIGNATURE_FIELDS = (
+    "scanner_name",
+    "scanner_version",
+    "parser_version",
+    "rules_digest",
+    "fingerprint_version",
+)
+ANALYZER_BLOCK_KEY = "analyzer_absence_block"
+
+
+def analyzer_signature(
+    *,
+    scanner_name: str | None,
+    scanner_version: str | None,
+    parser_version: str | None,
+    rules_digest: str | None,
+    fingerprint_version: str | None,
+) -> dict[str, str | None]:
+    """Identity of the analysis that produced (or failed to produce) a finding.
+
+    Database and image digests are deliberately excluded: vulnerability
+    databases refresh at least weekly and one image carries every scanner.
+    That residual risk is tracked in the redirection plan (P1.5b).
+    """
+    return {
+        "scanner_name": scanner_name,
+        "scanner_version": scanner_version,
+        "parser_version": parser_version,
+        "rules_digest": rules_digest,
+        "fingerprint_version": fingerprint_version,
+    }
+
+
+def _signature_recorded(signature: Mapping[str, object] | None) -> bool:
+    return bool(signature and signature.get("scanner_version") and signature.get("parser_version"))
+
+
+def analyzer_comparability(
+    baseline: Mapping[str, object] | None,
+    current: Mapping[str, object] | None,
+) -> AbsenceBlockReason | None:
+    """None when an absence may earn credit; otherwise why it may not.
+
+    An absence under a different analyzer is not remediation evidence: the
+    analyzer, not the code, may explain the difference (ADR-014).
+    """
+    if not _signature_recorded(baseline):
+        return AbsenceBlockReason.ANALYZER_BASELINE_UNKNOWN
+    if not _signature_recorded(current):
+        return AbsenceBlockReason.ANALYZER_NOT_COMPARABLE
+    for field in ANALYZER_SIGNATURE_FIELDS:
+        if baseline.get(field) != current.get(field):
+            return AbsenceBlockReason.ANALYZER_NOT_COMPARABLE
+    return None
 
 
 def absence_transition_target(
