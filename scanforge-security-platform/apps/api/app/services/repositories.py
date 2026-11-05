@@ -48,14 +48,13 @@ class RepositoryService:
         )
         return result.scalar_one_or_none()
 
-    async def connect(  # noqa: PLR0912, PLR0915
+    async def connect(  # noqa: PLR0915
         self,
         project_id: UUID,
         data: RepositoryConnect,
         _user_id: UUID,
         *,
         provider_verifier: Any | None = None,
-        verify_provider_access: bool = False,
     ) -> Repository:
         project = await self.db.get(Project, project_id)
         if not project:
@@ -68,8 +67,8 @@ class RepositoryService:
         )
         org_integration = org_integration_result.scalar_one_or_none()
 
-        effective_installation_id = data.installation_id
-        effective_account_id = data.provider_account_id
+        effective_installation_id: str | None = None
+        effective_account_id: str | None = None
         external_repo_id = data.external_repo_id
         owner_name = data.owner_name
         repo_name = data.repo_name
@@ -79,32 +78,13 @@ class RepositoryService:
         html_url = data.html_url
 
         if data.provider == "github":
-            if data.installation_id:
-                foreign_result = await self.db.execute(
-                    select(OrganizationIntegration).where(
-                        OrganizationIntegration.installation_id == str(data.installation_id)
-                    )
-                )
-                for bound in foreign_result.scalars().all():
-                    if str(bound.organization_id) != str(project.organization_id):
-                        raise RepositoryAuthorizationError(
-                            "GitHub installation is bound to another organization"
-                        )
-
-            if org_integration is not None:
-                if (
-                    data.installation_id
-                    and str(data.installation_id) != str(org_integration.installation_id)
-                ):
-                    raise RepositoryAuthorizationError(
-                        "Requested GitHub installation does not match the organization's verified integration"
-                    )
-                effective_installation_id = str(org_integration.installation_id)
-                effective_account_id = effective_account_id or org_integration.account_login
-            elif verify_provider_access or provider_verifier is not None or data.installation_id:
+            # Authority is the organization's verified installation binding only.
+            if org_integration is None:
                 raise RepositoryAuthorizationError(
                     "Organization must have a verified GitHub integration before connecting repositories"
                 )
+            effective_installation_id = str(org_integration.installation_id)
+            effective_account_id = org_integration.account_login
 
             if provider_verifier is not None:
                 if not effective_installation_id:

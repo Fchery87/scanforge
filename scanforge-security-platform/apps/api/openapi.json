@@ -971,6 +971,26 @@
         }
       }
     },
+    "/api/v1/webhooks/github/app": {
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Github App Webhook",
+        "description": "App-level lifecycle ingress (installation, installation_repositories, repository).\n\nAuthority comes only from the verified signature plus the stored installation\nbinding; no browser-supplied identity is involved. Lifecycle transitions are\nidempotent, so deduplication is by delivery id alone (a business digest would let a\nrepeated suspend/unsuspend be mistaken for a replay).",
+        "operationId": "github_app_webhook_api_v1_webhooks_github_app_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/organizations/{org_id}/github/install-url": {
       "get": {
         "tags": [
@@ -8521,30 +8541,9 @@
               }
             ],
             "title": "Html Url"
-          },
-          "installation_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Installation Id"
-          },
-          "provider_account_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Provider Account Id"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "provider",
