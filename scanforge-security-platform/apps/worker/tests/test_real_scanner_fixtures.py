@@ -307,6 +307,10 @@ async def test_real_pinned_scanner_executables_positive_and_empty_fixtures(
         assert res.outcome_status == "completed"
         findings = registration.normalize(res.raw_output, "repo-pos")
         assert len(findings) >= 1, f"{name} produced 0 normalized findings on positive repo"
+        if name in {"semgrep", "checkov", "gitleaks"}:
+            # P1.5 (#38): location-stable identity works on the pinned scanners' real output.
+            assert {f["fingerprint_version"] for f in findings} == {"fp.v3"}
+            assert not any(f["metadata_json"].get("snippet_unavailable") for f in findings)
         pos_results[name] = res
 
         emp_res = adapter.run_contained(empty_repo, runtime)

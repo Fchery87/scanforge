@@ -7,6 +7,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from app.normalizers.identity import read_snippet_digest
+from app.normalizers.semgrep import _normalize_repo_path
 from app.scanners.base import ScannerAdapter, ScannerResult, write_sanitized_output
 from app.security.proc_env import build_contained_env
 from app.security.secret_evidence import sanitize_scanner_output
@@ -182,6 +184,20 @@ class SemgrepAdapter(ScannerAdapter):
             )
         )
 
+    def annotate_identity(self, raw_output, repo_path: Path) -> None:
+        results = raw_output.get("results") if isinstance(raw_output, dict) else raw_output
+        for item in results or []:
+            if not isinstance(item, dict):
+                continue
+            digest = read_snippet_digest(
+                repo_path,
+                _normalize_repo_path(item.get("path", "")),
+                (item.get("start") or {}).get("line"),
+                (item.get("end") or {}).get("line"),
+            )
+            if digest:
+                item["snippet_sha256"] = digest
+
     def parse_runtime_result(self, completed, output_directory: Path) -> ScannerResult:
         output_file = output_directory / "semgrep-results.json"
         return self._parse_output_file(
@@ -221,7 +237,7 @@ class SemgrepAdapter(ScannerAdapter):
                 env=build_contained_env(),
             )
             duration_ms = int((time.time() - start) * 1000)
-            return self._parse_output_file(
+            parsed = self._parse_output_file(
                 output_file,
                 exit_code=result.returncode,
                 timed_out=False,
@@ -229,6 +245,9 @@ class SemgrepAdapter(ScannerAdapter):
                 stderr=result.stderr,
                 repo_root=repo_path,
             )
+            if parsed.success:
+                self.annotate_identity(parsed.raw_output, repo_path)
+            return parsed
         except subprocess.TimeoutExpired:
             output_file.unlink(missing_ok=True)
             return self._apply_provenance(

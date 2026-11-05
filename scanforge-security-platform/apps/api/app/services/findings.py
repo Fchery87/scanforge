@@ -21,7 +21,7 @@ from app.db.models import (
     ScannerRun,
     User,
 )
-from app.schemas.canonical_findings import CURRENT_FINGERPRINT_VERSION, CanonicalFindingCandidate
+from app.schemas.canonical_findings import CanonicalFindingCandidate, fingerprint_version_for_scanner
 from app.schemas.findings import (
     FindingStats,
 )
@@ -383,6 +383,7 @@ class FindingService:
                     title=candidate.title,
                     description=candidate.description,
                     canonical_fingerprint=fingerprint,
+                    fingerprint_version=candidate.fingerprint_version,
                     primary_scanner=candidate.primary_scanner,
                     confidence_score=candidate.confidence_score,
                     risk_score=calculate_risk_score(
@@ -499,7 +500,7 @@ class FindingService:
                 scanner_version=run.scanner_version,
                 parser_version=run.parser_version,
                 rules_digest=run.rules_digest,
-                fingerprint_version=CURRENT_FINGERPRINT_VERSION,
+                fingerprint_version=fingerprint_version_for_scanner(run.scanner_name),
             )
             for run in result.scalars().all()
         }

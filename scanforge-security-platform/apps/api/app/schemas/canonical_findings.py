@@ -21,7 +21,21 @@ class CanonicalFindingReference(BaseModel):
     url: str | None = None
 
 
+# Default policy for scanners not listed below. Policy versions are per scanner
+# so one scanner can move to a new identity policy without making the others'
+# findings non-comparable (ADR-014).
 CURRENT_FINGERPRINT_VERSION = "fp.v2"
+
+SCANNER_FINGERPRINT_VERSIONS: dict[str, str] = {
+    "semgrep": "fp.v3",
+    "checkov": "fp.v3",
+    "gitleaks": "fp.v3",
+}
+
+
+def fingerprint_version_for_scanner(scanner_name: str | None) -> str:
+    """Fingerprint policy a scanner's findings are produced under today."""
+    return SCANNER_FINGERPRINT_VERSIONS.get(scanner_name or "", CURRENT_FINGERPRINT_VERSION)
 
 
 class CanonicalFindingCandidate(BaseModel):

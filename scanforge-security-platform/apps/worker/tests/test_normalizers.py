@@ -33,7 +33,7 @@ def test_trivy_normalizes_misconfigurations():
     assert findings[0]["instance"]["path"] == "infra/main.tf"
 
 
-def test_semgrep_fingerprint_includes_line_number():
+def test_semgrep_same_rule_twice_in_a_file_yields_distinct_findings():
     raw_output = {
         "results": [
             {
