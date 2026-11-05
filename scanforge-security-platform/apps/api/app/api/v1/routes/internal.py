@@ -45,7 +45,7 @@ from app.services.scans import ScanAuthorizationError, ScanService
 logger = logging.getLogger(__name__)
 
 SCAN_TYPE_SCANNERS = {
-    "full": ["trivy", "gitleaks", "osv", "semgrep", "syft", "checkov", "grype"],
+    "full": ["trivy", "gitleaks", "semgrep", "syft", "checkov"],
     "diff": ["gitleaks", "semgrep", "checkov"],
     "dependencies": ["trivy", "osv", "syft", "grype"],
     "secrets": ["gitleaks"],

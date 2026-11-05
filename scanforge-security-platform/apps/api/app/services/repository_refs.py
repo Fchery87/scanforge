@@ -32,7 +32,7 @@ HEX_COMMIT_SHA_RE = re.compile(r"^[0-9a-fA-F]{7,64}$")
 GIT_REF_CONTROL_CHARACTER_LIMIT = 32
 
 SCAN_TYPE_SCANNERS: dict[str, list[str]] = {
-    "full": ["trivy", "gitleaks", "osv", "semgrep", "syft", "checkov", "grype"],
+    "full": ["trivy", "gitleaks", "semgrep", "syft", "checkov"],
     "diff": ["gitleaks", "semgrep", "checkov"],
     "dependencies": ["trivy", "osv", "syft", "grype"],
     "secrets": ["gitleaks"],

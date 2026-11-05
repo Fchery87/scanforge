@@ -14,7 +14,8 @@ class ScannerRegistration:
 
 
 SCAN_MODE_REGISTRY: dict[str, list[str]] = {
-    "scan.repo.full": ["trivy", "gitleaks", "osv", "semgrep", "syft", "checkov", "grype"],
+    # ADR-019: Trivy is the primary dependency engine; OSV and Grype stay registered but are opt-in.
+    "scan.repo.full": ["trivy", "gitleaks", "semgrep", "syft", "checkov"],
     "scan.repo.diff": ["gitleaks", "semgrep", "checkov"],
     "scan.dependencies": ["trivy", "osv", "syft", "grype"],
     "scan.secrets": ["gitleaks"],
