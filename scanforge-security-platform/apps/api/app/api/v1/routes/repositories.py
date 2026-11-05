@@ -13,6 +13,7 @@ from app.schemas.repositories import (
     RepositoryUpdate,
     RepositoryWithIntegration,
 )
+from app.services.github import GitHubService
 from app.services.organizations import OrganizationService
 from app.services.repositories import (
     RepositoryAuthorizationError,
@@ -43,7 +44,12 @@ async def connect_repository(
 
     service = RepositoryService(db)
     try:
-        return await service.connect(project_id, data, current_user.user_id)
+        return await service.connect(
+            project_id,
+            data,
+            current_user.user_id,
+            provider_verifier=GitHubService(db) if data.provider == "github" else None,
+        )
     except RepositoryAuthorizationError as exc:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

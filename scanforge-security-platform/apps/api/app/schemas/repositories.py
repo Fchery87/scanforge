@@ -13,6 +13,10 @@ class RepositoryProvider(str):
 
 
 class RepositoryConnect(BaseModel):
+    # Installation identity is derived server-side from the organization's verified
+    # GitHub binding; browser-supplied installation/account fields are rejected (#53).
+    model_config = ConfigDict(extra="forbid")
+
     provider: str = Field(..., pattern="^(github|gitlab|bitbucket|manual)$")
     external_repo_id: str | None = None
     owner_name: str = Field(..., min_length=1, max_length=255)
@@ -31,8 +35,6 @@ class RepositoryConnect(BaseModel):
             raise ValueError("clone_url must use the canonical https://github.com origin")
         return value
     html_url: str | None = Field(None, max_length=1024)
-    installation_id: str | None = None
-    provider_account_id: str | None = None
 
 
 class RepositoryUpdate(BaseModel):

@@ -235,6 +235,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/webhooks/github/app": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Github App Webhook
+         * @description App-level lifecycle ingress (installation, installation_repositories, repository).
+         *
+         *     Authority comes only from the verified signature plus the stored installation
+         *     binding; no browser-supplied identity is involved. Lifecycle transitions are
+         *     idempotent, so deduplication is by delivery id alone (a business digest would let a
+         *     repeated suspend/unsuspend be mistaken for a replay).
+         */
+        post: operations["github_app_webhook_api_v1_webhooks_github_app_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/webhooks/github/{org_id}/{project_id}/{repository_id}": {
         parameters: {
             query?: never;
@@ -2294,10 +2319,6 @@ export interface components {
             clone_url?: string | null;
             /** Html Url */
             html_url?: string | null;
-            /** Installation Id */
-            installation_id?: string | null;
-            /** Provider Account Id */
-            provider_account_id?: string | null;
         };
         /** RepositoryResponse */
         RepositoryResponse: {
@@ -3461,6 +3482,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    github_app_webhook_api_v1_webhooks_github_app_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

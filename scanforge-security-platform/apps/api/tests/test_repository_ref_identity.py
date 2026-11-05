@@ -284,7 +284,6 @@ async def test_repository_binding_uses_immutable_provider_id_and_rejects_foreign
                 owner_name="acme-sec",
                 repo_name="payments-api",
                 full_name="acme-sec/payments-api",
-                installation_id="77001",
             ),
             tenants["user_b"],
             provider_verifier=provider_verifier,

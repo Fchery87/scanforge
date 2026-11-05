@@ -14,6 +14,14 @@ from app.db.models import Project, Repository, RepositoryIntegration, WebhookDel
 from app.db.session import AsyncSession, get_db
 from app.schemas.scans import ScanCreate
 from app.services.audit_logs import AuditLogService
+from app.services.github_lifecycle import (
+    CONNECTED_STATE,
+    GitHubLifecycleService,
+    find_organization_for_installation,
+)
+from app.services.github_lifecycle import (
+    SUPPORTED_EVENTS as LIFECYCLE_EVENTS,
+)
 from app.services.github_pr_advisory import build_pr_advisory_payload
 from app.services.scan_dispatch import ScanDispatchService
 from app.services.scan_lifecycle import ScanLifecycleService
@@ -56,6 +64,25 @@ def _webhook_event_digest(*, event: str, repository_id: UUID, payload: dict) -> 
 
     canonical = json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _unique_digest(*parts: str) -> str:
+    """Digest that can never collide with a business-event digest.
+
+    Used for deliveries that are not scan-relevant (ignored, deferred or lifecycle
+    events) so that recording them cannot suppress a later supported delivery.
+    """
+    canonical = json.dumps(["non-business", *parts], separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+async def _find_delivery_by_id(db: AsyncSession, *, delivery_id: str) -> WebhookDelivery | None:
+    result = await db.execute(
+        select(WebhookDelivery).where(
+            (WebhookDelivery.provider == "github") & (WebhookDelivery.delivery_id == delivery_id)
+        )
+    )
+    return result.scalar_one_or_none()
 
 
 async def _find_existing_delivery(
@@ -226,6 +253,26 @@ async def _handle_pull_request_event(
     return response
 
 
+def _check_payload_identity(repo: Repository, integration: RepositoryIntegration, payload: dict) -> None:
+    """Reject payloads whose repository or installation disagrees with the stored binding."""
+    payload_repo = payload.get("repository") or {}
+    payload_installation = payload.get("installation") or {}
+    payload_full_name = payload_repo.get("full_name")
+    payload_repo_id = str(payload_repo.get("id")) if payload_repo.get("id") is not None else None
+    payload_installation_id = (
+        str(payload_installation.get("id")) if payload_installation.get("id") is not None else None
+    )
+
+    if payload_full_name != repo.full_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Webhook repository mismatch")
+
+    if repo.external_repo_id and payload_repo_id and repo.external_repo_id != payload_repo_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Webhook repository ID mismatch")
+
+    if integration.installation_id and payload_installation_id != integration.installation_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Webhook installation mismatch")
+
+
 @router.post("/github/{org_id}/{project_id}/{repository_id}")
 async def github_webhook(
     org_id: UUID,
@@ -255,28 +302,30 @@ async def github_webhook(
     if integration is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repository integration not found")
 
-    payload_repo = payload.get("repository") or {}
-    payload_installation = payload.get("installation") or {}
-    payload_full_name = payload_repo.get("full_name")
-    payload_repo_id = str(payload_repo.get("id")) if payload_repo.get("id") is not None else None
-    payload_installation_id = (
-        str(payload_installation.get("id")) if payload_installation.get("id") is not None else None
-    )
-
-    if payload_full_name != repo.full_name:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Webhook repository mismatch")
-
-    if repo.external_repo_id and payload_repo_id and repo.external_repo_id != payload_repo_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Webhook repository ID mismatch")
-
-    if integration.installation_id and payload_installation_id != integration.installation_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Webhook installation mismatch")
+    _check_payload_identity(repo, integration, payload)
 
     # R10 replay safety: delivery identity is (provider, delivery_id) plus the canonical
     # event digest, so neither a redelivered delivery id nor an identical business event
     # (same commit + event) can create a duplicate scan. Identical replay returns the
     # original business response (D6).
-    event_digest = _webhook_event_digest(event=event, repository_id=repository_id, payload=payload)
+    # Only deliveries that can create a scan carry a business digest. Ignored, deferred
+    # (capability off), revoked-repository and ping deliveries get a delivery-unique digest
+    # so recording them can never suppress a later supported delivery.
+    repository_authorized = (
+        bool(getattr(repo, "is_active", True))
+        and getattr(repo, "lifecycle_state", CONNECTED_STATE) == CONNECTED_STATE
+    )
+    handle_push = event == "push" and repository_authorized
+    handle_pull_request = (
+        event == "pull_request"
+        and repository_authorized
+        and is_beta_capability_enabled("pr_review")
+        and payload.get("action") in {"opened", "reopened", "synchronize"}
+    )
+    if handle_push or handle_pull_request:
+        event_digest = _webhook_event_digest(event=event, repository_id=repository_id, payload=payload)
+    else:
+        event_digest = _unique_digest(str(repository_id), delivery)
 
     existing = await _find_existing_delivery(db, delivery_id=delivery, event_digest=event_digest)
     if existing is not None:
@@ -303,7 +352,7 @@ async def github_webhook(
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Duplicate webhook delivery") from exc
         return _replayed_response(raced)
 
-    if event == "push":
+    if handle_push:
         return await _handle_push_event(
             db,
             delivery_row,
@@ -314,11 +363,7 @@ async def github_webhook(
             delivery=delivery,
         )
 
-    if (
-        event == "pull_request"
-        and is_beta_capability_enabled("pr_review")
-        and payload.get("action") in {"opened", "reopened", "synchronize"}
-    ):
+    if handle_pull_request:
         return await _handle_pull_request_event(
             db,
             delivery_row,
@@ -335,6 +380,61 @@ async def github_webhook(
         return {"status": "ok", "message": "Pong"}
 
     response = {"status": "ignored", "event": event}
+    if not repository_authorized:
+        response["reason"] = "repository_not_authorized"
     delivery_row.response_json = response
     await db.commit()
+    return response
+
+
+@router.post("/github/app")
+async def github_app_webhook(request: Request, db: AsyncSession = Depends(get_db)):
+    """App-level lifecycle ingress (installation, installation_repositories, repository).
+
+    Authority comes only from the verified signature plus the stored installation
+    binding; no browser-supplied identity is involved. Lifecycle transitions are
+    idempotent, so deduplication is by delivery id alone (a business digest would let a
+    repeated suspend/unsuspend be mistaken for a replay).
+    """
+    await verify_github_webhook_async(request, settings.GITHUB_WEBHOOK_SECRET)
+
+    event = request.headers.get("x-github-event", "")
+    delivery = request.headers.get("x-github-delivery", "")
+    if not delivery:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing delivery ID")
+
+    payload = await request.json()
+
+    existing = await _find_delivery_by_id(db, delivery_id=delivery)
+    if existing is not None:
+        return _replayed_response(existing)
+
+    installation_id = (payload.get("installation") or {}).get("id")
+    organization_id = (
+        await find_organization_for_installation(db, str(installation_id)) if installation_id is not None else None
+    )
+
+    if event in LIFECYCLE_EVENTS:
+        response = await GitHubLifecycleService(db).handle(event, payload)
+    else:
+        response = {"status": "ignored", "event": event}
+
+    db.add(
+        WebhookDelivery(
+            provider="github",
+            delivery_id=delivery,
+            event_type=event or "unknown",
+            event_digest=_unique_digest("app", delivery),
+            organization_id=organization_id,
+            response_json=response,
+        )
+    )
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raced = await _find_delivery_by_id(db, delivery_id=delivery)
+        if raced is None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Duplicate webhook delivery") from None
+        return _replayed_response(raced)
     return response
