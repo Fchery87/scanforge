@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from app.db.models.repository import Repository, RepositoryBranchGeneration
 
@@ -202,6 +202,21 @@ class RepositoryRefService:
         await self.db.flush()
         return active
 
+    async def _serialize_ref_transitions(self, repository_id: str, full_ref_name: str) -> None:
+        """Serialize generation transitions for one ref until this transaction ends.
+
+        Concurrent pushes to the same ref would otherwise both read the same head and
+        both try to create the same generation. The lock also keeps the scan and
+        dispatch obligation created in the same transaction ordered behind it.
+        """
+        bind = self.db.get_bind()
+        if bind.dialect.name != "postgresql":
+            return
+        await self.db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+            {"key": f"ref-generation:{repository_id}:{full_ref_name}"},
+        )
+
     async def resolve_and_advance_generation(  # noqa: PLR0915
         self,
         *,
@@ -217,6 +232,7 @@ class RepositoryRefService:
         """Resolve or advance the branch generation for `(repository_id, full_ref_name)`."""
         repo_id_str = str(repository_id)
         normalized_sha = validate_commit_sha(target_commit_sha, require_exact=False)
+        await self._serialize_ref_transitions(repo_id_str, full_ref_name)
         active = await self.get_active_generation(repo_id_str, full_ref_name)
 
         max_gen_result = await self.db.execute(

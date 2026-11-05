@@ -177,28 +177,31 @@ class ScanService:
             expected_scanners_json=expected_scanners,
             summary_json=summary_json,
         )
-        self.db.add(scan)
+        # Scan and dispatch obligation are inserted inside a savepoint so a losing
+        # duplicate trigger rolls back only its own rows, never the caller's
+        # transaction (e.g. the webhook delivery row) or the loaded repo/project.
         try:
-            await self.db.flush()
-            await dispatch_service.create_obligation_for_scan(
-                scan=scan,
-                repo=repo,
-                project=project,
-                business_identity_key=business_identity_key,
-                request_idempotency_key=resolved_idempotency_key if data.trigger_type == "manual" else None,
-                webhook_delivery_id=webhook_delivery_id,
-            )
-            if data.trigger_type == "webhook" and full_ref_name:
-                await dispatch_service.supersede_unstarted_automatic_work(
-                    new_scan=scan,
-                    repository_id=repo.id,
-                    full_ref_name=full_ref_name,
-                    branch_generation_number=generation_number,
-                    ancestry_status=ancestry_status,
+            async with self.db.begin_nested():
+                self.db.add(scan)
+                await self.db.flush()
+                await dispatch_service.create_obligation_for_scan(
+                    scan=scan,
+                    repo=repo,
+                    project=project,
+                    business_identity_key=business_identity_key,
+                    request_idempotency_key=resolved_idempotency_key if data.trigger_type == "manual" else None,
+                    webhook_delivery_id=webhook_delivery_id,
                 )
-            await self.db.flush()
+                if data.trigger_type == "webhook" and full_ref_name:
+                    await dispatch_service.supersede_unstarted_automatic_work(
+                        new_scan=scan,
+                        repository_id=repo.id,
+                        full_ref_name=full_ref_name,
+                        branch_generation_number=generation_number,
+                        ancestry_status=ancestry_status,
+                    )
+                await self.db.flush()
         except IntegrityError:
-            await self.db.rollback()
             if data.trigger_type == "manual" and resolved_idempotency_key:
                 raced_manual = await dispatch_service.find_existing_manual_idempotent_scan(
                     organization_id=project.organization_id,
