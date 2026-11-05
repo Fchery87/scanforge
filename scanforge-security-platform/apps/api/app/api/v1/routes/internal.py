@@ -71,10 +71,30 @@ async def require_execution_attempt_identity(
     )
 
 
+async def optional_execution_attempt_identity(
+    attempt_id: str | None = Header(default=None, alias="X-Scan-Attempt-Id"),
+    execution_revision: int | None = Header(default=None, alias="X-Scan-Execution-Revision"),
+    worker_incarnation_id: str | None = Header(default=None, alias="X-Scan-Worker-Incarnation-Id"),
+) -> ExecutionAttemptIdentity | None:
+    """Identity a refetching worker proves it already holds, if any.
+
+    A partial set is treated as a (stale) presented identity, never as absent.
+    """
+    if attempt_id is None and execution_revision is None and worker_incarnation_id is None:
+        return None
+    return ExecutionAttemptIdentity(
+        attempt_id=attempt_id or "",
+        execution_revision=execution_revision if execution_revision is not None else -1,
+        worker_incarnation_id=worker_incarnation_id or "",
+    )
+
+
 def assert_live_execution_authority(
     scan: Scan,
     principal: WorkerPrincipal,
     attempt: ExecutionAttemptIdentity,
+    *,
+    allow_terminal: bool = False,
 ) -> None:
     if (
         scan.current_attempt_id != attempt.attempt_id
@@ -89,6 +109,14 @@ def assert_live_execution_authority(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "stale_worker", "message": "Worker principal does not own this attempt"},
+        )
+    # Leases are not cleared when a scan ends, so a finished or canceled scan
+    # would otherwise accept writes until the lease runs out.  Only completion
+    # replay (which reads its frozen receipt) may touch a terminal scan.
+    if not allow_terminal and getattr(scan, "status", None) in TERMINAL_SCAN_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "scan_terminal", "message": "Scan is finished; writes are closed"},
         )
     lease_expires_at = scan.lease_expires_at
     if lease_expires_at is None:
@@ -249,6 +277,7 @@ async def complete_scan(
             execution_revision=data.execution_revision,
             worker_incarnation_id=data.worker_incarnation_id or "",
         ),
+        allow_terminal=True,
     )
     try:
         return await ScanCompletionService(db).complete(
@@ -510,6 +539,7 @@ async def get_repository_clone_url(
 async def get_scan_execution_context(
     scan_id: UUID,
     principal: WorkerPrincipal = Depends(require_capability("scans:read")),
+    presented_identity: ExecutionAttemptIdentity | None = Depends(optional_execution_attempt_identity),
     db: AsyncSession = Depends(get_db),
 ):
     # Service-boundary org check (merge follow-up): the R06 ScanAuthorizationError
@@ -542,6 +572,15 @@ async def get_scan_execution_context(
                 str(scan.id),
                 terminal_statuses=TERMINAL_SCAN_STATUSES,
                 worker_owner=lease_owner,
+                presented_identity=(
+                    (
+                        presented_identity.attempt_id,
+                        presented_identity.execution_revision,
+                        presented_identity.worker_incarnation_id,
+                    )
+                    if presented_identity is not None
+                    else None
+                ),
             )
         except LeaseConflict as exc:
             raise HTTPException(

@@ -60,11 +60,19 @@ class ScanOrchestrator:
     def _redact_sensitive_text(self, value: str) -> str:
         return redact_sensitive_text(value, (self._worker_credential,))
 
+    def _refetch_headers(self, context: ScanContext) -> dict[str, str]:
+        try:
+            return context.attempt_headers(self._worker_credential)
+        except RuntimeError:
+            return {"X-Worker-Credential": self._worker_credential}
+
     async def _is_canceled(self, context: ScanContext) -> bool:
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{self.api_base_url}/api/v1/internal/scans/{context.scan_id}/execution-context",
-                headers={"X-Worker-Credential": self._worker_credential},
+                # Prove the identity this process already holds; the API refuses
+                # to hand a live attempt's authority to a caller that cannot (#36).
+                headers=self._refetch_headers(context),
                 timeout=30.0,
             )
             response.raise_for_status()
