@@ -86,6 +86,14 @@ class UnknownScannerError(EvidenceContractError):
     code = "unknown_scanner"
 
 
+class ScannerOutsideContractError(EvidenceContractError):
+    code = "scanner_outside_contract"
+
+
+class UnbackedFindingScannerError(EvidenceContractError):
+    code = "unbacked_finding_scanner"
+
+
 class ForbiddenWorkerAuthorityError(EvidenceContractError):
     code = "forbidden_worker_authority"
 
@@ -265,6 +273,26 @@ def derive_scan_evidence_decision(  # noqa: PLR0912, PLR0915
         if name not in KNOWN_BETA_SCANNERS:
             raise UnknownScannerError(f"Unknown scanner '{name}' is not in the registered beta catalog")
         seen_scanners.add(name)
+
+    contract_scanners = {s.strip().lower() for s in (expected_scanners or ()) if s and s.strip()}
+    if contract_scanners:
+        outside = sorted(seen_scanners - contract_scanners)
+        if outside:
+            raise ScannerOutsideContractError(
+                f"Scanner runs {outside} are outside the immutable execution contract"
+            )
+
+    backed_scanners = {
+        run.scanner_name.strip().lower()
+        for run in data.scanner_runs
+        if run.status == "completed" and (run.outcome_status or run.status) in {"completed", "skipped_unapplicable"}
+    }
+    for finding in data.findings:
+        scanner = (finding.primary_scanner or "").strip().lower()
+        if scanner and scanner not in backed_scanners:
+            raise UnbackedFindingScannerError(
+                f"Finding attributed to scanner '{scanner}' without a successful scanner run"
+            )
 
     for finding in data.findings:
         if len(finding.references) > CANDIDATE_MAX_REFERENCES_PER_FINDING:

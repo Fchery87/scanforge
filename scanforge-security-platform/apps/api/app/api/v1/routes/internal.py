@@ -118,6 +118,11 @@ def assert_live_execution_authority(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "scan_terminal", "message": "Scan is finished; writes are closed"},
         )
+    if allow_terminal and getattr(scan, "status", None) in TERMINAL_SCAN_STATUSES:
+        # Frozen-receipt replay is read-only and re-checks attempt identity in
+        # the completion service; a lapsed lease must not hide the original
+        # result from the attempt that earned it.
+        return
     lease_expires_at = scan.lease_expires_at
     if lease_expires_at is None:
         raise HTTPException(

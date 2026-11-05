@@ -13,6 +13,7 @@ from app.services.evidence_contract import (
     compute_canonical_evidence_digest,
     derive_scan_evidence_decision,
 )
+from app.services.audit_logs import AuditLogService
 from app.services.findings import FindingService
 
 
@@ -107,6 +108,7 @@ class ScanCompletionService:
                 scan,
                 data,
                 digest,
+                organization_id=organization_id,
                 worker_principal_id=worker_principal_id,
             )
         except Exception:
@@ -148,6 +150,7 @@ class ScanCompletionService:
         data: ScanCompletionRequest,
         digest: str,
         *,
+        organization_id: UUID,
         worker_principal_id: str | None,
     ) -> dict:
         scan_id = scan.id
@@ -220,6 +223,11 @@ class ScanCompletionService:
             "artifact_availability": decision.artifact_availability,
             "severity_counts": decision.severity_counts,
             "ineligibility_reasons": list(decision.ineligibility_reasons),
+            # Counts are derived from validated evidence; worker-reported
+            # values for these keys are discarded.
+            "finding_count": len(data.findings),
+            "critical_count": decision.severity_counts.get("critical", 0),
+            "high_count": decision.severity_counts.get("high", 0),
         }
         scan.contract_version = decision.contract_version
         scan.coverage_completeness = decision.coverage_completeness
@@ -265,6 +273,23 @@ class ScanCompletionService:
             },
         )
         self.db.add(receipt)
+        AuditLogService(self.db).record(
+            actor_user_id=None,
+            action="scan_completed",
+            target_type="scan",
+            target_id=scan_id,
+            organization_id=organization_id,
+            metadata_json={
+                "evidence_digest": digest,
+                "winning_attempt_id": str(data.winning_attempt_id),
+                "execution_revision": data.execution_revision,
+                "inserted_findings": inserted,
+                "updated_findings": updated,
+                "coverage_completeness": decision.coverage_completeness,
+                "closure_eligible": decision.closure_eligible,
+                "worker_principal_id": worker_principal_id,
+            },
+        )
         await self.db.flush()
         await self.db.commit()
         return {
