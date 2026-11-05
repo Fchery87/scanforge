@@ -143,6 +143,111 @@
         }
       }
     },
+    "/api/v1/internal/scans/{scan_id}/artifacts/{artifact_id}/finalize": {
+      "post": {
+        "tags": [
+          "internal",
+          "internal"
+        ],
+        "summary": "Finalize Artifact",
+        "operationId": "finalize_artifact_api_v1_internal_scans__scan_id__artifacts__artifact_id__finalize_post",
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Scan Id"
+            }
+          },
+          {
+            "name": "artifact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Artifact Id"
+            }
+          },
+          {
+            "name": "X-Worker-Credential",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Credential"
+            }
+          },
+          {
+            "name": "X-Scan-Attempt-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Scan-Attempt-Id"
+            }
+          },
+          {
+            "name": "X-Scan-Execution-Revision",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "X-Scan-Execution-Revision"
+            }
+          },
+          {
+            "name": "X-Scan-Worker-Incarnation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Scan-Worker-Incarnation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArtifactFinalizeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/notifications": {
       "post": {
         "tags": [
@@ -5642,6 +5747,22 @@
   },
   "components": {
     "schemas": {
+      "ArtifactFinalizeRequest": {
+        "properties": {
+          "checksum_sha256": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-fA-F]{64}$",
+            "title": "Checksum Sha256"
+          }
+        },
+        "type": "object",
+        "required": [
+          "checksum_sha256"
+        ],
+        "title": "ArtifactFinalizeRequest"
+      },
       "ArtifactUploadRequest": {
         "properties": {
           "scanner_name": {
@@ -5807,7 +5928,7 @@
             "title": "References"
           }
         },
-        "additionalProperties": true,
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "canonical_fingerprint"
@@ -5923,6 +6044,7 @@
             "title": "Url"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "title": "CanonicalFindingReference"
       },
