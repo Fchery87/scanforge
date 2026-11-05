@@ -769,6 +769,54 @@
               ],
               "title": "X-Worker-Credential"
             }
+          },
+          {
+            "name": "X-Scan-Attempt-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Scan-Attempt-Id"
+            }
+          },
+          {
+            "name": "X-Scan-Execution-Revision",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Scan-Execution-Revision"
+            }
+          },
+          {
+            "name": "X-Scan-Worker-Incarnation-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Scan-Worker-Incarnation-Id"
+            }
           }
         ],
         "responses": {
