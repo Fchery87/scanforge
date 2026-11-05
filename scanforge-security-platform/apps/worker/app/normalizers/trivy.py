@@ -1,6 +1,10 @@
 import hashlib
 import re
 
+from app.normalizers.dependency_identity import (
+    DEPENDENCY_FINGERPRINT_VERSION,
+    compute_dependency_fingerprint,
+)
 from app.security.secret_evidence import sanitize_trivy_output
 
 SEVERITY_MAP = {
@@ -16,21 +20,6 @@ def _normalize_repo_path(path: str) -> str:
     cleaned = str(path or "").strip()
     cleaned = re.sub(r"^/workspace/source/?", "", cleaned)
     return cleaned
-
-
-def compute_vulnerability_fingerprint(
-    package_name: str,
-    installed_version: str,
-    advisory_id: str,
-    repo_id: str,
-) -> str:
-    components = [
-        package_name.lower(),
-        installed_version,
-        advisory_id,
-        repo_id,
-    ]
-    return hashlib.sha256("|".join(components).encode()).hexdigest()
 
 
 def normalize_trivy_output(raw_output: dict | list, repository_id: str) -> list[dict]:
@@ -58,11 +47,13 @@ def normalize_trivy_output(raw_output: dict | list, repository_id: str) -> list[
             if not vuln_id:
                 continue
 
-            fingerprint = compute_vulnerability_fingerprint(
+            fingerprint = compute_dependency_fingerprint(
+                repository_id=repository_id,
+                ecosystem=result_type,
                 package_name=pkg_name,
                 installed_version=installed,
                 advisory_id=vuln_id,
-                repo_id=repository_id,
+                scanner="trivy",
             )
 
             finding = {
@@ -71,6 +62,7 @@ def normalize_trivy_output(raw_output: dict | list, repository_id: str) -> list[
                 "title": f"Vulnerable dependency: {pkg_name}@{installed}",
                 "description": vuln.get("Description", ""),
                 "canonical_fingerprint": fingerprint,
+                "fingerprint_version": DEPENDENCY_FINGERPRINT_VERSION,
                 "primary_scanner": "trivy",
                 "confidence_score": 0.9,
                 "fixed_version": fixed or None,

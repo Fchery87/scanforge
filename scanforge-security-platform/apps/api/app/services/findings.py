@@ -21,7 +21,11 @@ from app.db.models import (
     ScannerRun,
     User,
 )
-from app.schemas.canonical_findings import CURRENT_FINGERPRINT_VERSION, CanonicalFindingCandidate
+from app.schemas.canonical_findings import (
+    CURRENT_FINGERPRINT_VERSION,
+    CanonicalFindingCandidate,
+    current_fingerprint_version,
+)
 from app.schemas.findings import (
     FindingStats,
 )
@@ -384,6 +388,7 @@ class FindingService:
                     title=candidate.title,
                     description=candidate.description,
                     canonical_fingerprint=fingerprint,
+                    fingerprint_version=candidate.fingerprint_version,
                     primary_scanner=candidate.primary_scanner,
                     confidence_score=candidate.confidence_score,
                     risk_score=calculate_risk_score(
@@ -602,6 +607,9 @@ class FindingService:
 
         baseline = await self._last_presence_signature(finding, branch)
         current = current_signatures.get(finding.primary_scanner or "")
+        if current is not None:
+            # The scan analyzes under the category's current identity policy.
+            current = {**current, "fingerprint_version": current_fingerprint_version(finding.category)}
         block = analyzer_comparability(baseline, current)
         if block is not None:
             # An analyzer difference may explain the absence; it is not

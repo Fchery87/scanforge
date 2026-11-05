@@ -1,5 +1,9 @@
-import hashlib
 import re
+
+from app.normalizers.dependency_identity import (
+    DEPENDENCY_FINGERPRINT_VERSION,
+    compute_dependency_fingerprint,
+)
 
 SEVERITY_MAP = {
     "CRITICAL": "critical",
@@ -17,16 +21,6 @@ def _normalize_repo_path(path: str | None) -> str | None:
     cleaned = str(path).strip()
     cleaned = re.sub(r"^/workspace/source/?", "", cleaned)
     return cleaned or None
-
-
-def compute_vulnerability_fingerprint(
-    package_name: str,
-    installed_version: str,
-    advisory_id: str,
-    repo_id: str,
-) -> str:
-    components = [package_name.lower(), installed_version, advisory_id, repo_id]
-    return hashlib.sha256("|".join(components).encode()).hexdigest()
 
 
 def normalize_grype_output(raw_output: dict | list, repository_id: str) -> list[dict]:
@@ -63,12 +57,15 @@ def normalize_grype_output(raw_output: dict | list, repository_id: str) -> list[
                 "severity": severity,
                 "title": f"Vulnerable dependency: {package_name}@{installed_version}",
                 "description": vulnerability.get("description", ""),
-                "canonical_fingerprint": compute_vulnerability_fingerprint(
+                "canonical_fingerprint": compute_dependency_fingerprint(
+                    repository_id=repository_id,
+                    ecosystem=artifact.get("type"),
                     package_name=package_name,
                     installed_version=installed_version,
                     advisory_id=vuln_id,
-                    repo_id=repository_id,
+                    scanner="grype",
                 ),
+                "fingerprint_version": DEPENDENCY_FINGERPRINT_VERSION,
                 "primary_scanner": "grype",
                 "confidence_score": 0.92,
                 "fixed_version": fixed_version,
