@@ -8,6 +8,7 @@ from app.db.models.finding import (
     FindingInstance,
     FindingReference,
 )
+from app.db.models.github_reconciliation import GitHubReconciliationReceipt
 from app.db.models.notification import Notification
 from app.db.models.organization import (
     Organization,
@@ -38,6 +39,7 @@ __all__ = [
     "FindingInstance",
     "FindingReference",
     "FindingSuppression",
+    "GitHubReconciliationReceipt",
     "Notification",
     "Organization",
     "OrganizationIntegration",
