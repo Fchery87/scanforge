@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # R12 rollback drill: exercises the documented completion rollback / receipt
-# semantics (spec/2026-09-13-scan-evidence-decisions.md D6; readiness plan R04)
+# semantics (docs/archive/2026-09-evidence-readiness/2026-09-13-scan-evidence-decisions.md D6; readiness plan R04)
 # through the service layer:
 #   1. first completion writes exactly one server-owned receipt,
 #   2. identical replay returns the STORED receipt (no second receipt row),

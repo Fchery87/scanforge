@@ -2,7 +2,7 @@
 
 ## Status
 
-Confirmed. User accepted Q1–Q54 across all nine rounds and confirmed the consolidated shared understanding with "Looks good" on 2026-10-16. The cross-decision audit's seven refinements are accepted and incorporated. No source fixes or deployment actions were performed in this interview. The subsequent [implementation plan](../plans/2026-10-16-managed-beta-implementation-plan.md) translates the accepted baseline into execution tasks.
+Confirmed. User accepted Q1–Q54 across all nine rounds and confirmed the consolidated shared understanding with "Looks good" on 2026-10-16. The cross-decision audit's seven refinements are accepted and incorporated. No source fixes or deployment actions were performed in this interview. The subsequent [implementation plan](../archive/2026-10-managed-beta/2026-10-16-managed-beta-implementation-plan.md) translates the accepted baseline into execution tasks.
 
 Final independent document consistency review found no material unresolved contradiction. Local link targets, whitespace, and disposition coverage for all 25 original findings were checked. These are documentation checks only; implementation and release evidence remain outstanding.
 
@@ -79,7 +79,7 @@ Required scenarios include AI acquisition after scan cleanup/revocation, main fi
 
 ### Review evidence boundary
 
-The source review's findings are inputs to design, not proof of a deployed incident. Follow-up source checks support B1–B12. Existing completion claims in earlier plans must be reconciled with code and execution receipts. The [September decision table](../../spec/2026-09-13-scan-evidence-decisions.md) contains proposed semantics and an open G1 measurement gate; ADR-010 does not accept that table wholesale.
+The source review's findings are inputs to design, not proof of a deployed incident. Follow-up source checks support B1–B12. Existing completion claims in earlier plans must be reconciled with code and execution receipts. The [September decision table](../archive/2026-09-evidence-readiness/2026-09-13-scan-evidence-decisions.md) contains proposed semantics and an open G1 measurement gate; ADR-010 does not accept that table wholesale.
 
 ## Coverage frontier
 

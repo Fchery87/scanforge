@@ -1,6 +1,6 @@
 # Verify a private-beta release
 
-This runbook checks the secure private-beta specification. Local checks cannot approve a release. Missing live evidence remains unverified.
+This runbook checks the release-evidence requirements of [ADR-010](../adr/ADR-010-managed-beta-release-scope.md). Local checks cannot approve a release. Missing live evidence remains unverified.
 
 ## Run local checks
 

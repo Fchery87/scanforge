@@ -1,10 +1,42 @@
 # ScanForge domain glossary
 
-Domain terms for repository security operations. Accepted decisions live in [docs/adr](docs/adr/); the current execution plan is the [managed-beta implementation plan](docs/plans/2026-10-16-managed-beta-implementation-plan.md). Definitions describe domain meaning, not verified implementation status.
+Domain terms for ScanForge. Product direction is the [product charter](docs/PRODUCT_CHARTER.md); accepted decisions live in [docs/adr](docs/adr/); the current execution plan is the [redirection implementation plan](docs/plans/2026-11-04-redirection-implementation-plan.md). Definitions describe domain meaning, not verified implementation status.
 
-### Managed security operations beta
+### Pilot cohort
 
-An invitation-only release for three to five organizations whose security reviewers use centralized repository scanning and finding triage, with onboarding managed by ScanForge operators.
+An invitation-only group of three to five organizations matching the charter's customer hypothesis (small engineering teams, multiple GitHub repositories, limited security staffing), onboarded by ScanForge operators onto dedicated workers. Replaces the earlier "managed security operations beta" audience ([ADR-018](docs/adr/ADR-018-developer-first-security-review-direction.md)).
+
+### Shadow review
+
+Pull-request analysis executed and recorded privately, without publishing anything to GitHub, so coverage, usefulness, latency and cost can be assessed before publication is enabled.
+
+### Analysis run
+
+One execution of analysis against an immutable revision, recording trigger, identity, analyzer/rule/intelligence versions, coverage and attempt identity. Scans are the current implementation of analysis runs.
+
+### Observation
+
+A commit-specific statement by one analyzer about one affected instance, with origin, location, sanitized evidence, severity source and provenance. Observations are evidence, not lifecycle decisions.
+
+### Persistent finding
+
+The stable identity of an issue across observations, branches and instances, carrying disposition, ownership, resolution basis and audit history.
+
+### Review comment
+
+PR- and head-revision-specific communication with publication identity, evidence links, relevance and supersession. Not every review comment is a persistent finding.
+
+### Comparable analysis
+
+Two analyses of the same capability whose analyzer, parser, rules and fingerprint policy are equivalent, so a difference in their results can be attributed to the code rather than to the analyzer. Absence under non-comparable analysis establishes a new baseline; it is not remediation evidence.
+
+### Coverage assessment
+
+The recorded declared scope, supported and unsupported inputs, exclusions, parse failures, truncation and timeouts of an analysis, with a state of complete (relative to declared scope), partial, unknown or not applicable.
+
+### Effective configuration
+
+The validated combination of platform, organization and repository settings applied to an analysis, loaded from a trusted revision or protected settings and recorded by digest.
 
 ### Release evidence
 
@@ -76,7 +108,7 @@ An accepted automatic scan replaced before execution by a newer descendant reque
 
 ### Repository security operations
 
-The primary product wedge for ScanForge: helping internal engineering and security teams manage repository security work from onboarding through scanning, normalized finding review, triage, evidence, reporting, and auditability.
+Managing repository security work from onboarding through scanning, normalized finding review, triage, evidence and auditability. Since ADR-018 this is the foundation for developer-first PR review rather than the primary product wedge.
 
 ### Scan lifecycle
 

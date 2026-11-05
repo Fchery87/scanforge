@@ -1,6 +1,6 @@
 # Running ScanForge Locally
 
-This is the canonical development setup guide. Run commands from `scanforge-security-platform/`, inside the parent Git repository. It describes current development behavior. The accepted dedicated-host beta topology in [ADR-011](docs/adr/ADR-011-beta-executor-and-github-ingress.md) still requires implementation and release evidence; see the [implementation plan](docs/plans/2026-10-16-managed-beta-implementation-plan.md).
+This is the canonical development setup guide. Run commands from `scanforge-security-platform/`, inside the parent Git repository. It describes current development behavior. The accepted dedicated-host beta topology in [ADR-011](docs/adr/ADR-011-beta-executor-and-github-ingress.md) still requires implementation and release evidence; see the [implementation plan](docs/plans/2026-11-04-redirection-implementation-plan.md).
 
 ## Prerequisites and installation
 
@@ -81,6 +81,17 @@ Configure the worker's `WORKER_CREDENTIAL`, `WORKER_ORGANIZATION_ID`, unique `WO
 ## GitHub development integration
 
 For the current callback flow, configure the App setup URL and OAuth redirect URI as `http://localhost:3000/github/callback`. Set `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`, and a separate strong `GITHUB_STATE_SIGNING_SECRET`.
+
+### Creating a development GitHub App
+
+1. In GitHub, open **Settings → Developer settings → GitHub Apps → New GitHub App**. Name it for development (for example `scanforge-dev`); homepage and description can be placeholders.
+2. Request the minimum repository permissions needed for scanning: **Contents: Read-only** and **Metadata: Read-only**. Do not grant write permissions (Checks, Pull requests) while PR publication is disabled by the [beta capability policy](apps/api/app/core/beta_capabilities.py).
+3. Enable the webhook, set a random secret (`openssl rand -hex 32`) as `GITHUB_WEBHOOK_SECRET`, and subscribe to **Push** events.
+4. Record the numeric **App ID** (not the Client ID) as `GITHUB_APP_ID`.
+5. Generate a private key. `GITHUB_PRIVATE_KEY` holds the PEM contents; the API converts literal `\n` sequences to newlines ([services/github.py](apps/api/app/services/github.py)), so a single-line value with `\n` escapes works. Base64-encoded values are **not** decoded.
+6. Never commit `.pem` files or secrets.
+
+For webhook delivery to a local API, forward a public HTTPS URL (for example a smee.io channel or `ngrok http 8000`) to the API's webhook route under `/api/v1/webhooks/` ([routes](apps/api/app/api/v1/routes/webhooks.py)). Delivery signatures are verified with `GITHUB_WEBHOOK_SECRET`.
 
 Callbacks use browser navigation; webhook delivery needs a GitHub-reachable HTTPS development endpoint. Inspect current API webhook routes before configuring delivery. Centralized ingress, installation ownership verification, and complete automatic triggering/publication remain implementation requirements, not capabilities this guide claims are complete.
 

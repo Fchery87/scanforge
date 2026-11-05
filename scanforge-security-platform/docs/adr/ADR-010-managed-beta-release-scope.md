@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted on 2026-10-16 during the roadmap grilling session.
+Accepted on 2026-10-16 during the roadmap grilling session. Audience and positioning superseded on 2026-11-04 by [ADR-018](ADR-018-developer-first-security-review-direction.md); the release-evidence requirements below remain in force.
 
 ## Decision
 
