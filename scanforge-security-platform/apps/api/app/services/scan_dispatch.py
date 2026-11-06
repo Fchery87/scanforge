@@ -319,6 +319,40 @@ class ScanDispatchService:
             summary["newer_head_scan_id"] = str(new_scan.id)
             summary["newer_head_commit_sha"] = new_scan.commit_sha
             running.summary_json = summary
+
+        # Unstarted baseline runs of an older merge-base are obsolete once the PR's merge-base
+        # moves. Baselines for the new head's own merge-base are kept; started ones finish.
+        if new_scan.merge_base_sha:
+            # Same name as pr_classification.baseline_ref_name (importing it here would be circular).
+            baseline_ref = f"refs/pull/{int(new_scan.pull_request_number)}/base"
+            stale_baselines = (
+                await self.db.execute(
+                    select(Scan, ScanDispatchObligation)
+                    .join(ScanDispatchObligation, ScanDispatchObligation.scan_id == Scan.id)
+                    .where(
+                        Scan.repository_id == str(new_scan.repository_id),
+                        Scan.id != str(new_scan.id),
+                        Scan.trigger_type == "pull_request",
+                        Scan.pull_request_number == int(new_scan.pull_request_number),
+                        Scan.full_ref_name == baseline_ref,
+                        Scan.commit_sha != new_scan.merge_base_sha,
+                        Scan.deleted_at.is_(None),
+                        Scan.status == ScanStatusEnum.QUEUED,
+                        Scan.current_attempt_id.is_(None),
+                        ScanDispatchObligation.status.in_(
+                            (
+                                DispatchObligationStatus.AWAITING_DISPATCH.value,
+                                DispatchObligationStatus.LEASED.value,
+                            )
+                        ),
+                    )
+                )
+            ).all()
+            superseded += self._apply_supersession(
+                stale_baselines,
+                new_scan=new_scan,
+                reason=f"Superseded before execution: pull request merge-base moved to {new_scan.merge_base_sha}",
+            )
         return superseded
 
     def _apply_supersession(self, rows: Any, *, new_scan: Scan, reason: str) -> list[Scan]:

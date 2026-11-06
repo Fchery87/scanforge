@@ -27,7 +27,7 @@ from uuid import uuid4
 from sqlalchemy import select
 
 from app.db.enums import DispatchObligationStatus, ScanStatus
-from app.db.models import Project, Repository, Scan, ScannerRun
+from app.db.models import Project, Repository, Scan, ScannerRun, ShadowPullRequestHead
 from app.schemas.canonical_findings import (
     CATEGORY_FINGERPRINT_VERSIONS,
     CURRENT_FINGERPRINT_VERSION,
@@ -239,6 +239,18 @@ class ShadowClassificationService:
             or head.pull_request_number is None
             or not head.merge_base_sha
             or _is_baseline_run(head)
+        ):
+            return None
+        # Only the PR's current head may request baseline work; an obsolete or superseded
+        # run's completion must not queue scanner work for a revision nobody will read.
+        current = await self.db.scalar(
+            select(ShadowPullRequestHead.head_sha).where(
+                ShadowPullRequestHead.repository_id == str(head.repository_id),
+                ShadowPullRequestHead.pull_request_number == int(head.pull_request_number),
+            )
+        )
+        if getattr(head, "superseded_by_scan_id", None) is not None or (
+            current is not None and current != head.commit_sha
         ):
             return None
         classification = await self.classify(head)

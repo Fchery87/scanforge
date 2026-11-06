@@ -1,7 +1,7 @@
 import hashlib
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -280,15 +280,20 @@ def _check_payload_identity(repo: Repository, integration: RepositoryIntegration
     if integration.installation_id and payload_installation_id != integration.installation_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Webhook installation mismatch")
 
-def _provider_event_time(pull_request: dict) -> datetime | None:
-    """GitHub's own ``updated_at`` for the PR state in this delivery; None if absent or invalid."""
+# A delivery without a usable provider timestamp cannot be ordered, so it is treated as the
+# oldest possible event: it can record a first head but never displace a newer recorded one.
+_UNORDERED_EVENT_TIME = datetime(1970, 1, 1, tzinfo=UTC)
+
+
+def _provider_event_time(pull_request: dict) -> datetime:
+    """GitHub's own ``updated_at`` for the PR state in this delivery; the epoch if absent or invalid."""
     raw = pull_request.get("updated_at")
     if not isinstance(raw, str):
-        return None
+        return _UNORDERED_EVENT_TIME
     try:
         return datetime.fromisoformat(raw.replace("Z", "+00:00"))
     except ValueError:
-        return None
+        return _UNORDERED_EVENT_TIME
 
 
 def _pull_request_head_is_fork(pull_request: dict) -> bool:

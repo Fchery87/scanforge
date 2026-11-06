@@ -297,3 +297,36 @@ async def test_late_delivery_for_an_older_head_is_recorded_ignored_and_cannot_di
     rows = (await db_session.execute(select(WebhookDelivery))).scalars().all()
     recorded = {row.delivery_id: row.response_json for row in rows}
     assert recorded["delivery-late"]["reason"] == "stale_pull_request_head"
+
+
+@pytest.mark.asyncio
+async def test_delivery_without_a_provider_timestamp_cannot_displace_a_newer_recorded_head(
+    db_session, dispatch_calls, monkeypatch
+):
+    """Review C4: a missing updated_at is unordered, never 'newest'."""
+    org, project, repo = await _seed(db_session)
+    monkeypatch.setattr(settings, "PR_SHADOW_ORGANIZATION_IDS", str(org.id))
+    newer_head, untimed_head = "c" * 40, "e" * 40
+
+    await _deliver(
+        db_session,
+        org,
+        project,
+        repo,
+        _payload(repo, action="synchronize", head_sha=newer_head, updated_at="2026-11-05T12:10:00Z"),
+        delivery="delivery-newer",
+    )
+    untimed = await _deliver(
+        db_session,
+        org,
+        project,
+        repo,
+        _payload(repo, action="synchronize", head_sha=untimed_head),
+        delivery="delivery-untimed",
+    )
+
+    assert untimed["status"] == "ignored"
+    assert untimed["reason"] == "stale_pull_request_head"
+    (scan,) = await _scans(db_session)
+    assert scan.commit_sha == newer_head
+    assert scan.superseded_by_scan_id is None
