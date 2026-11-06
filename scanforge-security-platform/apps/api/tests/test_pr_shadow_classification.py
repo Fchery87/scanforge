@@ -29,10 +29,16 @@ from app.services.scans import ScanService
 def _uniform_sqlite_uuid_columns():
     # Other test modules leave their own UUID shim on shared metadata; multi-row inserts
     # (the scanner runs below) need one consistent bind/result shim to match sentinels.
+    # Original column types are restored so other modules are unaffected.
+    saved = []
     for table in Base.metadata.tables.values():
         for column in table.columns:
             if column.type.__class__.__name__ in {"UUID", "_SQLiteUUID"}:
+                saved.append((column, column.type))
                 column.type = _SQLiteUUID()
+    yield
+    for column, original in saved:
+        column.type = original
 
 
 BASE = "b" * 40
