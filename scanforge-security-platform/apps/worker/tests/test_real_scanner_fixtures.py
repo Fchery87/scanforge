@@ -1,7 +1,7 @@
 """Task M05 verification: real scanner execution, parser outcomes, provenance, and secret boundaries.
 
-Exercises all seven shipped scanners (trivy, gitleaks, osv, semgrep, syft,
-checkov, grype) against:
+Exercises all seven scanner adapters shipped in the image (trivy, gitleaks, osv, semgrep,
+syft, checkov, grype; a default full scan runs five, see ADR-019) against:
 1. Contained positive, empty, malformed, truncated, and timeout reports.
 2. Image manifest provenance and 7-day database freshness rules.
 3. Real pinned scanner executables on positive and empty repository fixtures,
@@ -261,7 +261,7 @@ async def test_real_pinned_scanner_executables_positive_and_empty_fixtures(
     monkeypatch,
     tmp_path: Path,
 ):
-    """Run all seven scanners from the digest-pinned image against positive and empty repos."""
+    """Run all seven shipped scanner adapters from the digest-pinned image against positive and empty repos."""
     import os
 
     from app.runtime.base import provision_scanner_manifest

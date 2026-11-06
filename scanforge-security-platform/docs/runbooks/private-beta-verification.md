@@ -19,7 +19,7 @@ docker build --build-arg OSV_ECOSYSTEMS=PyPI -f apps/worker/Dockerfile.scanners 
 export SCANNER_IMAGE="$(docker image inspect scanforge-scanners:local --format '{{.Id}}')"
 ```
 
-With `SCANNER_IMAGE` set, the gate runs all seven real scanners in the image with network access disabled. Without it, scanner-image verification is reported as unverified. At worker startup, the coordinator reads the manifest from that same pinned image, validates scanner and database identities, and caches it in a private temporary file before accepting jobs.
+With `SCANNER_IMAGE` set, the gate runs all seven real scanner adapters shipped in the image with network access disabled (a default full scan runs five of them; OSV-Scanner and Grype run only in explicit dependency scans, per ADR-019). Without it, scanner-image verification is reported as unverified. At worker startup, the coordinator reads the manifest from that same pinned image, validates scanner and database identities, and caches it in a private temporary file before accepting jobs.
 
 The gate keeps native integration tests in separate processes. The regular API test fixtures use SQLite and must not change the native PostgreSQL models. To enable integrations, supply these environment variables.
 
