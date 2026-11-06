@@ -38,17 +38,20 @@
     "cmdk": "^1.1.1",
     "framer-motion": "^12.38.0",
     "lucide-react": "^0.469.0",
-    "next": "^16.0.0",
+    "next": "^16.4.3",
     "next-themes": "^0.4.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "recharts": "^3.8.0",
     "tailwind-merge": "^3.5.0",
-    "zod": "^3.25.76"
+    "zod": "^4.6.7"
   },
   "overrides": {
-    "better-auth": "1.6.22",
-    "undici": "7.30.1"
+    "@better-auth/passkey": "1.7.7",
+    "better-auth": "1.7.7",
+    "undici": "7.30.1",
+    "vite": "8.3.5",
+    "zod": "$zod"
   },
   "devDependencies": {
     "@eslint/js": "^9.25.0",

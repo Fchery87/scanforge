@@ -136,7 +136,7 @@ export const scanDetailSchema = scanSchema.extend({
   scanner_runs: z.array(scannerRunSchema).optional(),
   capability_coverage: z.array(capabilityCoverageSchema).optional(),
   error_message: z.string().nullable().optional(),
-  summary_json: z.record(z.unknown()).nullable().optional(),
+  summary_json: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
 export const findingSchema = z.object({
@@ -216,7 +216,7 @@ export const suppressionRuleSchema = z.object({
   id: z.string(),
   organization_id: z.string(),
   reason: z.string(),
-  scope: z.record(z.unknown()).optional(),
+  scope: z.record(z.string(), z.unknown()).optional(),
   created_at: z.string(),
 }).passthrough();
 
@@ -248,9 +248,9 @@ export const scorecardSchema = z.object({
   last_scan_at: z.string().nullable().optional(),
   risk_score_average: z.number().nullable().optional(),
   sla_overdue: z.number().optional(),
-  scanner_health: z.record(z.unknown()).optional(),
-  policy_evaluation: z.record(z.unknown()).nullable().optional(),
-  metrics: z.record(z.unknown()).optional(),
+  scanner_health: z.record(z.string(), z.unknown()).optional(),
+  policy_evaluation: z.record(z.string(), z.unknown()).nullable().optional(),
+  metrics: z.record(z.string(), z.unknown()).optional(),
   generated_at: z.string().optional(),
 }).passthrough();
 
@@ -259,8 +259,8 @@ export const findingStatsSchema = z.object({
   open: z.number(),
   fixed: z.number(),
   suppressed: z.number(),
-  by_severity: z.record(z.number()).optional(),
-  by_category: z.record(z.number()).optional(),
+  by_severity: z.record(z.string(), z.number()).optional(),
+  by_category: z.record(z.string(), z.number()).optional(),
 }).passthrough();
 
 // ── Pagination helper ───────────────────────────────────────────────
