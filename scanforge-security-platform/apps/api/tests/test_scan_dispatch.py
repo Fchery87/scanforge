@@ -7,6 +7,7 @@ import os
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -600,7 +601,9 @@ def _disposable_postgres_url():
     user = "scanforge_dispatch_test"
     db_name = "scanforge_dispatch"
     api_dir = Path(__file__).resolve().parents[1]
-    alembic_bin = api_dir / ".venv" / "bin" / "alembic"
+    # Use the running interpreter (CI installs with `pip install -e ".[dev]"`
+    # into setup-python's interpreter; there is no apps/api/.venv there).
+    alembic_cmd = [sys.executable, "-m", "alembic"]
 
     try:
         subprocess.run(
@@ -630,7 +633,7 @@ def _disposable_postgres_url():
         env["DATABASE_URL"] = async_url
         env["PYTHONPATH"] = str(api_dir)
         subprocess.run(
-            [str(alembic_bin), "-c", "alembic.ini", "upgrade", "head"],
+            [*alembic_cmd, "-c", "alembic.ini", "upgrade", "head"],
             cwd=api_dir,
             env=env,
             check=True,
