@@ -1015,6 +1015,55 @@
         }
       }
     },
+    "/api/v1/internal/shadow-corpus/expire": {
+      "post": {
+        "tags": [
+          "internal",
+          "internal"
+        ],
+        "summary": "Expire Shadow Corpus",
+        "description": "Retention sweep for the shadow replay corpus (#51); safe to call repeatedly.",
+        "operationId": "expire_shadow_corpus_api_v1_internal_shadow_corpus_expire_post",
+        "parameters": [
+          {
+            "name": "x-scheduler-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Scheduler-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/scan-schedules/run-due": {
       "post": {
         "tags": [

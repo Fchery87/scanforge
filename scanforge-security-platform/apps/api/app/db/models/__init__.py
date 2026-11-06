@@ -27,6 +27,7 @@ from app.db.models.scan import Scan, ScanCompletionReceipt, ScannerRun
 from app.db.models.scan_dispatch import ScanDispatchObligation
 from app.db.models.scan_schedule import ScanSchedule
 from app.db.models.shadow_review import (
+    ShadowCorpusEntry,
     ShadowPullRequestHead,
     ShadowReviewCandidate,
     ShadowReviewCandidateLabel,
@@ -60,6 +61,7 @@ __all__ = [
     "ScanDispatchObligation",
     "ScanSchedule",
     "ScannerRun",
+    "ShadowCorpusEntry",
     "ShadowPullRequestHead",
     "ShadowReviewCandidate",
     "ShadowReviewCandidateLabel",

@@ -79,3 +79,38 @@ class ShadowReviewCandidateLabel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
     actor_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     label: Mapped[str] = mapped_column(String(32), nullable=False)
+
+
+class ShadowCorpusEntry(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """One labelled shadow candidate retained for replay evaluation (#51).
+
+    A reference record only: revision SHAs, ids, the fingerprint and the split. It never holds
+    source, snippets, titles, paths or secrets, so the corpus is not source storage. ``split`` is
+    ``assign_split(repository, pull request)`` fixed at creation and never recomputed, so a pull
+    request cannot straddle tuning and holdout. Rows go with their organization / repository
+    (foreign-key cascade) and with the retention sweep (``created_at`` + retention days).
+    """
+
+    __tablename__ = "shadow_corpus_entries"
+    __table_args__ = (UniqueConstraint("label_id", name="uq_shadow_corpus_label"),)
+
+    organization_id: Mapped[str] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    repository_id: Mapped[str] = mapped_column(
+        ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    pull_request_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    scan_id: Mapped[str] = mapped_column(ForeignKey("scans.id", ondelete="CASCADE"), nullable=False)
+    candidate_id: Mapped[str] = mapped_column(
+        ForeignKey("shadow_review_candidates.id", ondelete="CASCADE"), nullable=False
+    )
+    label_id: Mapped[str] = mapped_column(
+        ForeignKey("shadow_review_candidate_labels.id", ondelete="CASCADE"), nullable=False
+    )
+    fingerprint: Mapped[str] = mapped_column(String(255), nullable=False)
+    head_sha: Mapped[str] = mapped_column(String(64), nullable=False)
+    base_sha: Mapped[str | None] = mapped_column(String(64))
+    merge_base_sha: Mapped[str | None] = mapped_column(String(64))
+    split: Mapped[str] = mapped_column(String(16), nullable=False)
+    split_policy: Mapped[str] = mapped_column(String(32), nullable=False)

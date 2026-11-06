@@ -41,6 +41,7 @@ from app.services.scan_lease import LEASE_SECONDS, RENEWAL_SECONDS, LeaseConflic
 from app.services.scan_lifecycle import ScanLifecycleService
 from app.services.scan_schedules import ScanScheduleService
 from app.services.scans import ScanAuthorizationError, ScanService
+from app.services.shadow_corpus import ShadowCorpusService
 
 logger = logging.getLogger(__name__)
 
@@ -738,6 +739,15 @@ async def renew_scan_lease(
         "lease_seconds": LEASE_SECONDS,
         "renewal_seconds": RENEWAL_SECONDS,
     }
+
+
+@router.post("/shadow-corpus/expire")
+async def expire_shadow_corpus(
+    _scheduler: None = Depends(require_scheduler_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retention sweep for the shadow replay corpus (#51); safe to call repeatedly."""
+    return {"expired": await ShadowCorpusService(db).expire_past_retention()}
 
 
 @router.post("/scan-schedules/run-due")

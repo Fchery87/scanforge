@@ -29,6 +29,7 @@ from app.db.models import (
 from app.services.audit_logs import AuditLogService
 from app.services.evidence_contract import derive_capability_coverage
 from app.services.pr_classification import ShadowClassificationService
+from app.services.shadow_corpus import ShadowCorpusService
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -212,6 +213,8 @@ class ShadowReviewViewService:
             organization_id=org_id,
             metadata_json={"label": label, "previous_label": previous, "scan_id": str(scan.id)},
         )
+        await self.db.flush()
+        await ShadowCorpusService(self.db).record_label(org_id, row.id)
         await self.db.commit()
         await self.db.refresh(row)
         return row

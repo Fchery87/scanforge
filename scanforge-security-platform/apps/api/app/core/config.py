@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     # Seconds a new shadow PR run waits before dispatch so a burst of pushes settles on the latest head.
     PR_SHADOW_DEBOUNCE_SECONDS: int = 30
 
+    # Days a labelled shadow replay-corpus entry is retained before the expiry sweep removes it (#51).
+    # Maintainer decision to confirm; entries also go with their organization / repository.
+    SHADOW_CORPUS_RETENTION_DAYS: int = 90
+
     INTERNAL_API_KEY: str = ""
     WORKER_CREDENTIAL_PEPPER: str = ""
     SCHEDULER_API_KEY: str = ""
