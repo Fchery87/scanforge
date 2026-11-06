@@ -86,7 +86,7 @@ async def finalize(session, scan_id, principal, attempt, artifact_id, body=BODY)
         ArtifactFinalizeRequest(checksum_sha256=sha(body)),
         principal,
         attempt,
-        session,
+        db=session,
     )
 
 

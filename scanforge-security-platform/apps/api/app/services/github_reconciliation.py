@@ -154,7 +154,14 @@ class GitHubReconciliationService:
             error_code, error_message = _safe_error(exc)
             summary["installation_state"] = "unknown"
             return await self._finish(
-                installation_id, organization_id, trigger, started, "failed", summary, error_code, error_message
+                installation_id,
+                organization_id,
+                trigger,
+                started,
+                "failed",
+                summary=summary,
+                error_code=error_code,
+                error_message=error_message,
             )
 
         if snapshot is None:
@@ -173,7 +180,16 @@ class GitHubReconciliationService:
 
         errors = [r for r in summary["repositories"] if r.get("error_code")]
         status = "completed_with_errors" if errors else "completed"
-        return await self._finish(installation_id, organization_id, trigger, started, status, summary, None, None)
+        return await self._finish(
+            installation_id,
+            organization_id,
+            trigger,
+            started,
+            status,
+            summary=summary,
+            error_code=None,
+            error_message=None,
+        )
 
     @staticmethod
     def _is_active(snapshot: InstallationSnapshot | None) -> bool:
@@ -186,6 +202,7 @@ class GitHubReconciliationService:
         trigger: str,
         started: datetime,
         status: str,
+        *,
         summary: dict[str, Any],
         error_code: str | None,
         error_message: str | None,

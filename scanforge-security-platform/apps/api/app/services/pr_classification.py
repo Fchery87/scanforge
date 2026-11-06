@@ -183,7 +183,13 @@ class ShadowClassificationService:
                 label, reason = "existing", "present_at_merge_base"
             else:
                 label, reason = self._absence_claim(
-                    scanner, capability, head_runs, base_runs, head_policy, base_policy, coverage
+                    scanner,
+                    capability,
+                    head_runs,
+                    base_runs,
+                    head_policy,
+                    base_policy=base_policy,
+                    coverage=coverage,
                 )
             result["counts"][label] += 1
             result["results"].append(
@@ -198,7 +204,7 @@ class ShadowClassificationService:
         return result
 
     @staticmethod
-    def _absence_claim(scanner, capability, head_runs, base_runs, head_policy, base_policy, coverage):
+    def _absence_claim(scanner, capability, head_runs, base_runs, head_policy, *, base_policy, coverage):
         if scanner is None or capability is None:
             return "unknown", "scanner_not_attributed"
         block = analyzer_comparability(

@@ -197,6 +197,7 @@ async def label_shadow_candidate(
     scan_id: UUID,
     candidate_id: UUID,
     data: ShadowCandidateLabelRequest,
+    *,
     current_user: UserContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

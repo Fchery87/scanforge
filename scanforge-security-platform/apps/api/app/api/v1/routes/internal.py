@@ -247,6 +247,7 @@ async def finalize_artifact(
     data: ArtifactFinalizeRequest,
     principal: WorkerPrincipal = Depends(require_capability("artifacts:write")),
     attempt: ExecutionAttemptIdentity = Depends(require_execution_attempt_identity),
+    *,
     db: AsyncSession = Depends(get_db),
 ):
     try:

@@ -611,7 +611,7 @@ class FindingService:
         return None
 
     def _record_uncredited_absence(
-        self, finding, scan, branch, reason, baseline, current, extra: dict | None = None
+        self, finding, scan, branch, reason, baseline, *, current, extra: dict | None = None
     ) -> None:
         """Explain a non-credited absence once per (branch, reason, current analyzer)."""
         metadata = dict(finding.metadata_json or {})
@@ -647,6 +647,7 @@ class FindingService:
         branch: str,
         present: set[str],
         current_signatures: dict[str, dict],
+        *,
         inventory: list[dict] | None = None,
     ) -> int:
         """Record one branch-local absence and transition when eligible.
@@ -679,7 +680,9 @@ class FindingService:
         if block is not None:
             # An analyzer or advisory-intelligence difference may explain the absence; it is
             # not remediation evidence (ADR-014).
-            self._record_uncredited_absence(finding, scan, branch, block, baseline, current, extra)
+            self._record_uncredited_absence(
+                finding, scan, branch, block, baseline, current=current, extra=extra
+            )
             return 0
 
         metadata, counted = record_qualifying_absence(
@@ -784,7 +787,7 @@ class FindingService:
             ):
                 continue
             updated += await self._apply_branch_absence(
-                finding, scan, branch, present, current_signatures, inventory
+                finding, scan, branch, present, current_signatures, inventory=inventory
             )
 
         if updated:

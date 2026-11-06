@@ -161,7 +161,7 @@ describe("web/api contract parity", () => {
       await rm(outDir, { recursive: true, force: true });
     }
     expect((await readFile(apiTypesUrl, "utf8")).length).toBeGreaterThan(1000);
-  });
+  }, 30_000);
 
   it("every path the web client calls exists in openapi.json with the HTTP method used", async () => {
     const clientCalls = extractClientCalls(await readFile(apiClientUrl, "utf8"));

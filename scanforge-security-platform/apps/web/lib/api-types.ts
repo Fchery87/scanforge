@@ -244,7 +244,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Expire Shadow Corpus */
+        /**
+         * Expire Shadow Corpus
+         * @description Retention sweep for the shadow replay corpus (#51); safe to call repeatedly.
+         */
         post: operations["expire_shadow_corpus_api_v1_internal_shadow_corpus_expire_post"];
         delete?: never;
         options?: never;
