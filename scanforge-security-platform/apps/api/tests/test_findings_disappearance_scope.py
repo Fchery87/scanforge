@@ -271,6 +271,8 @@ async def _observe(
                 "fingerprint_version": fingerprint_version,
                 "primary_scanner": scanner,
                 "confidence_score": 0.9,
+                "package_name": "pkg",
+                "instance": {"package_name": "pkg", "installed_version": "1.0.0", "path": "lock"},
             }
         ],
     )
@@ -287,6 +289,7 @@ async def _absence(
     summary=None,
     run_statuses=OK_RUNS,
     created_at=None,
+    inventory=True,
 ):
     """One absence evaluation for a fresh scan, mirroring completion.
 
@@ -298,6 +301,19 @@ async def _absence(
         session, repo_id, project_id, branch=branch, commit=commit, created_at=created_at
     )
     await _add_runs(session, scan.id, run_statuses)
+    if inventory and any(name == "trivy" for name, _, _ in run_statuses):
+        # Dependency absence needs same-scan inventory (#42); "pkg" is gone in these scans.
+        session.add(
+            ScannerRun(
+                id=str(uuid4()),
+                scan_id=str(scan.id),
+                scanner_name="syft",
+                status=ScanStatus.COMPLETED,
+                metadata_json={"inventory": {"complete": True, "packages": []}},
+                **{"scanner_version": "1.4.1", "parser_version": "2026-10-parser.v1", "rules_digest": None},
+            )
+        )
+        await session.flush()
     return await service.mark_not_observed_after_scan(
         repository_id=repo_id,
         scan_id=str(scan.id),

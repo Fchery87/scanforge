@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import httpx
 
 from app.core.logging import get_logger
+from app.normalizers.syft import build_syft_inventory
 from app.security.secret_evidence import sanitize_secret_finding
 from app.services.scan_pipeline.context import ScanContext
 
@@ -28,6 +29,10 @@ class PersistenceStage:
                 {"id": p["id"], "version": p["version"], "rules_digest": p["rules_digest"]}
                 for p in context.review_packs
             ]
+        result = context.scanner_results.get(scanner_name)
+        if scanner_name == "syft" and result is not None and result.success:
+            # Dependency absence is credited only against this scan's own inventory.
+            metadata["inventory"] = build_syft_inventory(result.raw_output)
         return metadata
 
     async def complete_scan(self, context: ScanContext) -> None:

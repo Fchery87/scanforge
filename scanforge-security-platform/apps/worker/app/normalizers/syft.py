@@ -49,6 +49,26 @@ def compute_license_fingerprint(
     return hashlib.sha256("|".join(components).encode()).hexdigest()
 
 
+# Upper bound on packages reported as inventory evidence; larger inventories are
+# flagged incomplete rather than truncated, so they can never prove absence.
+MAX_INVENTORY_PACKAGES = 20_000
+
+
+def build_syft_inventory(raw_output: dict | list) -> dict:
+    """Compact package inventory the API uses to judge dependency absence (#42)."""
+    artifacts = raw_output.get("artifacts", []) if isinstance(raw_output, dict) else raw_output
+    packages = []
+    for artifact in artifacts if isinstance(artifacts, list) else []:
+        if not isinstance(artifact, dict) or not artifact.get("name") or not artifact.get("version"):
+            continue
+        locations = artifact.get("locations") or []
+        path = _normalize_repo_path(locations[0].get("path", "")) if locations else ""
+        packages.append({"name": str(artifact["name"]), "version": str(artifact["version"]), "path": path})
+    if len(packages) > MAX_INVENTORY_PACKAGES:
+        return {"complete": False, "packages": []}
+    return {"complete": True, "packages": packages}
+
+
 def normalize_syft_output(raw_output: dict | list, repository_id: str) -> list[dict]:
     findings = []
 

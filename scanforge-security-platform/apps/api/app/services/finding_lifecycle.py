@@ -15,7 +15,7 @@ provider-compare receipts owned by the scan lifecycle (D1); this module
 requires distinct commits and arrival order and must be handed ordered,
 already-ancestry-checked scan context.
 """
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from enum import StrEnum
 
@@ -47,6 +47,9 @@ class AbsenceBlockReason(StrEnum):
     ANALYZER_NOT_COMPARABLE = "analyzer_not_comparable"
     ANALYZER_BASELINE_UNKNOWN = "analyzer_baseline_unknown"
     PULL_REQUEST_SHADOW = "pull_request_shadow"
+    # Dependency absence needs Syft inventory from the same scan (ADR-014, P1.7).
+    INVENTORY_UNAVAILABLE = "inventory_unavailable"
+    PACKAGE_STILL_INSTALLED = "package_still_installed"
 
 
 class FindingWorkflowState(StrEnum):
@@ -279,6 +282,50 @@ def analyzer_comparability(
         if baseline.get(field) != current.get(field):
             return AbsenceBlockReason.ANALYZER_NOT_COMPARABLE
     return None
+
+
+def usable_inventory(run_metadata: Mapping[str, object] | None) -> list[dict] | None:
+    """Package list from a Syft run's metadata, or None unless it is a complete inventory.
+
+    Absence of a dependency finding is proven only by an inventory the worker marked
+    complete; a missing, malformed or truncated one proves nothing.
+    """
+    inventory = (run_metadata or {}).get("inventory")
+    if not isinstance(inventory, Mapping) or inventory.get("complete") is not True:
+        return None
+    packages = inventory.get("packages")
+    if not isinstance(packages, list):
+        return None
+    return [p for p in packages if isinstance(p, Mapping) and p.get("name") and p.get("version")]
+
+
+def _package_name_keys(name: str) -> set[str]:
+    """Comparison keys for a package name across ecosystems' spellings.
+
+    Case and ``_``/``.`` vs ``-`` do not distinguish packages, and a Maven
+    ``group:artifact`` coordinate matches the bare artifact Syft reports. Over-matching
+    only withholds credit, so these keys deliberately err toward "still installed".
+    """
+
+    def normalize(value: str) -> str:
+        return value.strip().lower().replace("_", "-").replace(".", "-")
+
+    return {normalize(name), normalize(name.rsplit(":", 1)[-1])}
+
+
+def installed_packages_matching(
+    identities: Sequence[tuple[str, str]], inventory: Sequence[Mapping[str, object]]
+) -> list[dict]:
+    """Inventory entries showing any (name, installed version) of the finding is still present."""
+    matches: list[dict] = []
+    for name, version in identities:
+        wanted = _package_name_keys(name)
+        for package in inventory:
+            if str(package["version"]) == version and wanted & _package_name_keys(str(package["name"])):
+                matches.append(
+                    {"name": str(package["name"]), "version": version, "path": package.get("path")}
+                )
+    return matches
 
 
 def absence_transition_target(

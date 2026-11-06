@@ -43,6 +43,7 @@ from app.services.finding_lifecycle import (
     analyzer_signature,
     branch_obligation_counts,
     evaluate_scan_absence_evidence,
+    installed_packages_matching,
     observed_branches,
     record_manual_reopen_checkpoint,
     record_observed_branch,
@@ -50,6 +51,7 @@ from app.services.finding_lifecycle import (
     reset_branch_series,
     scan_precedes_checkpoint,
     transition_event_for_state,
+    usable_inventory,
     validate_transition,
 )
 from app.services.risk_scoring import calculate_risk_score
@@ -558,7 +560,52 @@ class FindingService:
             fingerprint_version=finding.fingerprint_version,
         )
 
-    def _record_uncredited_absence(self, finding, scan, branch, reason, baseline, current) -> None:
+    async def _scan_inventory(self, scan_id: str) -> list[dict] | None:
+        """Syft inventory from this scan's own completed run, else None (never another scan's)."""
+        result = await self.db.execute(
+            select(ScannerRun).where(ScannerRun.scan_id == scan_id, ScannerRun.scanner_name == "syft")
+        )
+        for run in result.scalars().all():
+            if getattr(run.status, "value", run.status) == ScanStatus.COMPLETED.value and (
+                run.outcome_status == ScanStatus.COMPLETED.value
+            ):
+                return usable_inventory(run.metadata_json)
+        return None
+
+    async def _dependency_inventory_block(
+        self, finding, inventory: list[dict] | None
+    ) -> tuple[AbsenceBlockReason, dict] | None:
+        """Why inventory evidence forbids absence credit for a dependency finding, else None.
+
+        A vulnerability finding that disappears while its package version is still
+        installed is an advisory or scanner change, not remediation. License findings
+        are derived from the inventory itself and are exempt.
+        """
+        if capability_for_scanner(finding.primary_scanner) != "dependencies" or finding.category == (
+            "license_compliance"
+        ):
+            return None
+        if inventory is None:
+            return AbsenceBlockReason.INVENTORY_UNAVAILABLE, {}
+        result = await self.db.execute(
+            select(FindingInstance.package_name, FindingInstance.installed_version).where(
+                FindingInstance.finding_id == finding.id,
+                FindingInstance.package_name.is_not(None),
+                FindingInstance.installed_version.is_not(None),
+            )
+        )
+        identities = sorted({(name, version) for name, version in result.all()})
+        if not identities:
+            # Without the affected package version there is nothing to look up.
+            return AbsenceBlockReason.INVENTORY_UNAVAILABLE, {}
+        still_installed = installed_packages_matching(identities, inventory)
+        if still_installed:
+            return AbsenceBlockReason.PACKAGE_STILL_INSTALLED, {"packages": still_installed}
+        return None
+
+    def _record_uncredited_absence(
+        self, finding, scan, branch, reason, baseline, current, extra: dict | None = None
+    ) -> None:
         """Explain a non-credited absence once per (branch, reason, current analyzer)."""
         metadata = dict(finding.metadata_json or {})
         blocks = dict(metadata.get(ANALYZER_BLOCK_KEY) or {})
@@ -581,12 +628,19 @@ class FindingService:
                     "blocked_by": [reason.value],
                     "baseline": baseline,
                     "current": current,
+                    **(extra or {}),
                 },
             )
         )
 
     async def _apply_branch_absence(
-        self, finding, scan, branch: str, present: set[str], current_signatures: dict[str, dict]
+        self,
+        finding,
+        scan,
+        branch: str,
+        present: set[str],
+        current_signatures: dict[str, dict],
+        inventory: list[dict] | None = None,
     ) -> int:
         """Record one branch-local absence and transition when eligible.
 
@@ -611,11 +665,14 @@ class FindingService:
             # The scan analyzes under the category's current identity policy.
             policy = current_fingerprint_version(finding.category, finding.primary_scanner)
             current = {**current, "fingerprint_version": policy}
-        block = analyzer_comparability(baseline, current)
+        block, extra = analyzer_comparability(baseline, current), {}
+        if block is None:
+            # Dependency findings also need inventory showing the package version is gone.
+            block, extra = await self._dependency_inventory_block(finding, inventory) or (None, {})
         if block is not None:
-            # An analyzer difference may explain the absence; it is not
-            # remediation evidence (ADR-014).
-            self._record_uncredited_absence(finding, scan, branch, block, baseline, current)
+            # An analyzer or advisory-intelligence difference may explain the absence; it is
+            # not remediation evidence (ADR-014).
+            self._record_uncredited_absence(finding, scan, branch, block, baseline, current, extra)
             return 0
 
         metadata, counted = record_qualifying_absence(
@@ -710,6 +767,7 @@ class FindingService:
         current_signatures = await self._scanner_signatures_for_scan(str(scan.id))
         present = await self._scan_persisted_fingerprints(str(scan.id))
         present = present | set(seen_fingerprints or [])
+        inventory = await self._scan_inventory(str(scan.id))
 
         branch = scan.branch_name
         updated = 0
@@ -718,7 +776,9 @@ class FindingService:
                 scan, scan_context, capability_for_scanner(finding.primary_scanner), capability_cache
             ):
                 continue
-            updated += await self._apply_branch_absence(finding, scan, branch, present, current_signatures)
+            updated += await self._apply_branch_absence(
+                finding, scan, branch, present, current_signatures, inventory
+            )
 
         if updated:
             if commit:
