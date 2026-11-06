@@ -18,10 +18,12 @@ from app.schemas.scans import (
     ScanCreate,
     ScanDetailResponse,
     ScanResponse,
+    ShadowClassificationResponse,
 )
 from app.services.artifact_finalization import ArtifactFinalizationService
 from app.services.evidence_contract import derive_capability_coverage
 from app.services.organizations import OrganizationService
+from app.services.pr_classification import ShadowClassificationService
 from app.services.scan_dispatch import ScanCapacityExceededError
 from app.services.scan_lifecycle import ScanLifecycleService
 from app.services.scans import ScanService
@@ -151,7 +153,12 @@ async def get_scan(
     if not scan or scan.project_id != project_id:
         raise HTTPException(status_code=404, detail="Scan not found")
 
-    return _apply_scan_download_urls(scan, org_id=org_id, project_id=project_id)
+    payload = _apply_scan_download_urls(scan, org_id=org_id, project_id=project_id)
+    if scan.trigger_type == "pull_request":
+        payload.shadow_classification = ShadowClassificationResponse.model_validate(
+            await ShadowClassificationService(db).classify(scan)
+        )
+    return payload
 
 
 @router.get("/{scan_id}/scanner-runs/{run_id}/download")

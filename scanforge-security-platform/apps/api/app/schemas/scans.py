@@ -118,9 +118,35 @@ class CapabilityCoverageResponse(BaseModel):
     scanners: list[ScannerCoverageResponse] = []
 
 
+class ShadowResultClassification(BaseModel):
+    fingerprint: str
+    scanner: str | None = None
+    capability: str | None = None
+    classification: str = Field(pattern="^(new|existing|unknown)$")
+    reason: str
+
+
+class ShadowClassificationCounts(BaseModel):
+    new: int = 0
+    existing: int = 0
+    unknown: int = 0
+
+
+class ShadowClassificationResponse(BaseModel):
+    """New / existing / unknown against a comparable merge-base baseline (never inferred)."""
+
+    state: str = Field(pattern="^(classified|unavailable)$")
+    merge_base_sha: str | None = None
+    comparison_strategy: str | None = None
+    baseline_scan_id: UUID | None = None
+    counts: ShadowClassificationCounts = ShadowClassificationCounts()
+    results: list[ShadowResultClassification] = []
+
+
 class ScanDetailResponse(ScanResponse):
     scanner_runs: list[ScannerRunResponse] = []
     capability_coverage: list[CapabilityCoverageResponse] = []
+    shadow_classification: ShadowClassificationResponse | None = None
 
 
 class ScanCancel(BaseModel):

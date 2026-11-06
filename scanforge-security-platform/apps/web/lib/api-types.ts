@@ -55,6 +55,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/internal/scans/{scan_id}/artifacts/{artifact_id}/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finalize Artifact */
+        post: operations["finalize_artifact_api_v1_internal_scans__scan_id__artifacts__artifact_id__finalize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/internal/notifications": {
         parameters: {
             query?: never;
@@ -235,6 +252,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/webhooks/github/{org_id}/{project_id}/{repository_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Github Webhook */
+        post: operations["github_webhook_api_v1_webhooks_github__org_id___project_id___repository_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/webhooks/github/app": {
         parameters: {
             query?: never;
@@ -254,23 +288,6 @@ export interface paths {
          *     repeated suspend/unsuspend be mistaken for a replay).
          */
         post: operations["github_app_webhook_api_v1_webhooks_github_app_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/webhooks/github/{org_id}/{project_id}/{repository_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Github Webhook */
-        post: operations["github_webhook_api_v1_webhooks_github__org_id___project_id___repository_id__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1207,6 +1224,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ArtifactFinalizeRequest */
+        ArtifactFinalizeRequest: {
+            /** Checksum Sha256 */
+            checksum_sha256: string;
+        };
         /** ArtifactUploadRequest */
         ArtifactUploadRequest: {
             /** Scanner Name */
@@ -1266,8 +1288,6 @@ export interface components {
             instance?: components["schemas"]["CanonicalFindingInstance"] | null;
             /** References */
             references?: components["schemas"]["CanonicalFindingReference"][];
-        } & {
-            [key: string]: unknown;
         };
         /** CanonicalFindingInstance */
         CanonicalFindingInstance: {
@@ -2607,6 +2627,7 @@ export interface components {
              * @default []
              */
             capability_coverage: components["schemas"]["CapabilityCoverageResponse"][];
+            shadow_classification?: components["schemas"]["ShadowClassificationResponse"] | null;
         };
         /** ScanResponse */
         ScanResponse: {
@@ -2999,6 +3020,64 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** ShadowClassificationCounts */
+        ShadowClassificationCounts: {
+            /**
+             * New
+             * @default 0
+             */
+            new: number;
+            /**
+             * Existing
+             * @default 0
+             */
+            existing: number;
+            /**
+             * Unknown
+             * @default 0
+             */
+            unknown: number;
+        };
+        /**
+         * ShadowClassificationResponse
+         * @description New / existing / unknown against a comparable merge-base baseline (never inferred).
+         */
+        ShadowClassificationResponse: {
+            /** State */
+            state: string;
+            /** Merge Base Sha */
+            merge_base_sha?: string | null;
+            /** Comparison Strategy */
+            comparison_strategy?: string | null;
+            /** Baseline Scan Id */
+            baseline_scan_id?: string | null;
+            /**
+             * @default {
+             *       "new": 0,
+             *       "existing": 0,
+             *       "unknown": 0
+             *     }
+             */
+            counts: components["schemas"]["ShadowClassificationCounts"];
+            /**
+             * Results
+             * @default []
+             */
+            results: components["schemas"]["ShadowResultClassification"][];
+        };
+        /** ShadowResultClassification */
+        ShadowResultClassification: {
+            /** Fingerprint */
+            fingerprint: string;
+            /** Scanner */
+            scanner?: string | null;
+            /** Capability */
+            capability?: string | null;
+            /** Classification */
+            classification: string;
+            /** Reason */
+            reason: string;
+        };
         /** SuppressionRuleCreate */
         SuppressionRuleCreate: {
             /** Rule Type */
@@ -3149,6 +3228,47 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ArtifactUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    finalize_artifact_api_v1_internal_scans__scan_id__artifacts__artifact_id__finalize_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Worker-Credential"?: string | null;
+                "X-Scan-Attempt-Id": string;
+                "X-Scan-Execution-Revision": number;
+                "X-Scan-Worker-Incarnation-Id": string;
+            };
+            path: {
+                scan_id: string;
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArtifactFinalizeRequest"];
             };
         };
         responses: {
@@ -3445,6 +3565,9 @@ export interface operations {
             query?: never;
             header?: {
                 "X-Worker-Credential"?: string | null;
+                "X-Scan-Attempt-Id"?: string | null;
+                "X-Scan-Execution-Revision"?: number | null;
+                "X-Scan-Worker-Incarnation-Id"?: string | null;
             };
             path: {
                 scan_id: string;
@@ -3541,26 +3664,6 @@ export interface operations {
             };
         };
     };
-    github_app_webhook_api_v1_webhooks_github_app_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
     github_webhook_api_v1_webhooks_github__org_id___project_id___repository_id__post: {
         parameters: {
             query?: never;
@@ -3590,6 +3693,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    github_app_webhook_api_v1_webhooks_github_app_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

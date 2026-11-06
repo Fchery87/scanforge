@@ -9403,6 +9403,16 @@
             "type": "array",
             "title": "Capability Coverage",
             "default": []
+          },
+          "shadow_classification": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShadowClassificationResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -10510,6 +10520,138 @@
           "project_id"
         ],
         "title": "ScorecardResponse"
+      },
+      "ShadowClassificationCounts": {
+        "properties": {
+          "new": {
+            "type": "integer",
+            "title": "New",
+            "default": 0
+          },
+          "existing": {
+            "type": "integer",
+            "title": "Existing",
+            "default": 0
+          },
+          "unknown": {
+            "type": "integer",
+            "title": "Unknown",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "ShadowClassificationCounts"
+      },
+      "ShadowClassificationResponse": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "pattern": "^(classified|unavailable)$",
+            "title": "State"
+          },
+          "merge_base_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merge Base Sha"
+          },
+          "comparison_strategy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comparison Strategy"
+          },
+          "baseline_scan_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Scan Id"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/ShadowClassificationCounts",
+            "default": {
+              "new": 0,
+              "existing": 0,
+              "unknown": 0
+            }
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ShadowResultClassification"
+            },
+            "type": "array",
+            "title": "Results",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "ShadowClassificationResponse",
+        "description": "New / existing / unknown against a comparable merge-base baseline (never inferred)."
+      },
+      "ShadowResultClassification": {
+        "properties": {
+          "fingerprint": {
+            "type": "string",
+            "title": "Fingerprint"
+          },
+          "scanner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scanner"
+          },
+          "capability": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capability"
+          },
+          "classification": {
+            "type": "string",
+            "pattern": "^(new|existing|unknown)$",
+            "title": "Classification"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fingerprint",
+          "classification",
+          "reason"
+        ],
+        "title": "ShadowResultClassification"
       },
       "SuppressionRuleCreate": {
         "properties": {

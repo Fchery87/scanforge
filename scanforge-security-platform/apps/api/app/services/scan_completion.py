@@ -16,6 +16,12 @@ from app.services.evidence_contract import (
     derive_scan_evidence_decision,
 )
 from app.services.findings import FindingService
+from app.services.pr_classification import (
+    ShadowClassificationService,
+    build_result_index,
+    carried_shadow_summary,
+    fingerprint_policy_digest,
+)
 
 
 class ScanCompletionConflict(Exception):
@@ -221,8 +227,13 @@ class ScanCompletionService:
         }
         scan.summary_json = {
             **data.summary_json,
+            **carried_shadow_summary(scan.summary_json),
             "scanner_health": scanner_health,
             "seen_fingerprints": sorted(seen_fingerprints),
+            # Per-scan result evidence for shadow PR classification (#47): shadow findings are
+            # not stored as repository findings, so each scan carries its own result index.
+            "result_index": build_result_index(data.findings),
+            "fingerprint_policy": fingerprint_policy_digest(),
             "coverage_completeness": decision.coverage_completeness,
             "closure_eligible": decision.closure_eligible,
             "artifact_availability": decision.artifact_availability,
@@ -247,6 +258,7 @@ class ScanCompletionService:
                 commit=False,
             )
         scan.status = ScanStatus.COMPLETED
+        await ShadowClassificationService(self.db).schedule_baseline_work(scan)
         receipt = ScanCompletionReceipt(
             scan_id=str(scan_id),
             worker_principal_id=worker_principal_id,
