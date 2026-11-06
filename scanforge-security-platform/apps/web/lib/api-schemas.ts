@@ -69,8 +69,30 @@ export const scannerRunSchema = z.object({
   artifact_download_url: z.string().nullable().optional(),
 }).passthrough();
 
+export const scannerCoverageSchema = z.object({
+  scanner_name: z.string(),
+  state: z.string(),
+  reasons: z.array(z.string()).optional(),
+  declared_scope: z.string().nullable().optional(),
+  inputs_found: z.number().nullable().optional(),
+  inputs_supported: z.number().nullable().optional(),
+  unsupported_inputs: z.array(z.string()).nullable().optional(),
+  exclusions: z.array(z.string()).nullable().optional(),
+  parse_failures: z.number().nullable().optional(),
+  truncated: z.boolean().nullable().optional(),
+  timed_out: z.boolean().nullable().optional(),
+}).passthrough();
+
+export const capabilityCoverageSchema = z.object({
+  capability: z.string(),
+  state: z.string(),
+  reasons: z.array(z.string()).optional(),
+  scanners: z.array(scannerCoverageSchema).optional(),
+}).passthrough();
+
 export const scanDetailSchema = scanSchema.extend({
   scanner_runs: z.array(scannerRunSchema).optional(),
+  capability_coverage: z.array(capabilityCoverageSchema).optional(),
   error_message: z.string().nullable().optional(),
   summary_json: z.record(z.unknown()).nullable().optional(),
 });

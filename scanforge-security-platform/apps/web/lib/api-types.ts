@@ -1305,6 +1305,23 @@ export interface components {
             /** Url */
             url?: string | null;
         };
+        /** CapabilityCoverageResponse */
+        CapabilityCoverageResponse: {
+            /** Capability */
+            capability: string;
+            /** State */
+            state: string;
+            /**
+             * Reasons
+             * @default []
+             */
+            reasons: string[];
+            /**
+             * Scanners
+             * @default []
+             */
+            scanners: components["schemas"]["ScannerCoverageResponse"][];
+        };
         /** CreateScannerRunRequest */
         CreateScannerRunRequest: {
             /** Scanner Name */
@@ -2585,6 +2602,11 @@ export interface components {
              * @default []
              */
             scanner_runs: components["schemas"]["ScannerRunResponse"][];
+            /**
+             * Capability Coverage
+             * @default []
+             */
+            capability_coverage: components["schemas"]["CapabilityCoverageResponse"][];
         };
         /** ScanResponse */
         ScanResponse: {
@@ -2752,6 +2774,39 @@ export interface components {
             summary_json?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /**
+         * ScannerCoverageResponse
+         * @description Analyzer-reported measurements only; None means the analyzer did not report it.
+         */
+        ScannerCoverageResponse: {
+            /** Scanner Name */
+            scanner_name: string;
+            /** State */
+            state: string;
+            /**
+             * Reasons
+             * @default []
+             */
+            reasons: string[];
+            /** Outcome Status */
+            outcome_status?: string | null;
+            /** Declared Scope */
+            declared_scope?: string | null;
+            /** Inputs Found */
+            inputs_found?: number | null;
+            /** Inputs Supported */
+            inputs_supported?: number | null;
+            /** Unsupported Inputs */
+            unsupported_inputs?: string[] | null;
+            /** Exclusions */
+            exclusions?: string[] | null;
+            /** Parse Failures */
+            parse_failures?: number | null;
+            /** Truncated */
+            truncated?: boolean | null;
+            /** Timed Out */
+            timed_out?: boolean | null;
         };
         /** ScannerRunCompletion */
         ScannerRunCompletion: {

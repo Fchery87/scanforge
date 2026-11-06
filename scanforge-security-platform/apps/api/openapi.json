@@ -6048,6 +6048,41 @@
         "type": "object",
         "title": "CanonicalFindingReference"
       },
+      "CapabilityCoverageResponse": {
+        "properties": {
+          "capability": {
+            "type": "string",
+            "title": "Capability"
+          },
+          "state": {
+            "type": "string",
+            "pattern": "^(complete|partial|unknown|not_applicable)$",
+            "title": "State"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reasons",
+            "default": []
+          },
+          "scanners": {
+            "items": {
+              "$ref": "#/components/schemas/ScannerCoverageResponse"
+            },
+            "type": "array",
+            "title": "Scanners",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "capability",
+          "state"
+        ],
+        "title": "CapabilityCoverageResponse"
+      },
       "CreateScannerRunRequest": {
         "properties": {
           "scanner_name": {
@@ -9360,6 +9395,14 @@
             "type": "array",
             "title": "Scanner Runs",
             "default": []
+          },
+          "capability_coverage": {
+            "items": {
+              "$ref": "#/components/schemas/CapabilityCoverageResponse"
+            },
+            "type": "array",
+            "title": "Capability Coverage",
+            "default": []
           }
         },
         "type": "object",
@@ -9815,6 +9858,138 @@
         },
         "type": "object",
         "title": "ScanStatusUpdate"
+      },
+      "ScannerCoverageResponse": {
+        "properties": {
+          "scanner_name": {
+            "type": "string",
+            "title": "Scanner Name"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reasons",
+            "default": []
+          },
+          "outcome_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome Status"
+          },
+          "declared_scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declared Scope"
+          },
+          "inputs_found": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inputs Found"
+          },
+          "inputs_supported": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inputs Supported"
+          },
+          "unsupported_inputs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unsupported Inputs"
+          },
+          "exclusions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exclusions"
+          },
+          "parse_failures": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parse Failures"
+          },
+          "truncated": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Truncated"
+          },
+          "timed_out": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timed Out"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scanner_name",
+          "state"
+        ],
+        "title": "ScannerCoverageResponse",
+        "description": "Analyzer-reported measurements only; None means the analyzer did not report it."
       },
       "ScannerRunCompletion": {
         "properties": {
