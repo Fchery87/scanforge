@@ -426,6 +426,89 @@ async def test_redelivered_lifecycle_event_replays_original_response(db_session)
     assert first == second
 
 
+_LIFECYCLE_REPLAYS = [
+    ("installation", {"action": "deleted", "installation": {"id": 77001}}),
+    ("installation", {"action": "suspend", "installation": {"id": 77001}}),
+    ("installation", {"action": "unsuspend", "installation": {"id": 77001}}),
+    (
+        "installation",
+        {"action": "new_permissions_accepted", "installation": {"id": 77001, "permissions": {"metadata": "read"}}},
+    ),
+    (
+        "installation_repositories",
+        {"action": "removed", "installation": {"id": 77001}, "repositories_removed": [{"id": 900123}]},
+    ),
+    (
+        "installation_repositories",
+        {"action": "added", "installation": {"id": 77001}, "repositories_added": [{"id": 900123}]},
+    ),
+    ("repository", {"action": "deleted", "installation": {"id": 77001}, "repository": {"id": 900123}}),
+    (
+        "repository",
+        {
+            "action": "renamed",
+            "installation": {"id": 77001},
+            "repository": {
+                "id": 900123,
+                "name": "billing-api",
+                "full_name": "acme-sec/billing-api",
+                "owner": {"login": "acme-sec"},
+            },
+        },
+    ),
+    (
+        "repository",
+        {
+            "action": "transferred",
+            "installation": {"id": 77001},
+            "repository": {
+                "id": 900123,
+                "name": "payments-api",
+                "full_name": "other-corp/payments-api",
+                "owner": {"login": "other-corp"},
+            },
+        },
+    ),
+    (
+        "repository",
+        {
+            "action": "edited",
+            "changes": {"default_branch": {"from": "main"}},
+            "installation": {"id": 77001},
+            "repository": {"id": 900123, "default_branch": "trunk"},
+        },
+    ),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("event", "payload"), _LIFECYCLE_REPLAYS, ids=lambda v: v if isinstance(v, str) else None)
+async def test_lifecycle_handlers_are_idempotent_when_a_delivery_is_applied_twice(db_session, event, payload):
+    """Review C8: handlers run before the delivery row is committed, so a crash in between (or a
+    concurrent duplicate) re-applies them. Applying the same event again must change nothing."""
+    t = await _seed(db_session)
+
+    async def _state():
+        await db_session.refresh(t.repo)
+        integration = await db_session.scalar(
+            select(RepositoryIntegration).where(RepositoryIntegration.repository_id == t.repo.id)
+        )
+        await db_session.refresh(integration)
+        return (
+            t.repo.is_active,
+            t.repo.lifecycle_state,
+            t.repo.full_name,
+            t.repo.default_branch,
+            dict(integration.access_metadata or {}),
+        )
+
+    await _deliver_app_event(db_session, event, payload)
+    once = await _state()
+    await _deliver_app_event(db_session, event, payload)
+
+    assert await _state() == once
+
+
 @pytest.mark.asyncio
 async def test_distinct_lifecycle_deliveries_with_identical_content_both_apply(db_session):
     """Suspend, unsuspend, suspend again: the second suspend is not a replay of the first."""
