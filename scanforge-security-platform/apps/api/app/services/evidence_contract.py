@@ -421,3 +421,135 @@ def derive_scan_evidence_decision(  # noqa: PLR0912, PLR0915
         ineligibility_reasons=tuple(reasons),
         severity_counts=severity_counts,
     )
+
+
+# --- Per-capability coverage assessment (P1.8) ------------------------------------------------
+# Derived at read time from committed ScannerRun evidence. Measurements are surfaced only when the
+# analyzer reported them under ScannerRun.metadata_json["coverage"]; malformed values are dropped,
+# nothing is inferred, and no percentages are computed.
+
+_COVERAGE_MAX_LIST_ITEMS = 50
+_COVERAGE_MAX_TEXT_LENGTH = 200
+
+
+def _reported_count(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+
+def _reported_flag(value: Any) -> bool | None:
+    return value if isinstance(value, bool) else None
+
+
+def _reported_text(value: Any) -> str | None:
+    return value[:_COVERAGE_MAX_TEXT_LENGTH] if isinstance(value, str) and value.strip() else None
+
+
+def _reported_texts(value: Any) -> list[str] | None:
+    if not isinstance(value, list):
+        return None
+    items = [item[:_COVERAGE_MAX_TEXT_LENGTH] for item in value if isinstance(item, str) and item.strip()]
+    return items[:_COVERAGE_MAX_LIST_ITEMS]
+
+
+def _enum_value(value: Any) -> str:
+    return str(getattr(value, "value", value) or "").lower()
+
+
+def _assess_scanner_coverage(scanner_name: str, run: Any | None) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "scanner_name": scanner_name,
+        "state": "unknown",
+        "reasons": [],
+        "outcome_status": None,
+        "declared_scope": None,
+        "inputs_found": None,
+        "inputs_supported": None,
+        "unsupported_inputs": None,
+        "exclusions": None,
+        "parse_failures": None,
+        "truncated": None,
+        "timed_out": None,
+    }
+    if run is None:
+        entry["reasons"] = ["no_scanner_run"]
+        return entry
+
+    status = _enum_value(run.status)
+    outcome = _enum_value(getattr(run, "outcome_status", None)) or status
+    entry["outcome_status"] = outcome
+    if status != "completed" or outcome not in {"completed", "skipped_unapplicable"}:
+        entry["reasons"] = ["scanner_timed_out" if outcome == "timed_out" else "scanner_failed"]
+        return entry
+
+    metadata = run.metadata_json if isinstance(run.metadata_json, dict) else {}
+    report = metadata.get("coverage") if isinstance(metadata.get("coverage"), dict) else {}
+    entry.update(
+        declared_scope=_reported_text(report.get("declared_scope")),
+        inputs_found=_reported_count(report.get("inputs_found")),
+        inputs_supported=_reported_count(report.get("inputs_supported")),
+        unsupported_inputs=_reported_texts(report.get("unsupported_inputs")),
+        exclusions=_reported_texts(report.get("exclusions")),
+        parse_failures=_reported_count(report.get("parse_failures")),
+        truncated=_reported_flag(report.get("truncated")),
+        timed_out=_reported_flag(report.get("timed_out")),
+    )
+
+    limitations: list[str] = []
+    if entry["unsupported_inputs"]:
+        limitations.append("unsupported_inputs")
+    if entry["parse_failures"]:
+        limitations.append("parse_failures")
+    if entry["truncated"]:
+        limitations.append("truncated")
+    if entry["timed_out"]:
+        limitations.append("timed_out")
+    found, supported = entry["inputs_found"], entry["inputs_supported"]
+    if found is not None and supported is not None and supported < found:
+        limitations.append("supported_inputs_below_inputs_found")
+
+    if limitations:
+        entry["state"] = "partial"
+        entry["reasons"] = limitations
+    elif found == 0:
+        entry["state"] = "not_applicable"
+        entry["reasons"] = ["analyzer_reported_no_inputs"]
+    elif found is None:
+        entry["reasons"] = ["no_analyzer_coverage_report"]
+    else:
+        entry["state"] = "complete"
+    return entry
+
+
+def derive_capability_coverage(
+    scanner_runs: Any,
+    *,
+    expected_scanners: list[str] | tuple[str, ...] | None = None,
+) -> list[dict[str, Any]]:
+    """Assess coverage per capability from committed scanner runs.
+
+    A capability is declared only when the execution contract expected one of its scanners
+    (or, absent a contract, when a run exists). Its state is complete (relative to declared
+    scope), partial, unknown, or not_applicable; not_applicable requires analyzer-reported
+    zero inputs from a completed run.
+    """
+    runs = {run.scanner_name.strip().lower(): run for run in scanner_runs}
+    expected = [s.strip().lower() for s in (expected_scanners or ()) if s and s.strip()] or list(runs)
+    assessments: list[dict[str, Any]] = []
+    for capability, capability_scanners in CAPABILITY_SCANNERS.items():
+        scanners = [
+            _assess_scanner_coverage(name, runs.get(name)) for name in capability_scanners if name in expected
+        ]
+        if not scanners:
+            continue
+        states = {s["state"] for s in scanners}
+        if states == {"not_applicable"}:
+            state = "not_applicable"
+        elif states <= {"complete", "not_applicable"}:
+            state = "complete"
+        elif states == {"unknown"}:
+            state = "unknown"
+        else:
+            state = "partial"
+        reasons = sorted({reason for s in scanners for reason in s["reasons"]})
+        assessments.append({"capability": capability, "state": state, "reasons": reasons, "scanners": scanners})
+    return assessments

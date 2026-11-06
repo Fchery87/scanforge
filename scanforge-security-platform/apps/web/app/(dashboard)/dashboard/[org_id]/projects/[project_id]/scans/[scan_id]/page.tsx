@@ -16,6 +16,7 @@ import {
 import { formatRelativeTime, formatScanDuration } from "@/lib/project-surface";
 import { PageHeader } from "@/components/scanforge/page-header";
 import { SkeletonTable } from "@/components/scanforge/loading-skeleton";
+import { CapabilityCoverage } from "@/components/scanforge/capability-coverage";
 import { ScanTimeline } from "@/components/scanforge/scan-timeline";
 import { ScanSummaryCards } from "@/components/scanforge/scan-summary-cards";
 import { Button } from "@/components/ui/button";
@@ -141,6 +142,8 @@ export default function ScanDetailPage() {
           <span className="text-sm text-danger">{scan.error_message}</span>
         </div>
       ) : null}
+
+      <CapabilityCoverage coverage={scan.capability_coverage || []} />
 
       <ScanTimeline
         runs={scan.scanner_runs || []}
