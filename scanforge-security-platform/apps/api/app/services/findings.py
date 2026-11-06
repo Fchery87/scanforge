@@ -52,6 +52,7 @@ from app.services.finding_lifecycle import (
     transition_event_for_state,
     validate_transition,
 )
+from app.services.finding_successors import link_fp_successors
 from app.services.risk_scoring import calculate_risk_score
 from app.services.scans import ScanAuthorizationError
 from app.services.secret_safety import sanitize_secret_mapping
@@ -462,6 +463,12 @@ class FindingService:
                     url=ref_data.get("url"),
                 )
                 self.db.add(reference)
+
+        if new_count:
+            # New identities may be exact successors of fp.v2 findings (#40).
+            # Linking records lineage only; dispositions never transfer.
+            await self.db.flush()
+            await link_fp_successors(self.db, repository_id=repository_id)
 
         if commit:
             await self.db.commit()
