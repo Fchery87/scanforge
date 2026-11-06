@@ -83,7 +83,9 @@ class ShadowCorpusService:
             candidate_id=str(candidate.id),
             label_id=str(label.id),
             fingerprint=candidate.fingerprint,
-            head_sha=candidate.head_sha,
+            # The referenced scan's own head: candidate.head_sha moves to later heads when the
+            # candidate goes unobserved, but base / merge-base come from this scan (last_scan_id).
+            head_sha=scan.commit_sha,
             base_sha=scan.base_sha,
             merge_base_sha=scan.merge_base_sha,
             split=assign_split(candidate.repository_id, candidate.pull_request_number),

@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.db.enums import ScanStatus
 from app.db.models import (
@@ -171,6 +172,18 @@ class ShadowReviewViewService:
             limitations.append("a newer head has been recorded for this pull request; this view is an older revision")
         return limitations
 
+    async def _actor_label(self, candidate_id: UUID, actor_user_id: UUID) -> ShadowReviewCandidateLabel | None:
+        return (
+            await self.db.execute(
+                select(ShadowReviewCandidateLabel)
+                .where(
+                    ShadowReviewCandidateLabel.candidate_id == str(candidate_id),
+                    ShadowReviewCandidateLabel.actor_user_id == str(actor_user_id),
+                )
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
+
     async def set_label(
         self, *, org_id: UUID, scan: Scan, candidate_id: UUID, actor_user_id: UUID, label: str
     ) -> ShadowReviewCandidateLabel | None:
@@ -186,14 +199,7 @@ class ShadowReviewViewService:
         ).scalar_one_or_none()
         if candidate is None:
             return None
-        row = (
-            await self.db.execute(
-                select(ShadowReviewCandidateLabel).where(
-                    ShadowReviewCandidateLabel.candidate_id == str(candidate_id),
-                    ShadowReviewCandidateLabel.actor_user_id == str(actor_user_id),
-                )
-            )
-        ).scalar_one_or_none()
+        row = await self._actor_label(candidate_id, actor_user_id)
         previous = row.label if row else None
         if row is None:
             row = ShadowReviewCandidateLabel(
@@ -202,7 +208,17 @@ class ShadowReviewViewService:
                 actor_user_id=str(actor_user_id),
                 label=label,
             )
-            self.db.add(row)
+            try:
+                async with self.db.begin_nested():
+                    self.db.add(row)
+                    await self.db.flush()
+            except IntegrityError:
+                # A concurrent first label by the same actor won the unique (candidate, actor) row.
+                row = await self._actor_label(candidate_id, actor_user_id)
+                if row is None:
+                    raise
+                previous = row.label
+                row.label = label
         else:
             row.label = label
         AuditLogService(self.db).record(

@@ -207,9 +207,14 @@ async def label_shadow_candidate(
             status_code=403, detail="Security reviewer, admin, or owner role required to label shadow results"
         )
     scan = await _get_shadow_pr_scan_or_404(db, project_id=project_id, scan_id=scan_id, user_id=current_user.user_id)
-    row = await ShadowReviewViewService(db).set_label(
-        org_id=org_id, scan=scan, candidate_id=candidate_id, actor_user_id=current_user.user_id, label=data.label
-    )
+    try:
+        row = await ShadowReviewViewService(db).set_label(
+            org_id=org_id, scan=scan, candidate_id=candidate_id, actor_user_id=current_user.user_id, label=data.label
+        )
+    except LookupError:
+        # The label's candidate or scan is not inside this tenant's corpus; nothing is recorded.
+        await db.rollback()
+        raise HTTPException(status_code=404, detail="Shadow candidate not found") from None
     if row is None:
         raise HTTPException(status_code=404, detail="Shadow candidate not found")
     return ShadowCandidateLabelResponse.model_validate(
