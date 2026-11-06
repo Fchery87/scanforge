@@ -22,8 +22,9 @@ SCAN_MODE_REGISTRY: dict[str, list[str]] = {
 }
 
 
-# Scanner -> capability for absence eligibility (P1.6). Mirrored by CAPABILITY_SCANNERS in the API
-# evidence contract; the API owns the decision, this map only keeps the two sides legible together.
+# Capability -> scanners, for absence eligibility (P1.6). Mirrored by CAPABILITY_SCANNERS in the API
+# evidence contract (which additionally accepts the alias "osv-scanner" for "osv"); the API owns the
+# decision, this map only keeps the two sides legible together.
 CAPABILITY_REGISTRY: dict[str, list[str]] = {
     "secrets": ["gitleaks"],
     "sast": ["semgrep"],

@@ -34,8 +34,11 @@ KNOWN_BETA_SCANNERS: frozenset[str] = frozenset(
         "grype",
     }
 )
-# Capability scope for absence eligibility (P1.6). Mirrors CAPABILITY_REGISTRY in
-# apps/worker/app/scanners/registry.py; each side has a test pinning its map.
+# Capability -> scanners, for absence eligibility (P1.6). Mirrors CAPABILITY_REGISTRY in
+# apps/worker/app/scanners/registry.py, with one deliberate difference: the API also accepts
+# "osv-scanner", the OSV binary name, as an alias of the worker's "osv" adapter name
+# (KNOWN_BETA_SCANNERS accepts both). tests/test_capability_registry_parity.py pins that the
+# two maps agree apart from that alias.
 CAPABILITY_SCANNERS: dict[str, tuple[str, ...]] = {
     "secrets": ("gitleaks",),
     "sast": ("semgrep",),
