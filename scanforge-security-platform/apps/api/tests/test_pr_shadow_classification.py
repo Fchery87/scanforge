@@ -15,12 +15,25 @@ import pytest
 from sqlalchemy import select
 from test_scan_dispatch import _seed_org_project_repo, db_session  # noqa: F401
 
+from test_scan_dispatch import _SQLiteUUID
+
+from app.db.base import Base
 from app.db.models import Finding, Scan
 from app.schemas.canonical_findings import CanonicalFindingCandidate
 from app.schemas.scan_completion import ScanCompletionRequest, ScannerRunCompletion
 from app.services.pr_classification import ShadowClassificationService
 from app.services.scan_completion import ScanCompletionService
 from app.services.scans import ScanService
+
+@pytest.fixture(autouse=True)
+def _uniform_sqlite_uuid_columns():
+    # Other test modules leave their own UUID shim on shared metadata; multi-row inserts
+    # (the scanner runs below) need one consistent bind/result shim to match sentinels.
+    for table in Base.metadata.tables.values():
+        for column in table.columns:
+            if column.type.__class__.__name__ in {"UUID", "_SQLiteUUID"}:
+                column.type = _SQLiteUUID()
+
 
 BASE = "b" * 40
 HEAD = "a" * 40
