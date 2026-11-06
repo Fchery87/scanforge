@@ -90,6 +90,48 @@ export const capabilityCoverageSchema = z.object({
   scanners: z.array(scannerCoverageSchema).optional(),
 }).passthrough();
 
+export const shadowCandidateLabelSchema = z.object({
+  candidate_id: z.string(),
+  label: z.string(),
+  actor_user_id: z.string().nullable().optional(),
+  labeled_at: z.string(),
+}).passthrough();
+
+export const shadowReviewResultSchema = z.object({
+  fingerprint: z.string(),
+  scanner: z.string().nullable().optional(),
+  capability: z.string().nullable().optional(),
+  classification: z.string(),
+  reason: z.string(),
+  candidate_id: z.string().nullable().optional(),
+  candidate_state: z.string().nullable().optional(),
+  path: z.string().nullable().optional(),
+  line_start: z.number().nullable().optional(),
+  labels: z.array(shadowCandidateLabelSchema).optional(),
+}).passthrough();
+
+export const shadowReviewSchema = z.object({
+  state: z.string(),
+  scan_id: z.string(),
+  scan_status: z.string(),
+  revisions: z.object({
+    pull_request_number: z.number().nullable().optional(),
+    base_sha: z.string().nullable().optional(),
+    head_sha: z.string().nullable().optional(),
+    merge_base_sha: z.string().nullable().optional(),
+    comparison_strategy: z.string().nullable().optional(),
+    baseline_scan_id: z.string().nullable().optional(),
+    head_is_fork: z.boolean().optional(),
+  }).passthrough(),
+  capability_coverage: z.array(capabilityCoverageSchema).optional(),
+  classification_state: z.string(),
+  classification_counts: z.object({ new: z.number(), existing: z.number(), unknown: z.number() }).passthrough(),
+  results: z.array(shadowReviewResultSchema).optional(),
+  limitations: z.array(z.string()).optional(),
+  duration: z.object({ state: z.string(), total_ms: z.number().nullable().optional() }).passthrough(),
+  cost_estimate: z.object({ state: z.string(), reason: z.string().nullable().optional() }).passthrough(),
+}).passthrough();
+
 export const scanDetailSchema = scanSchema.extend({
   scanner_runs: z.array(scannerRunSchema).optional(),
   capability_coverage: z.array(capabilityCoverageSchema).optional(),
@@ -236,7 +278,9 @@ export type Organization = z.infer<typeof organizationSchema>;
 export type Project = z.infer<typeof projectSchema>;
 export type Repository = z.infer<typeof repositorySchema>;
 export type Scan = z.infer<typeof scanSchema>;
-export type ScanDetail = z.infer<typeof scanDetailSchema>;
+export type ShadowReview = z.infer<typeof shadowReviewSchema>;
+export type ShadowReviewResult = z.infer<typeof shadowReviewResultSchema>;
+export type ScanDetail =z.infer<typeof scanDetailSchema>;
 export type Finding = z.infer<typeof findingSchema>;
 export type FindingEvent = z.infer<typeof findingEventSchema>;
 export type Member = z.infer<typeof memberSchema>;

@@ -18,8 +18,12 @@ from app.schemas.scans import (
     ScanCreate,
     ScanDetailResponse,
     ScanResponse,
+    ShadowCandidateLabelRequest,
+    ShadowCandidateLabelResponse,
     ShadowClassificationResponse,
+    ShadowReviewResponse,
 )
+from app.services.access_policies import FINDING_MUTATION_ROLES
 from app.services.artifact_finalization import ArtifactFinalizationService
 from app.services.evidence_contract import derive_capability_coverage
 from app.services.organizations import OrganizationService
@@ -27,6 +31,7 @@ from app.services.pr_classification import ShadowClassificationService
 from app.services.scan_dispatch import ScanCapacityExceededError
 from app.services.scan_lifecycle import ScanLifecycleService
 from app.services.scans import ScanService
+from app.services.shadow_review_view import ShadowReviewViewService
 
 router = APIRouter()
 
@@ -159,6 +164,62 @@ async def get_scan(
             await ShadowClassificationService(db).classify(scan)
         )
     return payload
+
+
+async def _get_shadow_pr_scan_or_404(db: AsyncSession, *, project_id: UUID, scan_id: UUID, user_id: UUID):
+    scan = await ScanService(db).get_by_id(scan_id, user_id)
+    if not scan or scan.project_id != project_id or scan.trigger_type != "pull_request":
+        raise HTTPException(status_code=404, detail="Shadow review not found")
+    return scan
+
+
+@router.get("/{scan_id}/shadow-review", response_model=ShadowReviewResponse)
+async def get_shadow_review(
+    org_id: UUID,
+    project_id: UUID,
+    scan_id: UUID,
+    current_user: UserContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Internal per-PR shadow results. Read-only; never published to GitHub."""
+    await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)
+    scan = await _get_shadow_pr_scan_or_404(db, project_id=project_id, scan_id=scan_id, user_id=current_user.user_id)
+    return ShadowReviewResponse.model_validate(await ShadowReviewViewService(db).build(scan))
+
+
+@router.put(
+    "/{scan_id}/shadow-review/candidates/{candidate_id}/label",
+    response_model=ShadowCandidateLabelResponse,
+)
+async def label_shadow_candidate(
+    org_id: UUID,
+    project_id: UUID,
+    scan_id: UUID,
+    candidate_id: UUID,
+    data: ShadowCandidateLabelRequest,
+    current_user: UserContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Record the caller's evaluation label. Never suppresses or changes any finding."""
+    await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)
+    if not await OrganizationService(db).user_has_permission(org_id, current_user.user_id, FINDING_MUTATION_ROLES):
+        raise HTTPException(
+            status_code=403, detail="Security reviewer, admin, or owner role required to label shadow results"
+        )
+    scan = await _get_shadow_pr_scan_or_404(db, project_id=project_id, scan_id=scan_id, user_id=current_user.user_id)
+    row = await ShadowReviewViewService(db).set_label(
+        org_id=org_id, scan=scan, candidate_id=candidate_id, actor_user_id=current_user.user_id, label=data.label
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Shadow candidate not found")
+    return ShadowCandidateLabelResponse.model_validate(
+        {
+            "candidate_id": row.candidate_id,
+            "label": row.label,
+            "actor_user_id": row.actor_user_id,
+            "labeled_at": row.updated_at or row.created_at,
+        }
+    )
 
 
 @router.get("/{scan_id}/scanner-runs/{run_id}/download")

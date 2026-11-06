@@ -4028,6 +4028,164 @@
         }
       }
     },
+    "/api/v1/organizations/{org_id}/projects/{project_id}/scans/{scan_id}/shadow-review": {
+      "get": {
+        "tags": [
+          "scans"
+        ],
+        "summary": "Get Shadow Review",
+        "description": "Internal per-PR shadow results. Read-only; never published to GitHub.",
+        "operationId": "get_shadow_review_api_v1_organizations__org_id__projects__project_id__scans__scan_id__shadow_review_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Org Id"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Scan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShadowReviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{org_id}/projects/{project_id}/scans/{scan_id}/shadow-review/candidates/{candidate_id}/label": {
+      "put": {
+        "tags": [
+          "scans"
+        ],
+        "summary": "Label Shadow Candidate",
+        "description": "Record the caller's evaluation label. Never suppresses or changes any finding.",
+        "operationId": "label_shadow_candidate_api_v1_organizations__org_id__projects__project_id__scans__scan_id__shadow_review_candidates__candidate_id__label_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Org Id"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Scan Id"
+            }
+          },
+          {
+            "name": "candidate_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Candidate Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShadowCandidateLabelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShadowCandidateLabelResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/organizations/{org_id}/projects/{project_id}/scans/{scan_id}/scanner-runs/{run_id}/download": {
       "get": {
         "tags": [
@@ -10521,6 +10679,71 @@
         ],
         "title": "ScorecardResponse"
       },
+      "ShadowCandidateLabelRequest": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "enum": [
+              "useful",
+              "not_useful",
+              "incorrect",
+              "duplicate",
+              "missing_context"
+            ],
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label"
+        ],
+        "title": "ShadowCandidateLabelRequest",
+        "description": "Reviewer judgement of a shadow candidate. Evaluation data; never a suppression."
+      },
+      "ShadowCandidateLabelResponse": {
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Candidate Id"
+          },
+          "label": {
+            "type": "string",
+            "enum": [
+              "useful",
+              "not_useful",
+              "incorrect",
+              "duplicate",
+              "missing_context"
+            ],
+            "title": "Label"
+          },
+          "actor_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor User Id"
+          },
+          "labeled_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Labeled At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidate_id",
+          "label",
+          "labeled_at"
+        ],
+        "title": "ShadowCandidateLabelResponse"
+      },
       "ShadowClassificationCounts": {
         "properties": {
           "new": {
@@ -10652,6 +10875,310 @@
           "reason"
         ],
         "title": "ShadowResultClassification"
+      },
+      "ShadowReviewCost": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "pattern": "^(estimated|unavailable)$",
+            "title": "State"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "ShadowReviewCost"
+      },
+      "ShadowReviewDuration": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "pattern": "^(measured|partial|unavailable)$",
+            "title": "State"
+          },
+          "total_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "ShadowReviewDuration",
+        "description": "Sum of measured scanner run durations; ``partial`` when some runs recorded none."
+      },
+      "ShadowReviewResponse": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "pattern": "^(pending|failed|empty|partial|ready)$",
+            "title": "State"
+          },
+          "scan_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Scan Id"
+          },
+          "scan_status": {
+            "type": "string",
+            "title": "Scan Status"
+          },
+          "revisions": {
+            "$ref": "#/components/schemas/ShadowReviewRevisions"
+          },
+          "capability_coverage": {
+            "items": {
+              "$ref": "#/components/schemas/CapabilityCoverageResponse"
+            },
+            "type": "array",
+            "title": "Capability Coverage",
+            "default": []
+          },
+          "classification_state": {
+            "type": "string",
+            "pattern": "^(classified|unavailable)$",
+            "title": "Classification State"
+          },
+          "classification_counts": {
+            "$ref": "#/components/schemas/ShadowClassificationCounts",
+            "default": {
+              "new": 0,
+              "existing": 0,
+              "unknown": 0
+            }
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ShadowReviewResult"
+            },
+            "type": "array",
+            "title": "Results",
+            "default": []
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Limitations",
+            "default": []
+          },
+          "duration": {
+            "$ref": "#/components/schemas/ShadowReviewDuration"
+          },
+          "cost_estimate": {
+            "$ref": "#/components/schemas/ShadowReviewCost"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state",
+          "scan_id",
+          "scan_status",
+          "revisions",
+          "classification_state",
+          "duration",
+          "cost_estimate"
+        ],
+        "title": "ShadowReviewResponse",
+        "description": "Internal per-PR shadow view. ``empty`` and ``partial`` are never a clean verdict."
+      },
+      "ShadowReviewResult": {
+        "properties": {
+          "fingerprint": {
+            "type": "string",
+            "title": "Fingerprint"
+          },
+          "scanner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scanner"
+          },
+          "capability": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capability"
+          },
+          "classification": {
+            "type": "string",
+            "pattern": "^(new|existing|unknown)$",
+            "title": "Classification"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "candidate_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Id"
+          },
+          "candidate_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate State"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "line_start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Start"
+          },
+          "labels": {
+            "items": {
+              "$ref": "#/components/schemas/ShadowCandidateLabelResponse"
+            },
+            "type": "array",
+            "title": "Labels",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "fingerprint",
+          "classification",
+          "reason"
+        ],
+        "title": "ShadowReviewResult"
+      },
+      "ShadowReviewRevisions": {
+        "properties": {
+          "pull_request_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pull Request Number"
+          },
+          "base_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Sha"
+          },
+          "head_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head Sha"
+          },
+          "merge_base_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merge Base Sha"
+          },
+          "comparison_strategy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comparison Strategy"
+          },
+          "baseline_scan_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Scan Id"
+          },
+          "head_is_fork": {
+            "type": "boolean",
+            "title": "Head Is Fork",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "ShadowReviewRevisions"
       },
       "SuppressionRuleCreate": {
         "properties": {

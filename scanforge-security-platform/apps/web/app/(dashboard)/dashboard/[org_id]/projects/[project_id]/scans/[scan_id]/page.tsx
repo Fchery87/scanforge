@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { AlertTriangle, ArrowLeft, RefreshCw, Trash2 } from "lucide-react";
 
@@ -141,6 +142,17 @@ export default function ScanDetailPage() {
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-danger" />
           <span className="text-sm text-danger">{scan.error_message}</span>
         </div>
+      ) : null}
+
+      {scan.trigger_type === "pull_request" ? (
+        <p className="mb-6 text-sm">
+          <Link
+            href={`/dashboard/${org_id}/projects/${project_id}/scans/${scan.id}/shadow-review`}
+            className="text-primary underline"
+          >
+            Open shadow review (internal)
+          </Link>
+        </p>
       ) : null}
 
       <CapabilityCoverage coverage={scan.capability_coverage || []} />

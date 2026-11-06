@@ -860,6 +860,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{org_id}/projects/{project_id}/scans/{scan_id}/shadow-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Shadow Review
+         * @description Internal per-PR shadow results. Read-only; never published to GitHub.
+         */
+        get: operations["get_shadow_review_api_v1_organizations__org_id__projects__project_id__scans__scan_id__shadow_review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{org_id}/projects/{project_id}/scans/{scan_id}/shadow-review/candidates/{candidate_id}/label": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Label Shadow Candidate
+         * @description Record the caller's evaluation label. Never suppresses or changes any finding.
+         */
+        put: operations["label_shadow_candidate_api_v1_organizations__org_id__projects__project_id__scans__scan_id__shadow_review_candidates__candidate_id__label_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{org_id}/projects/{project_id}/scans/{scan_id}/scanner-runs/{run_id}/download": {
         parameters: {
             query?: never;
@@ -3020,6 +3060,37 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /**
+         * ShadowCandidateLabelRequest
+         * @description Reviewer judgement of a shadow candidate. Evaluation data; never a suppression.
+         */
+        ShadowCandidateLabelRequest: {
+            /**
+             * Label
+             * @enum {string}
+             */
+            label: "useful" | "not_useful" | "incorrect" | "duplicate" | "missing_context";
+        };
+        /** ShadowCandidateLabelResponse */
+        ShadowCandidateLabelResponse: {
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /**
+             * Label
+             * @enum {string}
+             */
+            label: "useful" | "not_useful" | "incorrect" | "duplicate" | "missing_context";
+            /** Actor User Id */
+            actor_user_id?: string | null;
+            /**
+             * Labeled At
+             * Format: date-time
+             */
+            labeled_at: string;
+        };
         /** ShadowClassificationCounts */
         ShadowClassificationCounts: {
             /**
@@ -3077,6 +3148,112 @@ export interface components {
             classification: string;
             /** Reason */
             reason: string;
+        };
+        /** ShadowReviewCost */
+        ShadowReviewCost: {
+            /** State */
+            state: string;
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
+         * ShadowReviewDuration
+         * @description Sum of measured scanner run durations; ``partial`` when some runs recorded none.
+         */
+        ShadowReviewDuration: {
+            /** State */
+            state: string;
+            /** Total Ms */
+            total_ms?: number | null;
+        };
+        /**
+         * ShadowReviewResponse
+         * @description Internal per-PR shadow view. ``empty`` and ``partial`` are never a clean verdict.
+         */
+        ShadowReviewResponse: {
+            /** State */
+            state: string;
+            /**
+             * Scan Id
+             * Format: uuid
+             */
+            scan_id: string;
+            /** Scan Status */
+            scan_status: string;
+            revisions: components["schemas"]["ShadowReviewRevisions"];
+            /**
+             * Capability Coverage
+             * @default []
+             */
+            capability_coverage: components["schemas"]["CapabilityCoverageResponse"][];
+            /** Classification State */
+            classification_state: string;
+            /**
+             * @default {
+             *       "new": 0,
+             *       "existing": 0,
+             *       "unknown": 0
+             *     }
+             */
+            classification_counts: components["schemas"]["ShadowClassificationCounts"];
+            /**
+             * Results
+             * @default []
+             */
+            results: components["schemas"]["ShadowReviewResult"][];
+            /**
+             * Limitations
+             * @default []
+             */
+            limitations: string[];
+            duration: components["schemas"]["ShadowReviewDuration"];
+            cost_estimate: components["schemas"]["ShadowReviewCost"];
+        };
+        /** ShadowReviewResult */
+        ShadowReviewResult: {
+            /** Fingerprint */
+            fingerprint: string;
+            /** Scanner */
+            scanner?: string | null;
+            /** Capability */
+            capability?: string | null;
+            /** Classification */
+            classification: string;
+            /** Reason */
+            reason: string;
+            /** Candidate Id */
+            candidate_id?: string | null;
+            /** Candidate State */
+            candidate_state?: string | null;
+            /** Path */
+            path?: string | null;
+            /** Line Start */
+            line_start?: number | null;
+            /**
+             * Labels
+             * @default []
+             */
+            labels: components["schemas"]["ShadowCandidateLabelResponse"][];
+        };
+        /** ShadowReviewRevisions */
+        ShadowReviewRevisions: {
+            /** Pull Request Number */
+            pull_request_number?: number | null;
+            /** Base Sha */
+            base_sha?: string | null;
+            /** Head Sha */
+            head_sha?: string | null;
+            /** Merge Base Sha */
+            merge_base_sha?: string | null;
+            /** Comparison Strategy */
+            comparison_strategy?: string | null;
+            /** Baseline Scan Id */
+            baseline_scan_id?: string | null;
+            /**
+             * Head Is Fork
+             * @default false
+             */
+            head_is_fork: boolean;
         };
         /** SuppressionRuleCreate */
         SuppressionRuleCreate: {
@@ -5269,6 +5446,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_shadow_review_api_v1_organizations__org_id__projects__project_id__scans__scan_id__shadow_review_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                project_id: string;
+                scan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShadowReviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    label_shadow_candidate_api_v1_organizations__org_id__projects__project_id__scans__scan_id__shadow_review_candidates__candidate_id__label_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                project_id: string;
+                scan_id: string;
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShadowCandidateLabelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShadowCandidateLabelResponse"];
                 };
             };
             /** @description Validation Error */

@@ -55,3 +55,27 @@ class ShadowReviewCandidate(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     path: Mapped[str | None] = mapped_column(String(1024))
     line_start: Mapped[int | None] = mapped_column(Integer)
     resolution_basis: Mapped[str | None] = mapped_column(String(32))
+
+
+SHADOW_LABELS = ("useful", "not_useful", "incorrect", "duplicate", "missing_context")
+
+
+class ShadowReviewCandidateLabel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """A reviewer's judgement of one shadow candidate (#50): evaluation data only.
+
+    One current label per (candidate, reviewer); ``updated_at`` is when it was last set and
+    every change is also written to the audit log. A label never suppresses, resolves or
+    otherwise changes a candidate or any finding, and is never published.
+    """
+
+    __tablename__ = "shadow_review_candidate_labels"
+    __table_args__ = (UniqueConstraint("candidate_id", "actor_user_id", name="uq_shadow_label_actor"),)
+
+    organization_id: Mapped[str] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    candidate_id: Mapped[str] = mapped_column(
+        ForeignKey("shadow_review_candidates.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    actor_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    label: Mapped[str] = mapped_column(String(32), nullable=False)
