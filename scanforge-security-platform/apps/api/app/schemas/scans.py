@@ -94,8 +94,33 @@ class ScannerRunResponse(BaseModel):
     updated_at: datetime
 
 
+class ScannerCoverageResponse(BaseModel):
+    """Analyzer-reported measurements only; None means the analyzer did not report it."""
+
+    scanner_name: str
+    state: str
+    reasons: list[str] = []
+    outcome_status: str | None = None
+    declared_scope: str | None = None
+    inputs_found: int | None = None
+    inputs_supported: int | None = None
+    unsupported_inputs: list[str] | None = None
+    exclusions: list[str] | None = None
+    parse_failures: int | None = None
+    truncated: bool | None = None
+    timed_out: bool | None = None
+
+
+class CapabilityCoverageResponse(BaseModel):
+    capability: str
+    state: str = Field(pattern="^(complete|partial|unknown|not_applicable)$")
+    reasons: list[str] = []
+    scanners: list[ScannerCoverageResponse] = []
+
+
 class ScanDetailResponse(ScanResponse):
     scanner_runs: list[ScannerRunResponse] = []
+    capability_coverage: list[CapabilityCoverageResponse] = []
 
 
 class ScanCancel(BaseModel):

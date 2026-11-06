@@ -13,12 +13,14 @@ from app.middleware.auth import UserContext, get_current_user
 from app.middleware.redis_rate_limit import per_route_limiter
 from app.schemas.common import PaginatedResponse, PaginationParams
 from app.schemas.scans import (
+    CapabilityCoverageResponse,
     ScanCancel,
     ScanCreate,
     ScanDetailResponse,
     ScanResponse,
 )
 from app.services.artifact_finalization import ArtifactFinalizationService
+from app.services.evidence_contract import derive_capability_coverage
 from app.services.organizations import OrganizationService
 from app.services.scan_dispatch import ScanCapacityExceededError
 from app.services.scan_lifecycle import ScanLifecycleService
@@ -40,6 +42,12 @@ def _apply_scan_download_urls(scan, *, org_id: UUID, project_id: UUID) -> ScanDe
         run.artifact_uri = None
         if isinstance(run.metadata_json, dict):
             run.metadata_json = {key: value for key, value in run.metadata_json.items() if not key.endswith("_uri")}
+    health = (payload.summary_json or {}).get("scanner_health")
+    expected = health.get("expected") if isinstance(health, dict) else None
+    payload.capability_coverage = [
+        CapabilityCoverageResponse.model_validate(item)
+        for item in derive_capability_coverage(payload.scanner_runs, expected_scanners=expected)
+    ]
     return payload
 
 
