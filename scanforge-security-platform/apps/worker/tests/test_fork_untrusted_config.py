@@ -79,3 +79,22 @@ async def test_non_fork_head_keeps_the_acquired_tree_unchanged(hostile_fixture):
         assert (repo_dir / ".checkov.yaml").exists()
     finally:
         shutil.rmtree(repo_dir.parent, ignore_errors=True)
+
+
+@pytest.mark.asyncio
+async def test_unreachable_fork_head_fails_closed_with_a_recorded_reason(hostile_fixture):  # noqa: F811
+    """No credentials exist for forks: an SHA the base repository cannot serve must fail the run
+    with an explicit reason instead of scanning anything else (review C1)."""
+    source, _sha, _marker = hostile_fixture
+    stage = _stage(source.resolve().as_uri())
+    with pytest.raises(RuntimeError, match="fork_head_unreachable"):
+        await stage.prepare_repository(
+            SimpleNamespace(
+                scan_id="f3",
+                attempt_id="a1",
+                repository_id="r1",
+                commit_sha="d" * 40,
+                branch=None,
+                head_is_fork=True,
+            )
+        )

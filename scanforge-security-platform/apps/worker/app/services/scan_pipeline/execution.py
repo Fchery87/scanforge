@@ -89,6 +89,9 @@ class ScanExecutionStage:
             home_dir=git_home,
             allow_file_protocol=allow_local_fixture,
         )
+        # Forks get no credentials; a head the base repository cannot serve anonymously fails
+        # closed with an explicit reason rather than scanning anything else.
+        fetch_failure_prefix = "fork_head_unreachable: " if getattr(context, "head_is_fork", False) else ""
         full_ref = getattr(context, "full_ref_name", None) or (
             f"refs/heads/{context.branch}" if getattr(context, "branch", None) else None
         )
@@ -160,11 +163,11 @@ class ScanExecutionStage:
                     )
                     if fetch_ref_res.returncode != 0:
                         raise RuntimeError(
-                            f"git fetch failed for {expected_sha}: {self._redact(fetch_sha_res.stderr).strip()}"
+                            f"{fetch_failure_prefix}git fetch failed for {expected_sha}: {self._redact(fetch_sha_res.stderr).strip()}"
                         )
                 else:
                     raise RuntimeError(
-                        f"git fetch failed for {expected_sha}: {self._redact(fetch_sha_res.stderr).strip()}"
+                        f"{fetch_failure_prefix}git fetch failed for {expected_sha}: {self._redact(fetch_sha_res.stderr).strip()}"
                     )
 
             # Checkout the exact commit detached — never substitute FETCH_HEAD or branch tip
