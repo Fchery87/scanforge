@@ -20,6 +20,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { SeverityBadge } from "@/components/scanforge/severity-badge";
 import { StatusBadge } from "@/components/scanforge/status-badge";
+import { explainFindingEvent } from "@/lib/findings/event-explanation";
 
 interface FindingDrawerProps {
   orgId: string;
@@ -495,6 +496,11 @@ export default function FindingDrawer({
                         {evt.reason && (
                           <p className="text-xs text-text-secondary mt-0.5">
                             {evt.reason}
+                          </p>
+                        )}
+                        {explainFindingEvent(evt) && (
+                          <p className="text-xs text-text-secondary mt-0.5">
+                            {explainFindingEvent(evt)}
                           </p>
                         )}
                         <span className="text-[11px] text-text-tertiary mt-0.5 block">
