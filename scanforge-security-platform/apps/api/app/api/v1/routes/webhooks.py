@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -25,6 +26,7 @@ from app.services.github_lifecycle import (
     SUPPORTED_EVENTS as LIFECYCLE_EVENTS,
 )
 from app.services.github_pr_advisory import build_pr_advisory_payload
+from app.services.pr_candidates import StalePullRequestHead
 from app.services.repository_refs import RepositoryRefError, validate_commit_sha
 from app.services.scan_dispatch import ScanDispatchService
 from app.services.scan_lifecycle import ScanLifecycleService
@@ -278,6 +280,17 @@ def _check_payload_identity(repo: Repository, integration: RepositoryIntegration
     if integration.installation_id and payload_installation_id != integration.installation_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Webhook installation mismatch")
 
+def _provider_event_time(pull_request: dict) -> datetime | None:
+    """GitHub's own ``updated_at`` for the PR state in this delivery; None if absent or invalid."""
+    raw = pull_request.get("updated_at")
+    if not isinstance(raw, str):
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 def _pull_request_head_is_fork(pull_request: dict) -> bool:
     """A head from any repository other than the base repository is untrusted.
 
@@ -328,16 +341,32 @@ async def _handle_pull_request_shadow_event(
     merge_base_sha = await _resolve_merge_base(
         db, integration=integration, repo=repo, base_sha=base_sha, head_sha=head_sha
     )
-    scan, _, _ = await ScanService(db).create_pr_shadow(
-        repo.id,
-        pull_request_number=int(pull_request["number"]),
-        head_sha=head_sha,
-        base_sha=base_sha,
-        merge_base_sha=merge_base_sha,
-        is_fork=_pull_request_head_is_fork(pull_request),
-        commit=False,
-        webhook_delivery_id=delivery,
-    )
+    try:
+        scan, _, _ = await ScanService(db).create_pr_shadow(
+            repo.id,
+            pull_request_number=int(pull_request["number"]),
+            head_sha=head_sha,
+            base_sha=base_sha,
+            merge_base_sha=merge_base_sha,
+            is_fork=_pull_request_head_is_fork(pull_request),
+            commit=False,
+            webhook_delivery_id=delivery,
+            head_observed_at=_provider_event_time(pull_request),
+        )
+    except StalePullRequestHead as stale:
+        # Out-of-order delivery: a newer head is already recorded. The event is recorded as
+        # ignored and cannot supersede or displace the newer head's run (#49).
+        response = {
+            "status": "ignored",
+            "event": event,
+            "reason": "stale_pull_request_head",
+            "pull_request_number": pull_request.get("number"),
+            "ignored_head_sha": head_sha,
+            "recorded_head_sha": stale.recorded_head_sha,
+        }
+        delivery_row.response_json = response
+        await db.commit()
+        return response
     response = await _record_scan_delivery(
         AuditLogService(db),
         delivery_row,

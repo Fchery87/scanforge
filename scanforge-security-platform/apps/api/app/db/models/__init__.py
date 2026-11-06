@@ -26,6 +26,7 @@ from app.db.models.repository import (
 from app.db.models.scan import Scan, ScanCompletionReceipt, ScannerRun
 from app.db.models.scan_dispatch import ScanDispatchObligation
 from app.db.models.scan_schedule import ScanSchedule
+from app.db.models.shadow_review import ShadowPullRequestHead, ShadowReviewCandidate
 from app.db.models.user import User
 from app.db.models.webhook_delivery import WebhookDelivery
 from app.db.models.worker_identity import WorkerIdentity
@@ -55,6 +56,8 @@ __all__ = [
     "ScanDispatchObligation",
     "ScanSchedule",
     "ScannerRun",
+    "ShadowPullRequestHead",
+    "ShadowReviewCandidate",
     "SuppressionRule",
     "User",
     "WebhookDelivery",

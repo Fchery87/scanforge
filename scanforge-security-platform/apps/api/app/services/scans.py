@@ -23,6 +23,7 @@ from app.db.models import (
 )
 from app.schemas.scans import ScanCreate
 from app.services.github import GitHubService
+from app.services.pr_candidates import ShadowCandidateService
 from app.services.repository_refs import (
     SCAN_TYPE_SCANNERS,
     RepositoryRefError,
@@ -289,6 +290,7 @@ class ScanService:
         is_fork: bool,
         commit: bool = True,
         webhook_delivery_id: str | None = None,
+        head_observed_at: datetime | None = None,
     ) -> tuple[Scan, Repository, Project]:
         """Create a private shadow analysis run of the full repository at a PR head.
 
@@ -297,6 +299,10 @@ class ScanService:
         fork's branch can never alias a real branch of the base repository, and it
         never reaches the branch-scoped absence lifecycle. Nothing here publishes to
         GitHub.
+
+        ``head_observed_at`` is the provider's timestamp for the triggering event. An event
+        for an older head than the newest recorded one raises ``StalePullRequestHead`` before
+        anything is created, superseded or displaced (#49).
         """
         head = validate_commit_sha(head_sha, require_exact=True)
         base = validate_commit_sha(base_sha, require_exact=True) if base_sha else None
@@ -315,6 +321,12 @@ class ScanService:
         if not project:
             raise ValueError("Project not found")
 
+        await ShadowCandidateService(self.db).record_head(
+            repository_id=str(repo.id),
+            pull_request_number=int(pull_request_number),
+            head_sha=head,
+            observed_at=head_observed_at or datetime.now(UTC),
+        )
         full_ref_name = f"refs/pull/{int(pull_request_number)}/head"
         expected_scanners = list(SCAN_TYPE_SCANNERS["full"])
         dispatch_service = ScanDispatchService(self.db)
@@ -333,6 +345,9 @@ class ScanService:
             repository_id=repo.id, business_identity_key=business_identity_key
         )
         if existing is not None:
+            # Redelivery, or a force-push back to an already analyzed head: re-fold its
+            # committed evidence so candidates follow the current head. Idempotent.
+            await ShadowCandidateService(self.db).reconcile(existing[0])
             return existing[0], repo, project
 
         scan = Scan(

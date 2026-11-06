@@ -43,11 +43,14 @@ class _FakeGitHub:
         return dict(type(self).result)
 
 
-def _payload(repo, *, action="opened", head_repo="acme/core-platform", head_sha=HEAD, number=17):
+def _payload(
+    repo, *, action="opened", head_repo="acme/core-platform", head_sha=HEAD, number=17, updated_at=None
+):
     return {
         "action": action,
         "pull_request": {
             "number": number,
+            **({"updated_at": updated_at} if updated_at else {}),
             "head": {
                 "sha": head_sha,
                 "ref": "main",
@@ -255,3 +258,42 @@ def test_no_github_write_path_exists_in_the_api():
             continue
         offenders.extend(f"{path.name}:{needle}" for needle in forbidden if needle in text)
     assert offenders == []
+
+
+@pytest.mark.asyncio
+async def test_late_delivery_for_an_older_head_is_recorded_ignored_and_cannot_displace_the_newer_run(
+    db_session, dispatch_calls, monkeypatch
+):
+    org, project, repo = await _seed(db_session)
+    monkeypatch.setattr(settings, "PR_SHADOW_ORGANIZATION_IDS", str(org.id))
+    newer_head, older_head = "c" * 40, "e" * 40
+
+    newer = await _deliver(
+        db_session,
+        org,
+        project,
+        repo,
+        _payload(repo, action="synchronize", head_sha=newer_head, updated_at="2026-11-05T12:10:00Z"),
+        delivery="delivery-newer",
+    )
+    late = await _deliver(
+        db_session,
+        org,
+        project,
+        repo,
+        _payload(repo, action="synchronize", head_sha=older_head, updated_at="2026-11-05T12:05:00Z"),
+        delivery="delivery-late",
+    )
+
+    assert late["status"] == "ignored"
+    assert late["reason"] == "stale_pull_request_head"
+    assert (late["ignored_head_sha"], late["recorded_head_sha"]) == (older_head, newer_head)
+    (scan,) = await _scans(db_session)
+    assert scan.commit_sha == newer_head
+    assert str(scan.id) == newer["scan_id"]
+    assert scan.status.value == "queued"
+    assert scan.superseded_by_scan_id is None
+    assert dispatch_calls == [str(scan.id)]
+    rows = (await db_session.execute(select(WebhookDelivery))).scalars().all()
+    recorded = {row.delivery_id: row.response_json for row in rows}
+    assert recorded["delivery-late"]["reason"] == "stale_pull_request_head"
