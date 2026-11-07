@@ -102,6 +102,7 @@ jobs:
         run: |
           pip install 'PyYAML==6.0.3'
           python -m unittest discover -s ../../scripts -p test_ci_gates.py
+          python -m unittest discover -s ../../scripts -p test_make_test_environment.py
       - name: Test dependency audit inventory
         run: python -m unittest discover -s ../../scripts -p test_audit_python_dependencies.py
       # pip-audit has no severity threshold: fail on all known vulnerabilities,

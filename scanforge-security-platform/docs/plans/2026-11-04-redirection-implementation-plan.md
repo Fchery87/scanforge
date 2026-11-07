@@ -60,7 +60,7 @@ their own migrated cluster, with `TMPDIR` under the session scratch directory.
 
 | Ticket | Acceptance mapping and evidence | Closure state |
 | --- | --- | --- |
-| #2 | `aiosqlite` is dev-only in API `pyproject.toml`; CI API installs and tests pass. Literal clean `make install && make test` is being rehearsed in an isolated checkout. | Pending clean workflow |
+| #2 | `aiosqlite` is dev-only. Unset `DATABASE_URL` reproduced 80 collection errors. `make test` now supplies a test-only in-memory default, preserving explicit nonempty overrides. `TMPDIR=/home/nochaserz/.jcode/scratch apps/api/.venv/bin/python -m pytest scripts/test_make_test_environment.py -q`: 2 failed/1 passed before, 3 passed after. Clean-worktree no-env tests passed (API 613/23 skipped, worker 240/2 skipped, web 80 Node/33 Vitest), but final literal clean install/test remains pending. | Pending final clean workflow |
 | #3 | `4dc777f`; `apps/web/lib/auth/server.spec.ts` verifies lazy import and runtime enforcement. CI web build has no cookie secret configured and passes. | Verified, awaiting integration disposition |
 | #4 | `ba42175`, `bd17a6e`; `apps/api/.venv/bin/python -m pytest scripts/test_ci_gates.py scripts/test_audit_python_dependencies.py -q`: 9 passed, 47 subtests passed. `fbffba8` CI api/worker/web/required pass. SBOM is main-only and depends on successful api/worker/web. | Verified, awaiting integration disposition |
 | #5 | Existing Streams ack/reclaim is implemented, but maintenance only counts stale deliveries. Withdrawn simulated API rehearsal does not prove terminal persistence. Real API-backed recovery and atomic maintenance re-enqueue remain in progress. | Pending implementation and acceptance |
