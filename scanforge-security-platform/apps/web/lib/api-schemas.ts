@@ -147,9 +147,13 @@ export const findingSchema = z.object({
   severity: z.string(),
   status: z.string(),
   title: z.string(),
+  description: z.string().nullable(),
   canonical_fingerprint: z.string(),
-  primary_scanner: z.string().optional(),
-  risk_score: z.number().nullable().optional(),
+  primary_scanner: z.string().nullable(),
+  confidence_score: z.number().nullable(),
+  risk_score: z.number().nullable(),
+  fixed_version: z.string().nullable(),
+  metadata_json: z.record(z.string(), z.unknown()).nullable(),
   first_seen_at: z.string(),
   last_seen_at: z.string(),
   created_at: z.string(),
@@ -164,6 +168,8 @@ export const findingEventSchema = z.object({
   reason: z.string().nullable().optional(),
   created_at: z.string(),
 }).passthrough();
+
+export const findingEventsSchema = z.object({ items: z.array(findingEventSchema), total: z.number() });
 
 export const memberSchema = z.object({
   user_id: z.string(),
@@ -272,12 +278,19 @@ export const orgStatsSchema = z.object({
 }).passthrough();
 
 export const findingDetailSchema = findingSchema.extend({
-  description: z.string().nullable().optional(),
-  fixed_version: z.string().nullable().optional(),
-  instances: z.array(z.unknown()).optional(),
-  references: z.array(z.unknown()).optional(),
-  events: z.array(z.unknown()).optional(),
+  instances: z.array(z.object({ id: z.string(), finding_id: z.string(), scan_id: z.string(), scanner_run_id: z.string().nullable(), path: z.string().nullable(), line_start: z.number().nullable(), line_end: z.number().nullable(), package_name: z.string().nullable(), installed_version: z.string().nullable(), fixed_version: z.string().nullable(), evidence_json: z.record(z.string(), z.unknown()).nullable(), created_at: z.string() }).passthrough()),
+  references: z.array(z.object({ id: z.string(), finding_id: z.string(), reference_type: z.string(), reference_value: z.string(), url: z.string().nullable(), created_at: z.string() }).passthrough()),
+  events: z.array(z.object({ id: z.string(), finding_id: z.string(), event_type: z.string(), actor_user_id: z.string().nullable(), reason: z.string().nullable(), metadata_json: z.record(z.string(), z.unknown()).nullable(), created_at: z.string() }).passthrough()),
 }).passthrough();
+
+export const findingTrendSchema = z.object({
+  data: z.array(z.object({ date: z.string(), count: z.number() })),
+  days: z.number(),
+}).passthrough();
+
+export type OrgStats = z.infer<typeof orgStatsSchema>;
+export type FindingDetail = z.infer<typeof findingDetailSchema>;
+export type FindingTrend = z.infer<typeof findingTrendSchema>;
 
 // ── Pagination helper ───────────────────────────────────────────────
 

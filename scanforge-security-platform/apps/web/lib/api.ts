@@ -11,6 +11,8 @@ import {
   findingSchema,
   findingStatsSchema,
   findingDetailSchema,
+  findingEventsSchema,
+  findingTrendSchema,
   githubIntegrationSchema,
   memberSchema,
   notificationSchema,
@@ -264,14 +266,14 @@ export const api = {
         body: JSON.stringify(data),
       }, findingSchema),
     events: (orgId: string, projectId: string, findingId: string) =>
-      request(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/events`, {}, paginated(findingSchema)),
+      request(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/events`, {}, findingEventsSchema),
     bulk: (orgId: string, projectId: string, data: { finding_ids: string[]; action: string; reason: string }) =>
       request<void>(`/organizations/${orgId}/projects/${projectId}/findings/bulk`, {
         method: "POST",
         body: JSON.stringify(data),
       }),
     trend: (orgId: string, projectId: string, days = 30) =>
-      request<unknown>(`/organizations/${orgId}/projects/${projectId}/findings/trend?days=${days}`, {}, z.unknown()),
+      request<{ data: Array<{ date: string; count: number }>; days: number }>(`/organizations/${orgId}/projects/${projectId}/findings/trend?days=${days}`, {}, findingTrendSchema),
   },
 
   exports: {
