@@ -8,7 +8,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from app.core.config import settings
 from app.db.session import AsyncSessionLocal
+from app.middleware.redis_rate_limit import get_client_ip
 from app.services.audit_logs import AuditLogService
 
 AUDITED_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
@@ -84,6 +86,8 @@ class AuditMiddleware(BaseHTTPMiddleware):
                     target_type=target.get("type", "unknown"),
                     target_id=target.get("id"),
                     organization_id=UUID(actor_org_id) if actor_org_id else None,
+                    ip_address=get_client_ip(request, settings.trusted_proxy_ips_set),
+                    user_agent=request.headers.get("user-agent"),
                     metadata_json={"method": request.method, "path": path,
                                    "status_code": response.status_code},
                 )
