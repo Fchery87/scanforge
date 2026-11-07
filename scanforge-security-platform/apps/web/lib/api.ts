@@ -1,6 +1,6 @@
 "use client";
 
-import { type ZodType, z } from "zod";
+import { type ZodType } from "zod";
 import type { components } from "@/lib/api-types";
 
 import { authClient } from "@/lib/auth/client";
