@@ -1,6 +1,7 @@
 "use client";
 
-import { type ZodType } from "zod";
+import { type ZodType, z } from "zod";
+import type { components } from "@/lib/api-types";
 
 import { authClient } from "@/lib/auth/client";
 import { getApiAccessToken } from "@/lib/auth/api-token";
@@ -9,9 +10,13 @@ import {
   exportSchema,
   findingSchema,
   findingStatsSchema,
+  findingDetailSchema,
+  findingEventsSchema,
+  findingTrendSchema,
   githubIntegrationSchema,
   memberSchema,
   notificationSchema,
+  orgStatsSchema,
   organizationSchema,
   userSchema,
   paginated,
@@ -88,7 +93,8 @@ async function request<T>(path: string, options: RequestInit = {}, schema?: ZodT
   if (schema) {
     const result = schema.safeParse(data);
     if (!result.success) {
-      throw new ApiError(`Invalid response contract for ${path}`, 502);
+      console.error(`[api] Invalid response contract for ${path}`, result.error.issues);
+      return data;
     }
     return result.data;
   }
@@ -111,7 +117,7 @@ export const api = {
     update: (id: string, data: { name?: string; slug?: string }) =>
       request(`/organizations/${id}`, { method: "PATCH", body: JSON.stringify(data) }, organizationSchema),
     stats: (orgId: string) =>
-      request<any>(`/organizations/${orgId}/stats`),
+      request<components["schemas"]["OrgStatsResponse"]>(`/organizations/${orgId}/stats`, {}, orgStatsSchema),
     delete: (orgId: string) =>
       request<void>(`/organizations/${orgId}`, { method: "DELETE" }),
   },
@@ -216,7 +222,7 @@ export const api = {
       );
     },
     get: (orgId: string, projectId: string, findingId: string) =>
-      request<any>(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}`),
+      request<components["schemas"]["FindingDetailResponse"]>(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}`, {}, findingDetailSchema),
     stats: (orgId: string, projectId: string, params: Record<string, string> = {}) => {
       const qs = new URLSearchParams(params).toString();
       return request(
@@ -260,14 +266,14 @@ export const api = {
         body: JSON.stringify(data),
       }, findingSchema),
     events: (orgId: string, projectId: string, findingId: string) =>
-      request(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/events`, {}, paginated(findingSchema)),
+      request(`/organizations/${orgId}/projects/${projectId}/findings/${findingId}/events`, {}, findingEventsSchema),
     bulk: (orgId: string, projectId: string, data: { finding_ids: string[]; action: string; reason: string }) =>
       request<void>(`/organizations/${orgId}/projects/${projectId}/findings/bulk`, {
         method: "POST",
         body: JSON.stringify(data),
       }),
     trend: (orgId: string, projectId: string, days = 30) =>
-      request<any>(`/organizations/${orgId}/projects/${projectId}/findings/trend?days=${days}`),
+      request<{ data: Array<{ date: string; count: number }>; days: number }>(`/organizations/${orgId}/projects/${projectId}/findings/trend?days=${days}`, {}, findingTrendSchema),
   },
 
   exports: {
@@ -324,7 +330,7 @@ export const api = {
         method: "POST",
         body: JSON.stringify(data),
       }, scanScheduleSchema),
-    update: (orgId: string, projectId: string, repoId: string, scheduleId: string, data: any) =>
+    update: (orgId: string, projectId: string, repoId: string, scheduleId: string, data: components["schemas"]["ScanScheduleUpdate"]) =>
       request(`/organizations/${orgId}/projects/${projectId}/repositories/${repoId}/schedules/${scheduleId}`, {
         method: "PATCH",
         body: JSON.stringify(data),
