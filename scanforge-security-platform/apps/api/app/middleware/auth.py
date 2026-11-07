@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.identity import auth_subject_to_user_id
 from app.core.security import AuthenticationError, JWKSClient, get_jwks_client, verify_token
 from app.db.session import get_db
+from app.services.organizations import OrganizationService
 from app.services.users import UserService
 
 security = HTTPBearer(auto_error=False)
@@ -64,6 +65,15 @@ async def get_current_user(
             name=payload.get("name"),
             org_id=payload.get("org_id"),
         )
+        if context.org_id:
+            try:
+                org_id = UUID(context.org_id)
+            except ValueError:
+                context.org_id = None
+            else:
+                context.role = await OrganizationService(db).get_member_role(
+                    org_id, context.user_id
+                ) or "viewer"
         return _record_audit_context(request, context)
     except AuthenticationError as e:
         raise HTTPException(
@@ -77,18 +87,16 @@ async def get_optional_user(
     request: Request = None,  # type: ignore[assignment]
     credentials: HTTPAuthorizationCredentials = Depends(security),
     _jwks_client: JWKSClient = Depends(get_jwks_client),
+    db: AsyncSession = Depends(get_db),
 ) -> UserContext | None:
     if credentials is None:
         return None
 
     try:
-        payload = await verify_token(credentials.credentials, _jwks_client)
-        context = UserContext(
-            sub=payload.get("sub", ""),
-            email=payload.get("email"),
-            name=payload.get("name"),
-            org_id=payload.get("org_id"),
+        return await get_current_user(
+            request=request, credentials=credentials, _jwks_client=_jwks_client, db=db
         )
-        return _record_audit_context(request, context)
-    except AuthenticationError:
+    except HTTPException as exc:
+        if exc.status_code not in (401, 403):
+            raise
         return None
