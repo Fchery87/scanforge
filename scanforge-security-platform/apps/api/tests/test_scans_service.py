@@ -13,7 +13,7 @@ from app.services.scans import ScanAuthorizationError, ScanService
 async def test_delete_scan_allows_non_completed_statuses():
     scan_id = uuid4()
     user_id = uuid4()
-    scan = SimpleNamespace(id=scan_id, status=ScanStatusEnum.FAILED)
+    scan = SimpleNamespace(id=scan_id, status=ScanStatusEnum.FAILED, deleted_at=None)
 
     db = AsyncMock()
     db.delete = AsyncMock()
@@ -31,7 +31,7 @@ async def test_delete_scan_allows_non_completed_statuses():
 async def test_delete_scan_rejects_completed_scans():
     scan_id = uuid4()
     user_id = uuid4()
-    scan = SimpleNamespace(id=scan_id, status=ScanStatusEnum.COMPLETED)
+    scan = SimpleNamespace(id=scan_id, status=ScanStatusEnum.COMPLETED, deleted_at=None)
 
     db = AsyncMock()
     db.delete = Mock()
