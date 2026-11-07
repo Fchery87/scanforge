@@ -12,6 +12,34 @@ make private-beta-gate-local GATE_ARGS='--output /tmp/scanforge-beta-local'
 
 The gate runs API and worker lint and tests. It checks web lint, TypeScript, generated OpenAPI and web contracts, both web test suites, and a production webpack build. It also validates one migration head and audits dependencies. Python audits skip the local editable ScanForge packages and reject any reported dependency vulnerability. The web audit rejects high and critical vulnerabilities.
 
+### CI dependency gates (issue #4)
+
+The root `.github/workflows/ci.yml` uses the same audit policy. `pip-audit`
+does not expose a severity threshold, so Python deliberately blocks **all**
+reported vulnerabilities, including high and critical. Inventory and advisory
+lookup failures also fail the job. `npm audit --audit-level=high` includes dev
+dependencies and blocks high/critical findings without suppressing tool errors.
+There are no vulnerability exceptions in these CI commands.
+
+On `main`, SBOM generation requires successful API, worker, and web jobs.
+The always-running `required` job rejects failed, cancelled, or unexpectedly
+skipped prerequisites and requires a successful SBOM on `main`. A skipped SBOM
+is permitted on pull requests. No application job or audit step may use
+`continue-on-error` to turn a failure into success.
+
+Run the workflow regression checks from the repository root with Python 3.12
+and PyYAML 6.0.3 installed:
+
+```sh
+python -m unittest discover -s scanforge-security-platform/scripts -p test_ci_gates.py
+python -m unittest discover -s scanforge-security-platform/scripts -p test_audit_python_dependencies.py
+```
+
+The tests execute the actual `required` shell gate over success, failure,
+cancellation, and skip cases on main and non-main refs. They also protect the
+audit commands and explicit SBOM prerequisites. Live GitHub execution and
+repository branch-protection settings remain separate operational checks.
+
 To run the scanner integration in a 32 GB disposable Codespace, build a test-only scanner image with the PyPI OSV database. The real-scanner fixture exercises PyPI dependencies. This reduced database image is for verification only and must not be deployed. Release builds omit the build argument and include all OSV ecosystems. The image excludes worker code, tests, and virtual environments from the Docker build context.
 
 ```sh
