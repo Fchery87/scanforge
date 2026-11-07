@@ -10,7 +10,7 @@ from starlette.responses import Response
 from app.db.session import AsyncSessionLocal
 from app.services.audit_logs import AuditLogService
 
-AUDITED_METHODS = {"POST", "PATCH", "DELETE"}
+AUDITED_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 AUDITED_PATHS = [
     "/organizations",
     "/projects",
@@ -68,12 +68,12 @@ class AuditMiddleware(BaseHTTPMiddleware):
         audit_context.clear()
 
         response = await call_next(request)
-        if response.status_code >= 400 or getattr(request.state, "audit_recorded_in_tx", False):
+        if response.status_code < 400 and getattr(request.state, "audit_recorded_in_tx", False):
             return response
 
         actor_user_id = getattr(request.state, "audit_user_id", None)
         actor_org_id = getattr(request.state, "audit_org_id", None)
-        if actor_user_id:
+        if True:
             try:
                 action = self._extract_action(request.method, path)
                 target = self._extract_target(path)
@@ -81,7 +81,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
                 async with AsyncSessionLocal() as db:
                     service = AuditLogService(db)
                     await service.create(
-                        actor_user_id=UUID(actor_user_id),
+                        actor_user_id=UUID(actor_user_id) if actor_user_id else None,
                         action=action,
                         target_type=target.get("type", "unknown"),
                         target_id=target.get("id"),
@@ -96,7 +96,11 @@ class AuditMiddleware(BaseHTTPMiddleware):
                     )
             except Exception:
                 logger = logging.getLogger(__name__)
-                logger.warning("audit write failed", exc_info=True)
+                logger.warning("audit write failed", extra={
+                    "event": "audit_write_failed",
+                    "method": request.method,
+                    "status_code": response.status_code,
+                })
 
         return response
 
@@ -104,6 +108,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
         action_map = {
             "POST": "create",
             "PATCH": "update",
+            "PUT": "update",
             "DELETE": "delete",
         }
         return action_map.get(method, method.lower())
