@@ -14,9 +14,15 @@ import {
   findingEventsSchema,
   findingTrendSchema,
   githubIntegrationSchema,
+  githubRepoListSchema,
+  healthSchema,
   memberSchema,
   notificationSchema,
+  notificationCountSchema,
+  markedReadSchema,
   orgStatsSchema,
+  onboardingChecklistSchema,
+  organizationSlugPreviewSchema,
   organizationSchema,
   userSchema,
   paginated,
@@ -29,26 +35,10 @@ import {
   shadowCandidateLabelSchema,
   shadowReviewSchema,
   suppressionRuleSchema,
+  urlSchema,
 } from "@/lib/api-schemas";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-
-interface OnboardingStep {
-  id: string;
-  label: string;
-  description: string;
-  completed: boolean;
-  action_url: string | null;
-}
-
-interface OnboardingChecklist {
-  user_id: string;
-  organization_id: string | null;
-  steps: OnboardingStep[];
-  completion_percentage: number;
-  is_complete: boolean;
-}
-
 
 export class ApiError extends Error {
   status: number;
@@ -93,7 +83,10 @@ async function request<T>(path: string, options: RequestInit = {}, schema?: ZodT
   if (schema) {
     const result = schema.safeParse(data);
     if (!result.success) {
-      console.error(`[api] Invalid response contract for ${path}`, result.error.issues);
+      console.error("[api] Invalid response contract", {
+        method: options.method ?? "GET",
+        issueCodes: result.error.issues.map((issue) => issue.code),
+      });
       return data;
     }
     return result.data;
@@ -102,14 +95,16 @@ async function request<T>(path: string, options: RequestInit = {}, schema?: ZodT
 }
 
 export const api = {
-  health: () => request<{ status: string }>("/health"),
+  health: () => request("/health", {}, healthSchema),
 
   organizations: {
     list: (skip = 0, limit = 20) =>
       request(`/organizations?skip=${skip}&limit=${limit}`, {}, paginated(organizationSchema)),
     previewSlug: (slug: string) =>
-      request<{ requested_slug: string; available_slug: string; adjusted: boolean }>(
-        `/organizations/slug-preview?${new URLSearchParams({ slug }).toString()}`
+      request<components["schemas"]["OrganizationSlugPreview"]>(
+        `/organizations/slug-preview?${new URLSearchParams({ slug }).toString()}`,
+        {},
+        organizationSlugPreviewSchema,
       ),
     create: (data: { name: string; slug: string }) =>
       request("/organizations", { method: "POST", body: JSON.stringify(data) }, organizationSchema),
@@ -124,9 +119,9 @@ export const api = {
 
   github: {
     getInstallUrl: (orgId: string) =>
-      request<{ url: string }>(`/organizations/${orgId}/github/install-url`),
+      request<components["schemas"]["GitHubInstallUrlResponse"]>(`/organizations/${orgId}/github/install-url`, {}, urlSchema),
     getOAuthAuthorizeUrl: (orgId: string) =>
-      request<{ url: string }>(`/organizations/${orgId}/github/oauth/authorize`),
+      request<components["schemas"]["GitHubInstallUrlResponse"]>(`/organizations/${orgId}/github/oauth/authorize`, {}, urlSchema),
     oauthCallback: (code: string, state: string) =>
       request(`/github/oauth/callback`, {
         method: "POST",
@@ -143,10 +138,12 @@ export const api = {
         body: JSON.stringify(data),
       }, githubIntegrationSchema),
     getIntegration: (orgId: string) =>
-      request(`/organizations/${orgId}/github/integration`, {}, githubIntegrationSchema),
+      request(`/organizations/${orgId}/github/integration`, {}, githubIntegrationSchema.nullable()),
     listRepositories: (orgId: string) =>
       request<{ items: Array<{ id: string; full_name: string }>; total: number }>(
-        `/organizations/${orgId}/github/repositories`
+        `/organizations/${orgId}/github/repositories`,
+        {},
+        githubRepoListSchema,
       ),
     disconnect: (orgId: string) =>
       request<void>(`/organizations/${orgId}/github/integration`, { method: "DELETE" }),
@@ -285,7 +282,7 @@ export const api = {
         body: JSON.stringify(data),
       }, exportSchema),
     download: (orgId: string, projectId: string, exportId: string) =>
-      request<{ download_url: string }>(`/organizations/${orgId}/projects/${projectId}/exports/${exportId}`),
+      request(`/organizations/${orgId}/projects/${projectId}/exports/${exportId}`, {}, exportSchema),
   },
 
   auditLogs: {
@@ -306,13 +303,13 @@ export const api = {
         {},
         paginated(notificationSchema),
       ),
-    unreadCount: () => request<{ unread_count: number }>("/notifications/unread-count"),
+    unreadCount: () => request("/notifications/unread-count", {}, notificationCountSchema),
     markRead: (ids: string[]) =>
-      request<{ marked_read: number }>("/notifications/mark-read", {
+      request("/notifications/mark-read", {
         method: "POST",
         body: JSON.stringify({ notification_ids: ids }),
-      }),
-    markAllRead: () => request<{ marked_read: number }>("/notifications/mark-all-read", { method: "POST" }),
+      }, markedReadSchema),
+    markAllRead: () => request("/notifications/mark-all-read", { method: "POST" }, markedReadSchema),
   },
 
   scorecard: {
@@ -322,7 +319,7 @@ export const api = {
 
   schedules: {
     list: (orgId: string, projectId: string, repoId: string) =>
-      request(`/organizations/${orgId}/projects/${projectId}/repositories/${repoId}/schedules`, {}, paginated(scanScheduleSchema)),
+      request(`/organizations/${orgId}/projects/${projectId}/repositories/${repoId}/schedules`, {}, scanScheduleSchema.array()),
     create: (orgId: string, projectId: string, repoId: string, data: {
       repository_id: string; schedule_type: string; cron_expression?: string; scan_type?: string;
     }) =>
@@ -386,7 +383,7 @@ export const api = {
   onboarding: {
     get: (orgId?: string) => {
       const query = orgId ? `?${new URLSearchParams({ org_id: orgId }).toString()}` : "";
-      return request<OnboardingChecklist>(`/onboarding${query}`);
+      return request<components["schemas"]["OnboardingChecklistResponse"]>(`/onboarding${query}`, {}, onboardingChecklistSchema);
     },
   },
 };

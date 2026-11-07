@@ -1,5 +1,23 @@
 import { z } from "zod";
 
+export const healthSchema = z.object({ status: z.string() }).passthrough();
+
+export const urlSchema = z.object({ url: z.string().url() }).passthrough();
+
+export const organizationSlugPreviewSchema = z.object({
+  requested_slug: z.string(),
+  available_slug: z.string(),
+  adjusted: z.boolean(),
+}).passthrough();
+
+export const githubRepoListSchema = z.object({
+  items: z.array(z.object({ id: z.string(), full_name: z.string() }).passthrough()),
+  total: z.number(),
+}).passthrough();
+
+export const notificationCountSchema = z.object({ unread_count: z.number() }).passthrough();
+export const markedReadSchema = z.object({ marked_read: z.number() }).passthrough();
+
 // ── Core entity schemas (passthrough to tolerate API additions) ─────
 
 export const userSchema = z.object({
@@ -186,6 +204,7 @@ export const exportSchema = z.object({
   format: z.string(),
   title: z.string().nullable().optional(),
   status: z.string().optional(),
+  download_url: z.string().nullable().optional(),
   created_at: z.string(),
 }).passthrough();
 
@@ -216,6 +235,20 @@ export const githubIntegrationSchema = z.object({
   account_login: z.string().nullable().optional(),
   account_type: z.string().nullable().optional(),
   created_at: z.string().optional(),
+}).passthrough();
+
+export const onboardingChecklistSchema = z.object({
+  user_id: z.string(),
+  organization_id: z.string().nullable(),
+  steps: z.array(z.object({
+    id: z.string(),
+    label: z.string(),
+    description: z.string(),
+    completed: z.boolean(),
+    action_url: z.string().nullable(),
+  }).passthrough()),
+  completion_percentage: z.number(),
+  is_complete: z.boolean(),
 }).passthrough();
 
 export const suppressionRuleSchema = z.object({
