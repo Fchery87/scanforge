@@ -2,6 +2,14 @@ import json
 import logging
 from datetime import UTC, datetime
 
+_SAFE_FIELDS = {
+    "scan_id", "job_id", "org_id", "scanner", "error", "request_id",
+    "queue_length", "active_tasks", "workers", "previous_status", "status",
+    "backoff_seconds", "degraded_since", "length", "retry_count", "max_retries",
+    "timeout", "concurrency", "incarnation_id", "found", "queued", "failed",
+    "error_type", "job_type", "reclaimed", "deleted_keys", "reason", "duration_ms",
+}
+
 
 class _JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
@@ -11,8 +19,9 @@ class _JsonFormatter(logging.Formatter):
             "logger": record.name,
             "msg": record.getMessage(),
         }
-        for key, value in record.__dict__.items():
-            if key not in payload and key not in logging.LogRecord(None, 0, "", 0, "", (), None).__dict__:
+        for key in _SAFE_FIELDS:
+            value = getattr(record, key, None)
+            if value is not None and isinstance(value, (str, int, float, bool)):
                 payload[key] = value
         if record.exc_info:
             payload["exc"] = self.formatException(record.exc_info)

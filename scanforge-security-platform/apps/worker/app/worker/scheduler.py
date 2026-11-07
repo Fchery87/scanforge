@@ -35,7 +35,7 @@ async def run_scheduled_scans():
             extra={"found": result.get("found", 0), "queued": result.get("queued", 0), "failed": result.get("failed", 0)},
         )
     except Exception as e:
-        _log.error("error processing due schedules", extra={"error": str(e)})
+        _log.error("error processing due schedules", extra={"error_type": type(e).__name__})
 
 
 if __name__ == "__main__":
