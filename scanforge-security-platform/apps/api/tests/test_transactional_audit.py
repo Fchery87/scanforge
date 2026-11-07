@@ -17,7 +17,7 @@ from app.services.findings import FindingService
 from app.services.organizations import OrganizationService
 
 
-from sqlalchemy.types import CHAR, TypeDecorator
+from sqlalchemy.types import Uuid
 
 
 @compiles(PGUUID, "sqlite")
@@ -35,19 +35,8 @@ def _pg_inet_sqlite(type_, compiler, **kw):  # noqa: ARG001
     return "VARCHAR(64)"
 
 
-class _SQLiteUUID(TypeDecorator):
-    impl = CHAR
-    cache_ok = True
-
-    def load_dialect_impl(self, dialect):
-        if dialect.name == "postgresql":
-            return dialect.type_descriptor(PGUUID(as_uuid=True))
-        return dialect.type_descriptor(CHAR(36))
-
+class _SQLiteUUID(PGUUID):
     def bind_processor(self, dialect):
-        if dialect.name == "postgresql":
-            return None
-
         def process(value):
             if value is None:
                 return None
@@ -55,24 +44,37 @@ class _SQLiteUUID(TypeDecorator):
 
         return process
 
-
-def _downcast_postgres_uuid_columns() -> None:
-    for table in Base.metadata.tables.values():
-        for column in table.columns:
-            if isinstance(column.type, PGUUID):
-                column.type = _SQLiteUUID()
+    def result_processor(self, dialect, coltype):
+        return self.bind_processor(dialect)
 
 
 @pytest.fixture
 async def db_session():
-    _downcast_postgres_uuid_columns()
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    session_factory = async_sessionmaker(engine, expire_on_commit=False)
-    async with session_factory() as session:
-        yield session
-    await engine.dispose()
+    engine.sync_engine.dialect.colspecs = {
+        **engine.sync_engine.dialect.colspecs, Uuid: _SQLiteUUID, PGUUID: _SQLiteUUID,
+    }
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with session_factory() as session:
+            yield session
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_audit_database_does_not_mutate_model_uuid_types():
+    before = [(column, column.type) for table in Base.metadata.tables.values()
+              for column in table.columns]
+    fixture = db_session.__wrapped__()
+    try:
+        await anext(fixture)
+        assert all(column.type is original for column, original in before)
+    finally:
+        await fixture.aclose()
+    assert all(column.type is original for column, original in before)
 
 
 @pytest.mark.asyncio
@@ -316,5 +318,3 @@ async def test_audit_log_context_is_request_local_across_concurrent_coroutines()
     )
     assert results["req_a"] == ("user-a", "org-a")
     assert results["req_b"] == ("user-b", "org-b")
-
-

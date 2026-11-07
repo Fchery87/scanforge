@@ -79,11 +79,14 @@ class _SQLiteUUID(TypeDecorator):
         return UUID(str(value))
 
 
-def _patch_uuid_columns_for_sqlite() -> None:
+def _patch_uuid_columns_for_sqlite() -> list[tuple[object, object]]:
+    original_types = []
     for table in Base.metadata.tables.values():
         for column in table.columns:
             if column.type.__class__.__name__ == "UUID":
+                original_types.append((column, column.type))
                 column.type = _SQLiteUUID()
+    return original_types
 
 
 class InMemoryUpstashQueue(QueueClient):
@@ -142,16 +145,22 @@ class InMemoryUpstashQueue(QueueClient):
 
 @pytest_asyncio.fixture
 async def db_session():
-    _patch_uuid_columns_for_sqlite()
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    original_types = _patch_uuid_columns_for_sqlite()
+    engine = None
+    try:
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
-    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    async with factory() as session:
-        yield session
+        factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        async with factory() as session:
+            yield session
 
-    await engine.dispose()
+    finally:
+        if engine is not None:
+            await engine.dispose()
+        for column, original_type in original_types:
+            column.type = original_type
 
 
 async def _seed_org_project_repo(session: AsyncSession) -> tuple[Organization, Project, Repository, User]:
