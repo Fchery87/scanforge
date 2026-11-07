@@ -19,12 +19,14 @@ _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 _SKIP_JOB_TYPES = {"scan.secrets"}
 
 
-def _make_provider() -> AIProvider:
+def _make_provider() -> AIProvider | None:
     name = os.environ.get("AI_PROVIDER", "anthropic").lower()
     if name == "ollama":
         from app.services.ai_investigation.ollama_provider import OllamaProvider
 
         return OllamaProvider()
+    if not os.environ.get("ANTHROPIC_API_KEY", "").strip():
+        return None
     from app.services.ai_investigation.anthropic_provider import AnthropicProvider
 
     return AnthropicProvider()
@@ -40,7 +42,7 @@ class AIInvestigationStage:
         token = redis_token or os.environ.get("UPSTASH_REDIS_REST_TOKEN", "")
         self._cache: AnnotationCache | None = AnnotationCache(url, token) if url and token else None
 
-    def _get_provider(self) -> AIProvider:
+    def _get_provider(self) -> AIProvider | None:
         if self._provider is None:
             self._provider = _make_provider()
         return self._provider
@@ -63,6 +65,11 @@ class AIInvestigationStage:
             context.findings,
             key=lambda f: _SEVERITY_ORDER.get(f.get("severity", "info"), 4),
         )[: self._max_findings]
+
+        if provider is None:
+            context.ai_skipped_count = len(candidates)
+            _log.info("ai investigation skipped: provider unconfigured", extra={"scan_id": context.scan_id})
+            return
 
         tasks = [self._annotate_finding(provider, f) for f in candidates]
         results = await asyncio.gather(*tasks, return_exceptions=True)
