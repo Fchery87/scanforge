@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
-import traceback
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -122,8 +121,8 @@ class Worker:
                     },
                 )
 
-        except Exception as e:
-            _log.error("error processing job", extra={"error": str(e), "traceback": traceback.format_exc()})
+        except Exception as exc:
+            _log.error("error processing job", extra={"error_type": type(exc).__name__})
 
     async def run(self):
         queue, r2, api_base = self._get_clients()
@@ -148,10 +147,10 @@ class Worker:
         try:
             queue_len = await queue.get_queue_length()
             _log.info("queue length", extra={"length": queue_len})
-        except Exception as e:
+        except Exception as exc:
             _log.warning(
                 "could not connect to Redis queue — check UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN",
-                extra={"error": str(e)},
+                extra={"error_type": type(exc).__name__},
             )
 
         self._running = True
@@ -162,7 +161,7 @@ class Worker:
                 try:
                     await queue.promote_due_retries()
                 except Exception as exc:
-                    _log.warning("could not promote retry jobs", extra={"error": str(exc)})
+                    _log.warning("could not promote retry jobs", extra={"error_type": type(exc).__name__})
 
                 active = [t for t in tasks if not t.done()]
 
@@ -242,4 +241,3 @@ async def _shutdown(worker: Worker):
 
 if __name__ == "__main__":
     main()
-
