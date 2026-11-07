@@ -1,11 +1,14 @@
 import os
 import time
+from ipaddress import ip_address
 
 import httpx
 from starlette.exceptions import HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
+
+from app.core.config import settings
 
 
 class RateLimitState:
@@ -86,13 +89,19 @@ _ROUTE_LIMITER = UpstashRateLimiter(
 
 
 def get_client_ip(request: Request, trusted_proxies: set[str] | None = None) -> str:
-    """Extract client IP with trusted proxy validation."""
+    """Walk only trusted proxy hops, never trust a client-supplied prefix."""
+    peer = request.client.host if request.client else "unknown"
     forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        client_host = request.client.host if request.client else None
-        if trusted_proxies and client_host in trusted_proxies:
-            return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    if not forwarded or not trusted_proxies or peer not in trusted_proxies:
+        return peer
+    for hop in reversed(forwarded.split(",")):
+        try:
+            address = str(ip_address(hop.strip()))
+        except ValueError:
+            return peer
+        if address not in trusted_proxies:
+            return address
+    return peer
 
 
 class RedisRateLimitMiddleware(BaseHTTPMiddleware):
@@ -158,7 +167,7 @@ def per_route_limiter(limit: int, window: int = 60, key_prefix: str = "route"):
     Key = "<key_prefix>:<client_ip>", backed by Upstash Redis with local fallback.
     """
     async def _dep(request: Request) -> None:
-        ip = get_client_ip(request)
+        ip = get_client_ip(request, settings.trusted_proxy_ips_set)
         key = f"{key_prefix}:{ip}"
         if _ROUTE_LIMITER.enabled:
             try:

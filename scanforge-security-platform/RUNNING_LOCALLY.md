@@ -131,7 +131,7 @@ make test
 make web-build
 ```
 
-These development checks are not the full release evidence required by [ADR-017](docs/adr/ADR-017-authoritative-evidence-and-optional-ai.md).
+`make test` supplies an in-memory SQLite database to the Python suites when `DATABASE_URL` is unset or empty. An explicitly exported nonempty `DATABASE_URL` is preserved. This default applies only to tests, not application startup. These development checks are not the full release evidence required by [ADR-017](docs/adr/ADR-017-authoritative-evidence-and-optional-ai.md).
 
 ## Disposable PostgreSQL tests
 

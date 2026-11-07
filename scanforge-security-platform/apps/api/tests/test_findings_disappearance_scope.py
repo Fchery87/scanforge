@@ -16,7 +16,7 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.pool import StaticPool
-from sqlalchemy.types import CHAR, TypeDecorator
+from test_scan_dispatch import _SQLiteUUID
 
 from app.db.base import Base
 from app.db.enums import MemberRole, ScanStatus
@@ -47,27 +47,6 @@ def _pg_jsonb_sqlite(type_, compiler, **kw):  # noqa: ARG001
 @compiles(INET, "sqlite")
 def _pg_inet_sqlite(type_, compiler, **kw):  # noqa: ARG001
     return "VARCHAR(45)"
-
-
-class _SQLiteUUID(TypeDecorator):
-    impl = CHAR
-    cache_ok = True
-
-    def load_dialect_impl(self, dialect):
-        if dialect.name == "postgresql":
-            return dialect.type_descriptor(PGUUID(as_uuid=True))
-        return dialect.type_descriptor(CHAR())
-
-    def bind_processor(self, dialect):
-        if dialect.name == "postgresql":
-            return None
-
-        def process(value):
-            if value is None:
-                return None
-            return value if isinstance(value, str) else value.hex
-
-        return process
 
 
 def _downcast_postgres_uuid_columns() -> None:

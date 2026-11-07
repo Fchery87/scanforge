@@ -1,5 +1,23 @@
 import { z } from "zod";
 
+export const healthSchema = z.object({ status: z.string() }).passthrough();
+
+export const urlSchema = z.object({ url: z.string().url() }).passthrough();
+
+export const organizationSlugPreviewSchema = z.object({
+  requested_slug: z.string(),
+  available_slug: z.string(),
+  adjusted: z.boolean(),
+}).passthrough();
+
+export const githubRepoListSchema = z.object({
+  items: z.array(z.object({ id: z.string(), full_name: z.string() }).passthrough()),
+  total: z.number(),
+}).passthrough();
+
+export const notificationCountSchema = z.object({ unread_count: z.number() }).passthrough();
+export const markedReadSchema = z.object({ marked_read: z.number() }).passthrough();
+
 // ── Core entity schemas (passthrough to tolerate API additions) ─────
 
 export const userSchema = z.object({
@@ -147,9 +165,13 @@ export const findingSchema = z.object({
   severity: z.string(),
   status: z.string(),
   title: z.string(),
+  description: z.string().nullable(),
   canonical_fingerprint: z.string(),
-  primary_scanner: z.string().optional(),
-  risk_score: z.number().nullable().optional(),
+  primary_scanner: z.string().nullable(),
+  confidence_score: z.number().nullable(),
+  risk_score: z.number().nullable(),
+  fixed_version: z.string().nullable(),
+  metadata_json: z.record(z.string(), z.unknown()).nullable(),
   first_seen_at: z.string(),
   last_seen_at: z.string(),
   created_at: z.string(),
@@ -164,6 +186,8 @@ export const findingEventSchema = z.object({
   reason: z.string().nullable().optional(),
   created_at: z.string(),
 }).passthrough();
+
+export const findingEventsSchema = z.object({ items: z.array(findingEventSchema), total: z.number() });
 
 export const memberSchema = z.object({
   user_id: z.string(),
@@ -180,6 +204,7 @@ export const exportSchema = z.object({
   format: z.string(),
   title: z.string().nullable().optional(),
   status: z.string().optional(),
+  download_url: z.string().nullable().optional(),
   created_at: z.string(),
 }).passthrough();
 
@@ -210,6 +235,20 @@ export const githubIntegrationSchema = z.object({
   account_login: z.string().nullable().optional(),
   account_type: z.string().nullable().optional(),
   created_at: z.string().optional(),
+}).passthrough();
+
+export const onboardingChecklistSchema = z.object({
+  user_id: z.string(),
+  organization_id: z.string().nullable(),
+  steps: z.array(z.object({
+    id: z.string(),
+    label: z.string(),
+    description: z.string(),
+    completed: z.boolean(),
+    action_url: z.string().nullable(),
+  }).passthrough()),
+  completion_percentage: z.number(),
+  is_complete: z.boolean(),
 }).passthrough();
 
 export const suppressionRuleSchema = z.object({
@@ -262,6 +301,29 @@ export const findingStatsSchema = z.object({
   by_severity: z.record(z.string(), z.number()).optional(),
   by_category: z.record(z.string(), z.number()).optional(),
 }).passthrough();
+
+export const orgStatsSchema = z.object({
+  project_count: z.number(),
+  open_findings: z.number(),
+  critical_findings: z.number(),
+  scans_today: z.number(),
+  scans_this_week: z.number(),
+}).passthrough();
+
+export const findingDetailSchema = findingSchema.extend({
+  instances: z.array(z.object({ id: z.string(), finding_id: z.string(), scan_id: z.string(), scanner_run_id: z.string().nullable(), path: z.string().nullable(), line_start: z.number().nullable(), line_end: z.number().nullable(), package_name: z.string().nullable(), installed_version: z.string().nullable(), fixed_version: z.string().nullable(), evidence_json: z.record(z.string(), z.unknown()).nullable(), created_at: z.string() }).passthrough()),
+  references: z.array(z.object({ id: z.string(), finding_id: z.string(), reference_type: z.string(), reference_value: z.string(), url: z.string().nullable(), created_at: z.string() }).passthrough()),
+  events: z.array(z.object({ id: z.string(), finding_id: z.string(), event_type: z.string(), actor_user_id: z.string().nullable(), reason: z.string().nullable(), metadata_json: z.record(z.string(), z.unknown()).nullable(), created_at: z.string() }).passthrough()),
+}).passthrough();
+
+export const findingTrendSchema = z.object({
+  data: z.array(z.object({ date: z.string(), count: z.number() })),
+  days: z.number(),
+}).passthrough();
+
+export type OrgStats = z.infer<typeof orgStatsSchema>;
+export type FindingDetail = z.infer<typeof findingDetailSchema>;
+export type FindingTrend = z.infer<typeof findingTrendSchema>;
 
 // ── Pagination helper ───────────────────────────────────────────────
 

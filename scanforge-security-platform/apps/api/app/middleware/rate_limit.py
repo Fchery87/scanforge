@@ -5,6 +5,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from app.core.config import settings
+from app.middleware.redis_rate_limit import get_client_ip
+
 IN_MEMORY_STORE: dict[str, tuple[int, float]] = {}
 IN_MEMORY_CLEANUP_INTERVAL = 60
 
@@ -24,12 +27,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._last_cleanup = time.time()
 
     def _get_key(self, request: Request) -> str:
-        forwarded = request.headers.get("x-forwarded-for")
-        if forwarded:
-            ip = forwarded.split(",")[0].strip()
-        else:
-            ip = request.client.host if request.client else "unknown"
-        return ip
+        return get_client_ip(request, settings.trusted_proxy_ips_set)
 
     def _cleanup(self) -> None:
         now = time.time()
