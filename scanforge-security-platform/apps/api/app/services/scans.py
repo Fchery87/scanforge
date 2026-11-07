@@ -404,6 +404,8 @@ class ScanService:
         self,
         scan_id: UUID,
         user_id: UUID,
+        *,
+        include_deleted: bool = False,
     ) -> Scan | None:
         result = await self.db.execute(
             select(Scan)
@@ -413,7 +415,7 @@ class ScanService:
             .options(selectinload(Scan.scanner_runs))
             .where(
                 Scan.id == scan_id,
-                Scan.deleted_at.is_(None),
+                True if include_deleted else Scan.deleted_at.is_(None),
                 OrganizationMember.user_id == user_id,
             )
         )
@@ -578,11 +580,14 @@ class ScanService:
         *,
         project_id: UUID | None = None,
     ) -> Scan | None:
-        scan = await self.get_by_id(scan_id, user_id)
+        scan = await self.get_by_id(scan_id, user_id, include_deleted=True)
         if not scan:
             return None
         if project_id is not None and str(scan.project_id) != str(project_id):
             return None
+
+        if scan.deleted_at is not None:
+            return scan
 
         if scan.status not in (
             ScanStatusEnum.QUEUED,

@@ -1,7 +1,81 @@
+import json
+import logging
+
 import pytest
 
 from app.clients.queue import QueueJob, QueuePollStatus
+from app.core.logging import _JsonFormatter
 from app.worker.main import Worker
+from app.worker.scheduler import run_scheduled_scans
+
+
+@pytest.mark.asyncio
+async def test_worker_logs_include_structured_status_fields():
+    logger = logging.getLogger("test.worker")
+    record = logger.makeRecord(
+        logger.name,
+        logging.INFO,
+        __file__,
+        1,
+        "worker status",
+        (),
+        None,
+        extra={"queue_length": 2, "active_tasks": 1, "workers": 3},
+    )
+    payload = json.loads(_JsonFormatter().format(record))
+    assert payload["queue_length"] == 2
+    assert payload["active_tasks"] == 1
+    assert payload["workers"] == 3
+
+
+def test_json_formatter_omits_unknown_sensitive_and_nonserializable_fields():
+    logger = logging.getLogger("test.worker")
+    record = logger.makeRecord(
+        logger.name,
+        logging.INFO,
+        __file__,
+        1,
+        "worker status",
+        (),
+        None,
+        extra={"password": "secret", "sensitive": object(), "queue_length": 2},
+    )
+
+    payload = json.loads(_JsonFormatter().format(record))
+
+    assert payload["queue_length"] == 2
+    assert "password" not in payload
+    assert "sensitive" not in payload
+
+
+@pytest.mark.asyncio
+async def test_scheduler_logs_structured_result(monkeypatch, caplog):
+    async def fake_trigger():
+        return {"found": 2, "queued": 1, "failed": 0}
+
+    monkeypatch.setattr("app.worker.scheduler.trigger_due_scan_schedules", fake_trigger)
+    with caplog.at_level(logging.INFO):
+        await run_scheduled_scans()
+
+    record = caplog.records[-1]
+    assert record.getMessage() == "processed due schedules"
+    assert record.found == 2
+    assert record.queued == 1
+    assert record.failed == 0
+
+
+@pytest.mark.asyncio
+async def test_scheduler_logs_safe_error_metadata(monkeypatch, caplog):
+    async def failing_trigger():
+        raise RuntimeError("credential=secret")
+
+    monkeypatch.setattr("app.worker.scheduler.trigger_due_scan_schedules", failing_trigger)
+    with caplog.at_level(logging.ERROR):
+        await run_scheduled_scans()
+
+    record = caplog.records[-1]
+    assert record.error_type == "RuntimeError"
+    assert not hasattr(record, "error")
 
 
 class RecordingQueue:
