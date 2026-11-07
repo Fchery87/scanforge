@@ -38,6 +38,11 @@ def _stale_db_time() -> datetime:
     return datetime.now(UTC) - timedelta(days=10)
 
 
+@pytest.fixture
+def future_db_time() -> datetime:
+    return datetime.now(UTC) + timedelta(minutes=1)
+
+
 def test_full_coverage_requires_all_expected_scanners_fresh_db_and_verified_ancestry():
     request = ScanCompletionRequest(
         contract_version=CURRENT_EVIDENCE_CONTRACT_VERSION,
@@ -174,14 +179,12 @@ def test_stale_scanner_database_older_than_seven_days_blocks_full_coverage_and_c
         {"db_freshness_state": "unverified", "db_published_at": _fresh_db_time(), "db_digest": "sha256:db"},
         {"db_freshness_state": "fresh", "db_published_at": None, "db_digest": "sha256:db"},
         {"db_freshness_state": "fresh", "db_published_at": _fresh_db_time(), "db_digest": None},
-        {
-            "db_freshness_state": "fresh",
-            "db_published_at": datetime.now(UTC) + timedelta(minutes=1),
-            "db_digest": "sha256:db",
-        },
+        {"db_freshness_state": "fresh", "db_published_at": "future", "db_digest": "sha256:db"},
     ],
 )
-def test_unverifiable_or_future_scanner_database_never_grants_full_coverage(database_evidence):
+def test_unverifiable_or_future_scanner_database_never_grants_full_coverage(database_evidence, future_db_time):
+    if database_evidence["db_published_at"] == "future":
+        database_evidence = {**database_evidence, "db_published_at": future_db_time}
     request = ScanCompletionRequest(
         winning_attempt_id=uuid4(),
         execution_revision=1,
