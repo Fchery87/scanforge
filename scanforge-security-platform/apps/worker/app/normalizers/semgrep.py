@@ -1,5 +1,10 @@
-import hashlib
 import re
+
+from app.normalizers.identity import (
+    SOURCE_FINGERPRINT_VERSION,
+    location_stable_fingerprint,
+    occurrence_indices,
+)
 
 SEVERITY_MAP = {
     "CRITICAL": "critical",
@@ -28,21 +33,9 @@ def _normalize_repo_path(path: str) -> str:
     return cleaned
 
 
-def compute_semgrep_fingerprint(
-    check_id: str,
-    path: str,
-    line_start: int,
-    line_end: int,
-    repo_id: str,
-) -> str:
-    components = [
-        check_id,
-        path,
-        str(line_start),
-        str(line_end),
-        repo_id,
-    ]
-    return hashlib.sha256("|".join(components).encode()).hexdigest()
+def _snippet_digest(result: dict) -> str | None:
+    digest = result.get("snippet_sha256")
+    return digest if isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest) else None
 
 
 def normalize_semgrep_output(raw_output: dict | list, repository_id: str) -> list[dict]:
@@ -53,17 +46,20 @@ def normalize_semgrep_output(raw_output: dict | list, repository_id: str) -> lis
     if isinstance(raw_output, list):
         results = raw_output
 
-    for result in results:
-        if not isinstance(result, dict):
-            continue
-        check_id = result.get("check_id", "")
-        path = _normalize_repo_path(result.get("path", ""))
+    valid = [r for r in results if isinstance(r, dict) and r.get("check_id")]
+    paths = [_normalize_repo_path(r.get("path", "")) for r in valid]
+    digests = [_snippet_digest(r) for r in valid]
+    # Identical snippets for one rule in one file are told apart by source order.
+    indices = occurrence_indices(
+        [(r["check_id"], path, digest) for r, path, digest in zip(valid, paths, digests, strict=True)],
+        [((r.get("start") or {}).get("line", 1), (r.get("start") or {}).get("col", 1)) for r in valid],
+    )
+
+    for result, path, digest, occurrence_index in zip(valid, paths, digests, indices, strict=True):
+        check_id = result["check_id"]
         start = result.get("start", {})
         end = result.get("end", {})
         extra = result.get("extra", {})
-
-        if not check_id:
-            continue
 
         raw_severity = str(extra.get("severity", "INFO")).upper()
         metadata = extra.get("metadata", {}) or {}
@@ -84,12 +80,13 @@ def normalize_semgrep_output(raw_output: dict | list, repository_id: str) -> lis
 
         confidence_score = CONFIDENCE_MAP.get(raw_confidence, 0.8)
 
-        fingerprint = compute_semgrep_fingerprint(
-            check_id=check_id,
-            path=path,
-            line_start=start.get("line", 1),
-            line_end=end.get("line", 1),
+        fingerprint = location_stable_fingerprint(
+            scanner="semgrep",
             repo_id=repository_id,
+            rule=check_id,
+            path=path,
+            snippet_sha256=digest or "",
+            occurrence_index=occurrence_index,
         )
 
         references = []
@@ -122,6 +119,7 @@ def normalize_semgrep_output(raw_output: dict | list, repository_id: str) -> lis
             "title": check_id,
             "description": extra.get("message", ""),
             "canonical_fingerprint": fingerprint,
+            "fingerprint_version": SOURCE_FINGERPRINT_VERSION,
             "primary_scanner": "semgrep",
             "confidence_score": confidence_score,
             "metadata_json": {
@@ -129,6 +127,7 @@ def normalize_semgrep_output(raw_output: dict | list, repository_id: str) -> lis
                 "raw_severity": raw_severity,
                 "raw_confidence": raw_confidence,
                 "check_id": check_id,
+                **({} if digest else {"snippet_unavailable": True}),
             },
             "instance": {
                 "path": path,

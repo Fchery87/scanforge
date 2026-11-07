@@ -1,5 +1,10 @@
-import hashlib
 import re
+
+from app.normalizers.identity import (
+    SOURCE_FINGERPRINT_VERSION,
+    location_stable_fingerprint,
+    occurrence_indices,
+)
 
 SEVERITY_MAP = {
     "CRITICAL": "critical",
@@ -16,18 +21,12 @@ def _normalize_repo_path(path: str) -> str:
     return cleaned.lstrip("/")
 
 
-def compute_checkov_fingerprint(
-    check_id: str,
-    resource: str,
-    path: str,
-    repo_id: str,
-) -> str:
-    components = [check_id, resource, path, repo_id]
-    return hashlib.sha256("|".join(components).encode()).hexdigest()
+def _snippet_digest(check: dict) -> str | None:
+    digest = check.get("snippet_sha256")
+    return digest if isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest) else None
 
 
-def normalize_checkov_output(raw_output: dict | list, repository_id: str) -> list[dict]:
-    findings = []
+def failed_checks_from(raw_output: dict | list) -> list[dict]:
     results = raw_output.get("results", {}) if isinstance(raw_output, dict) else {}
     failed_checks = results.get("failed_checks", []) if isinstance(results, dict) else []
 
@@ -39,22 +38,37 @@ def normalize_checkov_output(raw_output: dict | list, repository_id: str) -> lis
                     failed_checks.extend(item["results"].get("failed_checks", []) or [])
                 else:
                     failed_checks.append(item)
+    return [f for f in failed_checks if isinstance(f, dict)]
 
-    for failed in failed_checks:
-        if not isinstance(failed, dict):
-            continue
-        check_id = failed.get("check_id", "")
-        massage_path = failed.get("file_path", "") or failed.get("repo_file_path", "")
-        path = _normalize_repo_path(massage_path)
+
+def normalize_checkov_output(raw_output: dict | list, repository_id: str) -> list[dict]:
+    findings = []
+    failed_checks = failed_checks_from(raw_output)
+
+    valid = [f for f in failed_checks if isinstance(f, dict) and f.get("check_id")]
+    paths = [_normalize_repo_path(f.get("file_path", "") or f.get("repo_file_path", "")) for f in valid]
+    digests = [_snippet_digest(f) for f in valid]
+    # Identical blocks for one check in one file are told apart by source order.
+    indices = occurrence_indices(
+        [(f["check_id"], path, digest) for f, path, digest in zip(valid, paths, digests, strict=True)],
+        [((f.get("file_line_range") or [1])[0] or 1,) for f in valid],
+    )
+
+    for failed, path, digest, occurrence_index in zip(valid, paths, digests, indices, strict=True):
+        check_id = failed["check_id"]
         resource = failed.get("resource", "")
         line_range = failed.get("file_line_range", []) or []
         raw_severity = str(failed.get("severity") or "MEDIUM").upper()
         severity = SEVERITY_MAP.get(raw_severity, "medium")
 
-        if not check_id:
-            continue
-
-        fingerprint = compute_checkov_fingerprint(check_id, resource, path, repository_id)
+        fingerprint = location_stable_fingerprint(
+            scanner="checkov",
+            repo_id=repository_id,
+            rule=check_id,
+            path=path,
+            snippet_sha256=digest or "",
+            occurrence_index=occurrence_index,
+        )
         guideline = failed.get("guideline")
 
         findings.append(
@@ -64,12 +78,14 @@ def normalize_checkov_output(raw_output: dict | list, repository_id: str) -> lis
                 "title": failed.get("check_name", check_id),
                 "description": failed.get("details") or failed.get("description", ""),
                 "canonical_fingerprint": fingerprint,
+                "fingerprint_version": SOURCE_FINGERPRINT_VERSION,
                 "primary_scanner": "checkov",
                 "confidence_score": 0.9,
                 "metadata_json": {
                     "severity_source": "checkov",
                     "raw_severity": raw_severity,
                     "check_id": check_id,
+                    **({} if digest else {"snippet_unavailable": True}),
                 },
                 "instance": {
                     "path": path,

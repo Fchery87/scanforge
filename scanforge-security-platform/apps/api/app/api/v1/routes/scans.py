@@ -13,15 +13,25 @@ from app.middleware.auth import UserContext, get_current_user
 from app.middleware.redis_rate_limit import per_route_limiter
 from app.schemas.common import PaginatedResponse, PaginationParams
 from app.schemas.scans import (
+    CapabilityCoverageResponse,
     ScanCancel,
     ScanCreate,
     ScanDetailResponse,
     ScanResponse,
+    ShadowCandidateLabelRequest,
+    ShadowCandidateLabelResponse,
+    ShadowClassificationResponse,
+    ShadowReviewResponse,
 )
+from app.services.access_policies import FINDING_MUTATION_ROLES
+from app.services.artifact_finalization import ArtifactFinalizationService
+from app.services.evidence_contract import derive_capability_coverage
 from app.services.organizations import OrganizationService
+from app.services.pr_classification import ShadowClassificationService
 from app.services.scan_dispatch import ScanCapacityExceededError
 from app.services.scan_lifecycle import ScanLifecycleService
 from app.services.scans import ScanService
+from app.services.shadow_review_view import ShadowReviewViewService
 
 router = APIRouter()
 
@@ -39,6 +49,12 @@ def _apply_scan_download_urls(scan, *, org_id: UUID, project_id: UUID) -> ScanDe
         run.artifact_uri = None
         if isinstance(run.metadata_json, dict):
             run.metadata_json = {key: value for key, value in run.metadata_json.items() if not key.endswith("_uri")}
+    health = (payload.summary_json or {}).get("scanner_health")
+    expected = health.get("expected") if isinstance(health, dict) else None
+    payload.capability_coverage = [
+        CapabilityCoverageResponse.model_validate(item)
+        for item in derive_capability_coverage(payload.scanner_runs, expected_scanners=expected)
+    ]
     return payload
 
 
@@ -142,7 +158,74 @@ async def get_scan(
     if not scan or scan.project_id != project_id:
         raise HTTPException(status_code=404, detail="Scan not found")
 
-    return _apply_scan_download_urls(scan, org_id=org_id, project_id=project_id)
+    payload = _apply_scan_download_urls(scan, org_id=org_id, project_id=project_id)
+    if scan.trigger_type == "pull_request":
+        payload.shadow_classification = ShadowClassificationResponse.model_validate(
+            await ShadowClassificationService(db).classify(scan)
+        )
+    return payload
+
+
+async def _get_shadow_pr_scan_or_404(db: AsyncSession, *, project_id: UUID, scan_id: UUID, user_id: UUID):
+    scan = await ScanService(db).get_by_id(scan_id, user_id)
+    if not scan or scan.project_id != project_id or scan.trigger_type != "pull_request":
+        raise HTTPException(status_code=404, detail="Shadow review not found")
+    return scan
+
+
+@router.get("/{scan_id}/shadow-review", response_model=ShadowReviewResponse)
+async def get_shadow_review(
+    org_id: UUID,
+    project_id: UUID,
+    scan_id: UUID,
+    current_user: UserContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Internal per-PR shadow results. Read-only; never published to GitHub."""
+    await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)
+    scan = await _get_shadow_pr_scan_or_404(db, project_id=project_id, scan_id=scan_id, user_id=current_user.user_id)
+    return ShadowReviewResponse.model_validate(await ShadowReviewViewService(db).build(scan))
+
+
+@router.put(
+    "/{scan_id}/shadow-review/candidates/{candidate_id}/label",
+    response_model=ShadowCandidateLabelResponse,
+)
+async def label_shadow_candidate(
+    org_id: UUID,
+    project_id: UUID,
+    scan_id: UUID,
+    candidate_id: UUID,
+    data: ShadowCandidateLabelRequest,
+    *,
+    current_user: UserContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Record the caller's evaluation label. Never suppresses or changes any finding."""
+    await get_project_in_org_or_404(db, project_id=project_id, org_id=org_id, user_id=current_user.user_id)
+    if not await OrganizationService(db).user_has_permission(org_id, current_user.user_id, FINDING_MUTATION_ROLES):
+        raise HTTPException(
+            status_code=403, detail="Security reviewer, admin, or owner role required to label shadow results"
+        )
+    scan = await _get_shadow_pr_scan_or_404(db, project_id=project_id, scan_id=scan_id, user_id=current_user.user_id)
+    try:
+        row = await ShadowReviewViewService(db).set_label(
+            org_id=org_id, scan=scan, candidate_id=candidate_id, actor_user_id=current_user.user_id, label=data.label
+        )
+    except LookupError:
+        # The label's candidate or scan is not inside this tenant's corpus; nothing is recorded.
+        await db.rollback()
+        raise HTTPException(status_code=404, detail="Shadow candidate not found") from None
+    if row is None:
+        raise HTTPException(status_code=404, detail="Shadow candidate not found")
+    return ShadowCandidateLabelResponse.model_validate(
+        {
+            "candidate_id": row.candidate_id,
+            "label": row.label,
+            "actor_user_id": row.actor_user_id,
+            "labeled_at": row.updated_at or row.created_at,
+        }
+    )
 
 
 @router.get("/{scan_id}/scanner-runs/{run_id}/download")
@@ -166,7 +249,15 @@ async def download_scan_artifact(
     if not run or not run.artifact_uri:
         raise HTTPException(status_code=404, detail="Artifact not found")
 
-    return RedirectResponse(url=_get_r2_client().generate_presigned_url(run.artifact_uri))
+    # Only verified, unerased artifacts of this scan are signable; a stored
+    # reference alone never authorizes a presigned URL.
+    client = _get_r2_client()
+    storage_uri = await ArtifactFinalizationService(db, client).downloadable_uri(
+        str(scan_id), str(org_id), run.artifact_uri
+    )
+    if storage_uri is None:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    return RedirectResponse(url=client.generate_presigned_url(storage_uri))
 
 
 @router.post("/{scan_id}/cancel", response_model=ScanResponse)

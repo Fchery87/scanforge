@@ -217,6 +217,7 @@ async def _findings_db(project, repository):
     db.get = AsyncMock(side_effect=get)
     empty_result = Mock()
     empty_result.scalar_one_or_none.return_value = None
+    empty_result.scalars.return_value.all.return_value = []
     db.execute = AsyncMock(return_value=empty_result)
     db.scalar = AsyncMock(return_value=None)
     return db

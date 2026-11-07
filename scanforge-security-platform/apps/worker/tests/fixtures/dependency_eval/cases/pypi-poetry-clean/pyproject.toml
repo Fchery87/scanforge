@@ -1,0 +1,14 @@
+[tool.poetry]
+name = "eval-pypi-poetry-clean"
+version = "1.0.0"
+description = "dependency engine evaluation fixture"
+authors = ["fixture <fixture@example.invalid>"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+requests = "2.32.3"
+pyyaml = "6.0.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

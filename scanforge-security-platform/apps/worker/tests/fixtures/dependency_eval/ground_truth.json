@@ -1,0 +1,80 @@
+{
+  "schema_version": "2026-11-dependency-eval.v1",
+  "provenance": "Author-asserted from public GitHub/OSV advisory knowledge when the corpus was written (2026-11-05). NOT verified against any scanner database. Re-verify advisory IDs and fixed versions against the offline databases in the pinned scanner image on the first real run; scoring is by package@version, advisory IDs are informational.",
+  "clean_caveat": "'Clean' means no known advisory at authoring time. A new advisory published later can turn a clean pin into a legitimate finding; investigate any clean-case hit by hand before counting it as a false positive.",
+  "cases": [
+    {
+      "id": "npm-vulnerable",
+      "ecosystem": "npm",
+      "inputs": ["package-lock.json"],
+      "expect_vulnerable": [
+        {"name": "lodash", "version": "4.17.15", "manifest": "package-lock.json", "advisories": ["GHSA-p6mc-m468-83gw", "GHSA-35jh-r3h4-6jhm", "GHSA-29mw-wpgm-hmr9"], "fixed_in": "4.17.21"},
+        {"name": "minimist", "version": "1.2.5", "manifest": "package-lock.json", "advisories": ["GHSA-xvch-5gv4-984h"], "fixed_in": "1.2.6"}
+      ],
+      "expect_clean": []
+    },
+    {
+      "id": "npm-clean",
+      "ecosystem": "npm",
+      "inputs": ["package-lock.json"],
+      "expect_vulnerable": [],
+      "expect_clean": [
+        {"name": "lodash", "version": "4.17.21", "manifest": "package-lock.json"},
+        {"name": "minimist", "version": "1.2.8", "manifest": "package-lock.json"}
+      ]
+    },
+    {
+      "id": "pypi-requirements-vulnerable",
+      "ecosystem": "PyPI",
+      "inputs": ["requirements.txt"],
+      "expect_vulnerable": [
+        {"name": "requests", "version": "2.19.1", "manifest": "requirements.txt", "advisories": ["GHSA-x84v-xcm2-53pg", "GHSA-j8r2-6x86-q33q"], "fixed_in": "2.31.0"},
+        {"name": "pyyaml", "version": "5.3.1", "manifest": "requirements.txt", "advisories": ["GHSA-8q59-q68h-6hv4"], "fixed_in": "5.4"}
+      ],
+      "expect_clean": []
+    },
+    {
+      "id": "pypi-requirements-clean",
+      "ecosystem": "PyPI",
+      "inputs": ["requirements.txt"],
+      "expect_vulnerable": [],
+      "expect_clean": [
+        {"name": "requests", "version": "2.32.3", "manifest": "requirements.txt"},
+        {"name": "pyyaml", "version": "6.0.2", "manifest": "requirements.txt"}
+      ]
+    },
+    {
+      "id": "pypi-poetry-vulnerable",
+      "ecosystem": "PyPI",
+      "inputs": ["poetry.lock"],
+      "expect_vulnerable": [
+        {"name": "requests", "version": "2.19.1", "manifest": "poetry.lock", "advisories": ["GHSA-x84v-xcm2-53pg", "GHSA-j8r2-6x86-q33q"], "fixed_in": "2.31.0"},
+        {"name": "pyyaml", "version": "5.3.1", "manifest": "poetry.lock", "advisories": ["GHSA-8q59-q68h-6hv4"], "fixed_in": "5.4"}
+      ],
+      "expect_clean": []
+    },
+    {
+      "id": "pypi-poetry-clean",
+      "ecosystem": "PyPI",
+      "inputs": ["poetry.lock"],
+      "expect_vulnerable": [],
+      "expect_clean": [
+        {"name": "requests", "version": "2.32.3", "manifest": "poetry.lock"},
+        {"name": "pyyaml", "version": "6.0.2", "manifest": "poetry.lock"}
+      ]
+    },
+    {
+      "id": "monorepo-duplicate",
+      "ecosystem": "npm",
+      "inputs": ["packages/a/package-lock.json", "packages/b/package-lock.json", "packages/c/package-lock.json"],
+      "notes": "The same vulnerable package (lodash 4.17.15) appears in two manifests (a, b); manifest c pins a clean version. An engine must report two occurrences with distinct manifest paths, and none for c. This is the input that exposes how dependency identity merges or splits across manifests (gap G3, ADR-014).",
+      "expect_vulnerable": [
+        {"name": "lodash", "version": "4.17.15", "manifest": "packages/a/package-lock.json", "advisories": ["GHSA-p6mc-m468-83gw", "GHSA-35jh-r3h4-6jhm", "GHSA-29mw-wpgm-hmr9"], "fixed_in": "4.17.21"},
+        {"name": "lodash", "version": "4.17.15", "manifest": "packages/b/package-lock.json", "advisories": ["GHSA-p6mc-m468-83gw", "GHSA-35jh-r3h4-6jhm", "GHSA-29mw-wpgm-hmr9"], "fixed_in": "4.17.21"}
+      ],
+      "expect_clean": [
+        {"name": "lodash", "version": "4.17.21", "manifest": "packages/c/package-lock.json"}
+      ]
+    }
+  ]
+}

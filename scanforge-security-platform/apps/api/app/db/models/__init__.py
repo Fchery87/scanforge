@@ -8,6 +8,7 @@ from app.db.models.finding import (
     FindingInstance,
     FindingReference,
 )
+from app.db.models.github_reconciliation import GitHubReconciliationReceipt
 from app.db.models.notification import Notification
 from app.db.models.organization import (
     Organization,
@@ -25,6 +26,12 @@ from app.db.models.repository import (
 from app.db.models.scan import Scan, ScanCompletionReceipt, ScannerRun
 from app.db.models.scan_dispatch import ScanDispatchObligation
 from app.db.models.scan_schedule import ScanSchedule
+from app.db.models.shadow_review import (
+    ShadowCorpusEntry,
+    ShadowPullRequestHead,
+    ShadowReviewCandidate,
+    ShadowReviewCandidateLabel,
+)
 from app.db.models.user import User
 from app.db.models.webhook_delivery import WebhookDelivery
 from app.db.models.worker_identity import WorkerIdentity
@@ -38,6 +45,7 @@ __all__ = [
     "FindingInstance",
     "FindingReference",
     "FindingSuppression",
+    "GitHubReconciliationReceipt",
     "Notification",
     "Organization",
     "OrganizationIntegration",
@@ -53,6 +61,10 @@ __all__ = [
     "ScanDispatchObligation",
     "ScanSchedule",
     "ScannerRun",
+    "ShadowCorpusEntry",
+    "ShadowPullRequestHead",
+    "ShadowReviewCandidate",
+    "ShadowReviewCandidateLabel",
     "SuppressionRule",
     "User",
     "WebhookDelivery",

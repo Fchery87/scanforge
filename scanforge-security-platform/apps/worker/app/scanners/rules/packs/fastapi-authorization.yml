@@ -1,0 +1,148 @@
+rules:
+  - id: fastapi-route-without-auth-dependency
+    message: >-
+      Does this route need an identity? The handler declares no Depends()/Security() parameter, the
+      decorator has no dependencies=, and no APIRouter/FastAPI object in this file carries dependencies=.
+      Check router-level dependencies attached in another file before treating this as a gap.
+    languages: [python]
+    severity: INFO
+    patterns:
+      - pattern-either:
+          - pattern: |
+              @$R.$M($PATH, ...)
+              def $F(...):
+                  ...
+      - metavariable-regex:
+          metavariable: $M
+          regex: ^(get|post|put|patch|delete)$
+      - metavariable-regex:
+          metavariable: $PATH
+          regex: ^f?["']/
+      - metavariable-regex:
+          metavariable: $PATH
+          regex: ^(?!f?["']/(health|healthz|ready|readyz|livez|ping|version|login|token)(["'/]|$)).*
+      - pattern-not: |
+          @$R.$M(..., dependencies=[...], ...)
+          def $F(...):
+              ...
+      - pattern-not: |
+          @$R.$M(...)
+          def $F(..., $P=Depends(...), ...):
+              ...
+      - pattern-not: |
+          @$R.$M(...)
+          def $F(..., $P=Security(...), ...):
+              ...
+      - pattern-not: |
+          @$R.$M(...)
+          def $F(..., $P: Annotated[..., Depends(...), ...], ...):
+              ...
+      - pattern-not: |
+          @$R.$M(...)
+          def $F(..., $P: Annotated[..., Security(...), ...], ...):
+              ...
+      - pattern-not-inside: |
+          $ROUTER = $CTOR(..., dependencies=[...], ...)
+          ...
+    metadata:
+      category: security
+      confidence: LOW
+      review_pack: fastapi
+      pack_version: fastapi.v1
+      question: authorization
+      cwe:
+        - "CWE-306: Missing Authentication for Critical Function"
+
+  - id: fastapi-unscoped-primary-key-lookup
+    message: >-
+      Is this lookup scoped to the caller's organization? The handler fetches a row by a client-supplied
+      parameter with session.get(Model, <parameter>) and never reads an organization/tenant attribute.
+      Check whether a dependency or helper enforces ownership before treating this as an object-level gap.
+    languages: [python]
+    severity: INFO
+    patterns:
+      - pattern-either:
+          - pattern: |
+              @$R.$M(...)
+              def $F(..., $ID, ...):
+                  ...
+                  $S.get($MODEL, $ID)
+                  ...
+          - pattern: |
+              @$R.$M(...)
+              def $F(..., $ID, ...):
+                  ...
+                  $V = $S.get($MODEL, $ID)
+                  ...
+          - pattern: |
+              @$R.$M(...)
+              def $F(..., $ID, ...):
+                  ...
+                  return $S.get($MODEL, $ID)
+                  ...
+          - pattern: |
+              @$R.$M(...)
+              def $F(..., $ID, ...):
+                  ...
+                  $V = await $S.get($MODEL, $ID)
+                  ...
+          - pattern: |
+              @$R.$M(...)
+              def $F(..., $ID, ...):
+                  ...
+                  return await $S.get($MODEL, $ID)
+                  ...
+      - metavariable-regex:
+          metavariable: $S
+          regex: ^(self\.)?(db|session|sess|\w*_session|\w*_db)$
+      - pattern-not-regex: (?s)\b(organization|org|tenant|workspace)(_id)?\b
+    metadata:
+      category: security
+      confidence: LOW
+      review_pack: fastapi
+      pack_version: fastapi.v1
+      question: tenant_scope
+      cwe:
+        - "CWE-639: Authorization Bypass Through User-Controlled Key"
+
+  - id: fastapi-client-supplied-organization-id
+    message: >-
+      Is this organization identifier verified against the caller? The handler accepts an organization
+      or tenant id from the client, and none of its dependencies look like an organization-membership
+      check. Check whether an identity dependency validates membership for this id.
+    languages: [python]
+    severity: INFO
+    patterns:
+      - pattern: |
+          @$R.$M(...)
+          def $F(..., $ORG: $T, ...):
+              ...
+      - metavariable-regex:
+          metavariable: $ORG
+          regex: ^(organization|org|tenant|workspace)_id$
+      - pattern-not:
+          patterns:
+            - pattern-either:
+                - pattern: |
+                    @$R.$M(...)
+                    def $F(..., $P=Depends($D), ...):
+                        ...
+                - pattern: |
+                    @$R.$M(...)
+                    def $F(..., $P=Security($D), ...):
+                        ...
+                - pattern: |
+                    @$R.$M(...)
+                    def $F(..., $P: Annotated[..., Depends($D), ...], ...):
+                        ...
+            - metavariable-regex:
+                metavariable: $D
+                regex: (?i).*(org|tenant|workspace|member|role|permission).*
+    metadata:
+      category: security
+      confidence: LOW
+      review_pack: fastapi
+      pack_version: fastapi.v1
+      question: tenant_scope
+      cwe:
+        - "CWE-639: Authorization Bypass Through User-Controlled Key"

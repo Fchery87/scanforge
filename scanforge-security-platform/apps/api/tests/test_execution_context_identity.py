@@ -165,7 +165,7 @@ async def test_execution_context_rejects_foreign_org_principal_and_serves_matche
     foreign = _principal(uuid4())
     with pytest.raises(HTTPException) as excinfo:
         await internal.get_scan_execution_context(
-            scan_id=UUID(str(scan.id)), principal=foreign, db=db_session
+            presented_identity=None, scan_id=UUID(str(scan.id)), principal=foreign, db=db_session
         )
     assert excinfo.value.status_code == 403
     # The rejected claimant never touched the lease or identity.
@@ -175,7 +175,7 @@ async def test_execution_context_rejects_foreign_org_principal_and_serves_matche
 
     matched = _principal(org_id)
     served = await internal.get_scan_execution_context(
-        scan_id=UUID(str(scan.id)), principal=matched, db=db_session
+        presented_identity=None, scan_id=UUID(str(scan.id)), principal=matched, db=db_session
     )
     assert served["org_id"] == str(org_id)
     assert served["attempt_id"]
@@ -194,7 +194,7 @@ async def test_execution_context_grants_lease_and_rejects_duplicate_claimants(db
     rival = _principal(org_id)
 
     first = await internal.get_scan_execution_context(
-        scan_id=UUID(str(scan.id)), principal=owner, db=db_session
+        presented_identity=None, scan_id=UUID(str(scan.id)), principal=owner, db=db_session
     )
     assert first["attempt_id"]
     assert len(first["attempt_id"]) <= 64
@@ -202,9 +202,17 @@ async def test_execution_context_grants_lease_and_rejects_duplicate_claimants(db
     assert first["lease_expires_at"] is not None
     assert first["reclaim_reason"] == "fresh_start"
 
-    # Same worker refetch is idempotent while its lease is live.
+    # Same worker refetch is idempotent while its lease is live, but only when
+    # it proves it holds the live identity (#36).
     again = await internal.get_scan_execution_context(
-        scan_id=UUID(str(scan.id)), principal=owner, db=db_session
+        presented_identity=internal.ExecutionAttemptIdentity(
+            attempt_id=first["attempt_id"],
+            execution_revision=first["execution_revision"],
+            worker_incarnation_id=first["worker_incarnation_id"],
+        ),
+        scan_id=UUID(str(scan.id)),
+        principal=owner,
+        db=db_session,
     )
     assert again["attempt_id"] == first["attempt_id"]
     assert again["execution_revision"] == 1
@@ -212,7 +220,7 @@ async def test_execution_context_grants_lease_and_rejects_duplicate_claimants(db
     # A different claimant is rejected while the lease is valid.
     with pytest.raises(internal.HTTPException) as excinfo:
         await internal.get_scan_execution_context(
-            scan_id=UUID(str(scan.id)), principal=rival, db=db_session
+            presented_identity=None, scan_id=UUID(str(scan.id)), principal=rival, db=db_session
         )
     assert excinfo.value.status_code == 409
     assert excinfo.value.detail["code"] == "lease_active"
@@ -223,7 +231,7 @@ async def test_execution_context_grants_lease_and_rejects_duplicate_claimants(db
     stored.lease_expires_at = _aware_dt(datetime.now(UTC)) - timedelta(seconds=1)
     await db_session.commit()
     successor = await internal.get_scan_execution_context(
-        scan_id=UUID(str(scan.id)), principal=rival, db=db_session
+        presented_identity=None, scan_id=UUID(str(scan.id)), principal=rival, db=db_session
     )
     assert successor["attempt_id"] != first["attempt_id"]
     assert successor["execution_revision"] == 2
@@ -242,10 +250,10 @@ async def test_execution_context_terminal_scan_identity_is_frozen(db_session):
     await db_session.commit()
 
     first = await internal.get_scan_execution_context(
-        scan_id=UUID(str(scan.id)), principal=_principal(org_id), db=db_session
+        presented_identity=None, scan_id=UUID(str(scan.id)), principal=_principal(org_id), db=db_session
     )
     second = await internal.get_scan_execution_context(
-        scan_id=UUID(str(scan.id)), principal=_principal(org_id), db=db_session
+        presented_identity=None, scan_id=UUID(str(scan.id)), principal=_principal(org_id), db=db_session
     )
 
     assert first["attempt_id"] == "frozen-attempt"
@@ -261,12 +269,12 @@ async def test_route_completion_with_stale_identity_is_a_typed_conflict(db_sessi
     scan_id = UUID(str(scan.id))
     principal = _principal(org_id)
 
-    stale = await internal.get_scan_execution_context(scan_id=scan_id, principal=principal, db=db_session)
+    stale = await internal.get_scan_execution_context(presented_identity=None, scan_id=scan_id, principal=principal, db=db_session)
     # Supersede the stale identity through an expired-lease reclaim (R09).
     stored = await db_session.get(Scan, str(scan.id))
     stored.lease_expires_at = _aware_dt(datetime.now(UTC)) - timedelta(seconds=1)
     await db_session.commit()
-    current = await internal.get_scan_execution_context(scan_id=scan_id, principal=principal, db=db_session)
+    current = await internal.get_scan_execution_context(presented_identity=None, scan_id=scan_id, principal=principal, db=db_session)
     assert current["execution_revision"] == stale["execution_revision"] + 1
 
     accepted = await internal.complete_scan(
@@ -285,3 +293,60 @@ async def test_route_completion_with_stale_identity_is_a_typed_conflict(db_sessi
         await db_session.execute(select(func.count()).select_from(ScanCompletionReceipt))
     ).scalar_one()
     assert receipts == 1
+
+
+@pytest.mark.asyncio
+async def test_execution_context_tells_the_worker_when_the_head_is_a_fork(db_session):
+    """Shadow PR runs (#46): the worker must know a fork head is untrusted."""
+    scan, org_id = await _seed_scan(db_session)
+    scan.head_is_fork = True
+    await db_session.commit()
+
+    served = await internal.get_scan_execution_context(
+        presented_identity=None, scan_id=UUID(str(scan.id)), principal=_principal(org_id), db=db_session
+    )
+
+    assert served["head_is_fork"] is True
+
+
+@pytest.mark.asyncio
+async def test_execution_context_reports_non_fork_runs_as_trusted_heads(db_session):
+    scan, org_id = await _seed_scan(db_session)
+
+    served = await internal.get_scan_execution_context(
+        presented_identity=None, scan_id=UUID(str(scan.id)), principal=_principal(org_id), db=db_session
+    )
+
+    assert served["head_is_fork"] is False
+
+
+@pytest.mark.asyncio
+async def test_execution_context_exposes_pull_request_number_for_shadow_runs(db_session):
+    """#52: the worker gates framework review packs on pull-request runs only."""
+    scan, org_id = await _seed_scan(db_session)
+    scan.trigger_type = "pull_request"
+    scan.pull_request_number = 7
+    await db_session.commit()
+
+    served = await internal.get_scan_execution_context(
+        presented_identity=None,
+        scan_id=UUID(str(scan.id)),
+        principal=_principal(org_id),
+        db=db_session,
+    )
+
+    assert served["pull_request_number"] == 7
+
+
+@pytest.mark.asyncio
+async def test_execution_context_has_no_pull_request_number_for_branch_scans(db_session):
+    scan, org_id = await _seed_scan(db_session)
+
+    served = await internal.get_scan_execution_context(
+        presented_identity=None,
+        scan_id=UUID(str(scan.id)),
+        principal=_principal(org_id),
+        db=db_session,
+    )
+
+    assert served["pull_request_number"] is None

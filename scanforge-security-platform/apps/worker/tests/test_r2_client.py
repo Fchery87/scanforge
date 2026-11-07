@@ -23,15 +23,24 @@ async def test_upload_requests_exact_key_then_puts_without_worker_credential(tmp
     artifact.write_text("{}")
     client = R2Client("https://api.example", "worker-secret")
 
+    staging_key = "scan-staging/org-1/scan-1/attempt-1/art-1/trivy/results.json"
+    published_key = "scan-artifacts/org-1/scan-1/art-1/trivy/results.json"
     presign_response = Mock()
     presign_response.json.return_value = {
-        "key": "scan-artifacts/org-1/scan-1/trivy/results.json",
+        "artifact_id": "art-1",
+        "key": staging_key,
         "upload_url": "https://storage.example/exact-signed-key",
+    }
+    finalize_response = Mock()
+    finalize_response.json.return_value = {
+        "artifact_id": "art-1",
+        "storage_uri": published_key,
+        "verification_state": "verified_immutable",
     }
     upload_response = Mock()
 
     http_client = AsyncMock()
-    http_client.post.return_value = presign_response
+    http_client.post.side_effect = [presign_response, finalize_response]
     http_client.put.return_value = upload_response
     http_client.__aenter__.return_value = http_client
     http_client.__aexit__.return_value = False
@@ -45,7 +54,11 @@ async def test_upload_requests_exact_key_then_puts_without_worker_credential(tmp
             worker_incarnation_id="incarnation-1",
         )
 
-    assert result["storage_uri"] == "scan-artifacts/org-1/scan-1/trivy/results.json"
+    # The returned reference is the API-verified immutable key, not the staging key.
+    assert result["storage_uri"] == published_key
+    finalize_call = http_client.post.await_args_list[1]
+    assert finalize_call.args[0].endswith("/internal/scans/scan-1/artifacts/art-1/finalize")
+    assert finalize_call.kwargs["json"] == {"checksum_sha256": result["checksum_sha256"]}
     assert http_client.post.await_args.kwargs["headers"] == {
         "X-Worker-Credential": "worker-secret",
         "X-Scan-Attempt-Id": "attempt-1",
@@ -66,7 +79,8 @@ async def test_upload_rejects_api_key_outside_tenant_scope(tmp_path):
 
     response = Mock()
     response.json.return_value = {
-        "key": "scan-artifacts/other-org/scan-1/trivy/results.json",
+        "artifact_id": "art-1",
+        "key": "scan-staging/other-org/scan-1/attempt-1/art-1/trivy/results.json",
         "upload_url": "https://storage.example/signed",
     }
     http_client = AsyncMock()

@@ -6,6 +6,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from app.normalizers.checkov import _normalize_repo_path, failed_checks_from
+from app.normalizers.identity import read_snippet_digest
 from app.scanners.base import ScannerAdapter, ScannerResult, write_sanitized_output
 from app.security.proc_env import build_contained_env
 from app.security.secret_evidence import sanitize_scanner_output
@@ -130,6 +132,18 @@ class CheckovAdapter(ScannerAdapter):
             )
         )
 
+    def annotate_identity(self, raw_output, repo_path: Path) -> None:
+        for check in failed_checks_from(raw_output):
+            line_range = check.get("file_line_range") or []
+            digest = read_snippet_digest(
+                repo_path,
+                _normalize_repo_path(check.get("file_path", "") or check.get("repo_file_path", "")),
+                line_range[0] if len(line_range) >= 1 else None,
+                line_range[1] if len(line_range) >= 2 else None,
+            )
+            if digest:
+                check["snippet_sha256"] = digest
+
     def parse_runtime_result(self, completed, output_directory: Path) -> ScannerResult:
         output_file = output_directory / "checkov-results.json"
         return self._parse_stdout_or_file(
@@ -163,7 +177,7 @@ class CheckovAdapter(ScannerAdapter):
                 env=build_contained_env({"BC_SKIP_MAPPING": "TRUE"}),
             )
             duration_ms = int((time.time() - start) * 1000)
-            return self._parse_stdout_or_file(
+            parsed = self._parse_stdout_or_file(
                 stdout=result.stdout,
                 output_file=output_file,
                 exit_code=result.returncode,
@@ -171,6 +185,9 @@ class CheckovAdapter(ScannerAdapter):
                 duration_ms=duration_ms,
                 stderr=result.stderr,
             )
+            if parsed.success:
+                self.annotate_identity(parsed.raw_output, repo_path)
+            return parsed
         except subprocess.TimeoutExpired:
             output_file.unlink(missing_ok=True)
             return self._apply_provenance(

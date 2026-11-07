@@ -7,6 +7,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from app.normalizers.identity import read_snippet_digest
+from app.normalizers.semgrep import _normalize_repo_path
 from app.scanners.base import ScannerAdapter, ScannerResult, write_sanitized_output
 from app.security.proc_env import build_contained_env
 from app.security.secret_evidence import sanitize_scanner_output
@@ -20,6 +22,11 @@ class SemgrepAdapter(ScannerAdapter):
     binary_name = "semgrep"
     binary_env_var = "SEMGREP_BINARY"
     db_backed = False
+
+    def __init__(self) -> None:
+        super().__init__()
+        # (local file, path relative to the rules root) for each active review pack (#52).
+        self.review_pack_rules: list[tuple[Path, Path]] = []
 
     def local_rules_path(self) -> Path:
         override = os.environ.get("SEMGREP_RULES_PATH")
@@ -35,6 +42,17 @@ class SemgrepAdapter(ScannerAdapter):
             return "sha256:" + hashlib.sha256(rules_file.read_bytes()).hexdigest()
         return super().default_rules_digest()
 
+    def resolve_provenance(self, *, now=None) -> dict:
+        provenance = super().resolve_provenance(now=now)
+        if self.review_pack_rules:
+            # Pack rules are part of the analyzer: a different rule set must never look comparable.
+            digests = sorted(
+                hashlib.sha256(local.read_bytes()).hexdigest() for local, _relative in self.review_pack_rules
+            )
+            combined = "|".join([str(provenance["rules_digest"] or ""), *digests])
+            provenance["rules_digest"] = "sha256:" + hashlib.sha256(combined.encode()).hexdigest()
+        return provenance
+
     def get_version(self) -> str:
         entry = self._read_manifest_entry()
         if isinstance(entry, dict) and entry.get("scanner_version"):
@@ -49,6 +67,9 @@ class SemgrepAdapter(ScannerAdapter):
             "SEMGREP_CONTAINER_RULES_PATH",
             str(CONTAINER_SEMGREP_RULES_PATH),
         )
+        pack_configs: list[str] = []
+        for _local, relative in self.review_pack_rules:
+            pack_configs += ["--config", str(Path(rules_target).parent / relative)]
         return (
             "scan",
             "--json",
@@ -58,6 +79,7 @@ class SemgrepAdapter(ScannerAdapter):
             "1",
             "--config",
             rules_target,
+            *pack_configs,
             "--json-output",
             "/workspace/output/semgrep-results.json",
             "/workspace/source",
@@ -162,6 +184,20 @@ class SemgrepAdapter(ScannerAdapter):
             )
         )
 
+    def annotate_identity(self, raw_output, repo_path: Path) -> None:
+        results = raw_output.get("results") if isinstance(raw_output, dict) else raw_output
+        for item in results or []:
+            if not isinstance(item, dict):
+                continue
+            digest = read_snippet_digest(
+                repo_path,
+                _normalize_repo_path(item.get("path", "")),
+                (item.get("start") or {}).get("line"),
+                (item.get("end") or {}).get("line"),
+            )
+            if digest:
+                item["snippet_sha256"] = digest
+
     def parse_runtime_result(self, completed, output_directory: Path) -> ScannerResult:
         output_file = output_directory / "semgrep-results.json"
         return self._parse_output_file(
@@ -177,6 +213,7 @@ class SemgrepAdapter(ScannerAdapter):
         output_file = repo_path / "semgrep-results.json"
         try:
             config_arg = str(self.local_rules_path()) if self.local_rules_path().exists() else "auto"
+            pack_configs = [arg for local, _relative in self.review_pack_rules for arg in ("--config", str(local))]
             result = subprocess.run(
                 [
                     self.binary_name,
@@ -188,6 +225,7 @@ class SemgrepAdapter(ScannerAdapter):
                     "1",
                     "--config",
                     config_arg,
+                    *pack_configs,
                     "--json-output",
                     "semgrep-results.json",
                     str(repo_path),
@@ -199,7 +237,7 @@ class SemgrepAdapter(ScannerAdapter):
                 env=build_contained_env(),
             )
             duration_ms = int((time.time() - start) * 1000)
-            return self._parse_output_file(
+            parsed = self._parse_output_file(
                 output_file,
                 exit_code=result.returncode,
                 timed_out=False,
@@ -207,6 +245,9 @@ class SemgrepAdapter(ScannerAdapter):
                 stderr=result.stderr,
                 repo_root=repo_path,
             )
+            if parsed.success:
+                self.annotate_identity(parsed.raw_output, repo_path)
+            return parsed
         except subprocess.TimeoutExpired:
             output_file.unlink(missing_ok=True)
             return self._apply_provenance(

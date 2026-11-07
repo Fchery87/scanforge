@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -94,8 +95,126 @@ class ScannerRunResponse(BaseModel):
     updated_at: datetime
 
 
+class ScannerCoverageResponse(BaseModel):
+    """Analyzer-reported measurements only; None means the analyzer did not report it."""
+
+    scanner_name: str
+    state: str
+    reasons: list[str] = []
+    outcome_status: str | None = None
+    declared_scope: str | None = None
+    inputs_found: int | None = None
+    inputs_supported: int | None = None
+    unsupported_inputs: list[str] | None = None
+    exclusions: list[str] | None = None
+    parse_failures: int | None = None
+    truncated: bool | None = None
+    timed_out: bool | None = None
+
+
+class CapabilityCoverageResponse(BaseModel):
+    capability: str
+    state: str = Field(pattern="^(complete|partial|unknown|not_applicable)$")
+    reasons: list[str] = []
+    scanners: list[ScannerCoverageResponse] = []
+
+
+class ShadowResultClassification(BaseModel):
+    fingerprint: str
+    scanner: str | None = None
+    capability: str | None = None
+    classification: str = Field(pattern="^(new|existing|unknown)$")
+    reason: str
+
+
+class ShadowClassificationCounts(BaseModel):
+    new: int = 0
+    existing: int = 0
+    unknown: int = 0
+
+
+class ShadowClassificationResponse(BaseModel):
+    """New / existing / unknown against a comparable merge-base baseline (never inferred)."""
+
+    state: str = Field(pattern="^(classified|unavailable)$")
+    merge_base_sha: str | None = None
+    comparison_strategy: str | None = None
+    baseline_scan_id: UUID | None = None
+    counts: ShadowClassificationCounts = ShadowClassificationCounts()
+    results: list[ShadowResultClassification] = []
+
+
+ShadowLabelValue = Literal["useful", "not_useful", "incorrect", "duplicate", "missing_context"]
+
+
+class ShadowCandidateLabelRequest(BaseModel):
+    """Reviewer judgement of a shadow candidate. Evaluation data; never a suppression."""
+
+    label: ShadowLabelValue
+
+
+class ShadowCandidateLabelResponse(BaseModel):
+    candidate_id: UUID
+    label: ShadowLabelValue
+    actor_user_id: UUID | None = None
+    labeled_at: datetime
+
+
+class ShadowReviewResult(BaseModel):
+    fingerprint: str
+    scanner: str | None = None
+    capability: str | None = None
+    classification: str = Field(pattern="^(new|existing|unknown)$")
+    reason: str
+    candidate_id: UUID | None = None
+    candidate_state: str | None = None
+    path: str | None = None
+    line_start: int | None = None
+    labels: list[ShadowCandidateLabelResponse] = []
+
+
+class ShadowReviewRevisions(BaseModel):
+    pull_request_number: int | None = None
+    base_sha: str | None = None
+    head_sha: str | None = None
+    merge_base_sha: str | None = None
+    comparison_strategy: str | None = None
+    baseline_scan_id: UUID | None = None
+    head_is_fork: bool = False
+
+
+class ShadowReviewDuration(BaseModel):
+    """Sum of measured scanner run durations; ``partial`` when some runs recorded none."""
+
+    state: str = Field(pattern="^(measured|partial|unavailable)$")
+    total_ms: int | None = None
+
+
+class ShadowReviewCost(BaseModel):
+    state: str = Field(pattern="^(estimated|unavailable)$")
+    reason: str | None = None
+
+
+class ShadowReviewResponse(BaseModel):
+    """Internal per-PR shadow view. ``empty`` and ``partial`` are never a clean verdict."""
+
+    state: str = Field(pattern="^(pending|failed|empty|partial|ready)$")
+    scan_id: UUID
+    scan_status: str
+    revisions: ShadowReviewRevisions
+    capability_coverage: list[CapabilityCoverageResponse] = []
+    classification_state: str = Field(pattern="^(classified|unavailable)$")
+    classification_counts: ShadowClassificationCounts = ShadowClassificationCounts()
+    results: list[ShadowReviewResult] = []
+    limitations: list[str] = []
+    duration: ShadowReviewDuration
+    cost_estimate: ShadowReviewCost
+
+
 class ScanDetailResponse(ScanResponse):
     scanner_runs: list[ScannerRunResponse] = []
+    capability_coverage: list[CapabilityCoverageResponse] = []
+    shadow_classification: ShadowClassificationResponse | None = None
 
 
 class ScanCancel(BaseModel):

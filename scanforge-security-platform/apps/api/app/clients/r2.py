@@ -1,5 +1,6 @@
 import boto3
 from botocore.config import Config
+from botocore.exceptions import ClientError
 
 
 class R2Client:
@@ -57,3 +58,32 @@ class R2Client:
             Params={"Bucket": self.bucket, "Key": key},
             ExpiresIn=expires_in,
         )
+
+    def object_size(self, key: str) -> int | None:
+        try:
+            return int(self.s3.head_object(Bucket=self.bucket, Key=key)["ContentLength"])
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
+                return None
+            raise
+
+    def read_object(self, key: str, max_bytes: int) -> bytes:
+        body = self.s3.get_object(Bucket=self.bucket, Key=key)["Body"]
+        try:
+            return body.read(max_bytes + 1)
+        finally:
+            body.close()
+
+    def put_object_if_absent(self, key: str, body: bytes, content_type: str) -> None:
+        """Write ``key`` only if nothing exists there (conditional create)."""
+        try:
+            self.s3.put_object(
+                Bucket=self.bucket, Key=key, Body=body, ContentType=content_type, IfNoneMatch="*"
+            )
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in {"PreconditionFailed", "412"}:
+                raise FileExistsError(key) from exc
+            raise
+
+    def delete_object(self, key: str) -> None:
+        self.s3.delete_object(Bucket=self.bucket, Key=key)

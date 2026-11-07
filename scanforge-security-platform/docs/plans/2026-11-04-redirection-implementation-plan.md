@@ -34,24 +34,26 @@ Spec: [issue #32](https://github.com/Fchery87/scanforge/issues/32). Each slice i
 | ID | Task | Issues | Depends on | Pilot-blocking | Status | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | P0 | Documentation cleanup, ADR-018, this plan | — | — | yes | Done | Branch `docs/product-redirection`; [cleanup report](../reviews/2026-11-04-cleanup-report.md) |
-| P1.1 | Absence credit requires comparable analyzers (G1) | #33 | — | yes | Not started | |
-| P1.2 | Clone isolation and exact-SHA requirement (G4, G5) | #34 | — | yes | Not started | |
-| P1.3 | Verify carried-forward M07/M08 acceptance | #35 (M07), #36 (M08 fencing) | — | yes | Not started | |
-| P1.4 | Primary dependency engine evaluation | #37 | — | yes | Not started | |
-| P1.5 | Fingerprint policy `fp.v3` (G2, G3) | #38 (source/secret), #39 (dependencies), #40 (successor links + timeline) | #33; #39 also #37 | yes | Not started | |
-| P1.5b | Dependency absence requires inventory evidence | #42 | #39, #41 | yes | Not started | |
-| P1.6 | Capability-scoped absence (G6) | #41 | #33, #37 | yes | Not started | |
-| P1.7 | Artifact finalization and server-derived completion (carried M09) | #43 (artifacts), #44 (canonical completion) | #36 | yes | Not started | |
-| P1.8 | Coverage assessment record | #45 | #41 | yes | Not started | |
-| P2.1 | PR revision identity and baseline comparison | #46 (shadow runs), #47 (new/existing/unknown) | #34, #35; #47 also #38, #39, #41, #45 | yes | Not started | |
-| P2.2 | Shadow PR analysis on ScanForge's own repository | #48 (debounce/supersede); enabling on ScanForge is an operator step | #46 | yes | Not started | |
-| P2.3 | Cross-commit reconciliation of shadow results | #49 | #47, #48 | yes | Not started | |
-| P2.4 | One framework review pack (FastAPI first) | #52 | #46 | yes | Not started | |
-| P2.5 | GitHub ingress reconciliation (carried M11) | #53 (lifecycle), #54 (missed events) | #35; #54 also #53 | yes | Not started | |
-| P2.6 | Shadow results view and evaluation corpus | #50 (view + labels), #51 (corpus) | #49 | yes | Not started | |
+| P1.1 | Absence credit requires comparable analyzers (G1) | #33 | — | yes | Done (branch `fix/33-comparable-analysis-absence`, `ea4c26b` + fix commit) | Focused suites (Step 11): 57 passed, 1 skipped (PostgreSQL case, `R05_POSTGRES_URL` unset), 1 failed in isolation; the failure predates this work (#57). Full suite: 271 passed, 8 skipped (baseline 257 passed, 8 skipped). `ruff check app` clean. Step 12: the completion path commits not-credited/untransitioned absence metadata (`scan_completion.py` commits after the `commit=False` call); the `commit=True` path skips its commit when nothing transitions, reachable only via the uncalled `mark_not_observed_for_completed_scan` wrapper (latent, not fixed) |
+| P1.2 | Clone isolation and exact-SHA requirement (G4, G5) | #34 | — | yes | Done (local git fixtures only) | #34: `0232bdf` (git isolation, exact-SHA requirement); `91e617f` (exact head SHA resolved at manual and scheduled scan creation). Worker clone-isolation and fork-config tests in the worker suite |
+| P1.3 | Verify carried-forward M07/M08 acceptance | #35 (M07), #36 (M08 fencing) | — | yes | Done (PostgreSQL run reported by the implementer, not re-run in review) | #35: `742d7e7` (serialized ref transitions, duplicate-trigger rollback isolation; M07 table above). #36: `6337a70` (terminal-scan write fencing, context-refetch adoption). Review C10: the worker's refetch sends the identity it holds (`test_scan_orchestrator.py`) |
+| P1.4 | Primary dependency engine evaluation | #37 | — | yes | Done-provisional | #37: `7bf9e35` (default full scan runs Trivy + Syft), `80d7d10`, `48be198` ([ADR-019](../adr/ADR-019-primary-dependency-engine.md) provisional, corpus and harness). The engine evaluation was NOT RUN, so the acceptance 'evaluation document with raw counts' is unmet; ADR-019 is not accepted by the maintainer |
+| P1.5 | Fingerprint policy `fp.v3` (G2, G3) | #38 (source/secret), #39 (dependencies), #40 (successor links + timeline) | #33; #39 also #37 | yes | Done | #38: `eb67f4a` (fp.v3 for Semgrep, Checkov, Gitleaks); #39: `fd6c745` (dependency identity); #40: `2323fae` (exact successor links, timeline). Existing fp.v2 findings are preserved, not recalculated |
+| P1.5b | Dependency absence requires inventory evidence | #42 | #39, #41 | yes | Done | #42: `855df50` (dependency absence requires same-scan Syft inventory evidence) |
+| P1.6 | Capability-scoped absence (G6) | #41 | #33, #37 | yes | Done | #41: `d1400b2` (capability-scoped absence). Review S3: API and worker capability maps pinned by `apps/api/tests/test_capability_registry_parity.py` |
+| P1.7 | Artifact finalization and server-derived completion (carried M09) | #43 (artifacts), #44 (canonical completion) | #36 | yes | Done (no real object store exercised) | #43: `44044db` (verified immutable artifact finalization); #44: `0e39d35`, `58ba337` (counts and audit derived from validated canonical evidence) |
+| P1.8 | Coverage assessment record | #45 | #41 | yes | Done | #45: `7b3b131` (per-capability coverage assessment on scan detail) |
+| P2.1 | PR revision identity and baseline comparison | #46 (shadow runs), #47 (new/existing/unknown) | #34, #35; #47 also #38, #39, #41, #45 | yes | Done (migrations 0025-0029 never run) | #46: `ee7c6e4`, `bbb118a`, `1d14ad5` (private PR shadow runs with recorded base/head/merge-base; fork heads untrusted, no credentials); #47: `6d8568e` (new / existing / unknown against a comparable merge-base baseline). Review notes C1-C5 are in [SYSTEM_OVERVIEW](../SYSTEM_OVERVIEW.md) |
+| P2.2 | Shadow PR analysis on ScanForge's own repository | #48 (debounce/supersede); enabling on ScanForge is an operator step | #46 | yes | Partly done | #48: `af766fa` (debounce and supersede obsolete shadow runs). Not done: enabling shadow on ScanForge's own repository is an operator step and was not performed |
+| P2.3 | Cross-commit reconciliation of shadow results | #49 | #47, #48 | yes | Done | #49: `8972a77` (candidate reconciliation across pushes; out-of-order head guard; review C3/C4 hardening) |
+| P2.4 | One framework review pack (FastAPI first) | #52 | #46 | yes | Done | #52: `a77edd6`, `a70f7fe` (FastAPI review pack `fastapi.v1`; pack id, version and rules digest recorded in the run summary and Semgrep run metadata). Detection-gated, not comprehensive |
+| P2.5 | GitHub ingress reconciliation (carried M11) | #53 (lifecycle), #54 (missed events) | #35; #54 also #53 | yes | Done (live GitHub never exercised) | #53: `511b765` (installation and repository lifecycle); #54: `82ac60f` (missed-event reconciliation to the current head with persisted receipts, no fabricated intermediate observations). Lifecycle handlers verified idempotent (review C8) |
+| P2.6 | Shadow results view and evaluation corpus | #50 (view + labels), #51 (corpus) | #49 | yes | Done | #50: `51a59da` (shadow results view and reviewer labels); #51: `7ba9549` (replay evaluation corpus, split, retention sweep, tenant cascade). Retention default is a maintainer decision |
 | P2.7 | Pilot gate: two design-partner repositories in shadow | Operator/human (no agent issue) | P2.1–P2.6 | yes | Not started | |
 | P3 | Bounded contextual reviewer, publication, feedback | — | P2.7 | no | Deferred | Expand into its own plan when P2.7 passes |
 | P4 | Reachability, fix suggestions, exports, more frameworks | — | P3 | no | Deferred | |
+
+**Verification note (review fixes on `review-fixes/spec-32`).** Not run anywhere on this branch: real PostgreSQL (the suites use SQLite stand-ins, and migrations 0025-0029 have never been applied), Docker or the scanner image, real scanners, live GitHub or GitHub App delivery, and the #37 dependency-engine evaluation. A `Done` row means the code and its tests are on the branch and the suites below passed; it is not a deployment or pilot claim. Commands, from each app directory with its `.venv`: API `DATABASE_URL=postgresql+asyncpg://u:p@localhost/db python -m pytest -q`; worker `python -m pytest -q`. Results at the review-fix tip: API 558 passed, 23 skipped, 1 failed (the known `test_evidence_contract` future-timestamp flake); worker 231 passed, 2 skipped; `ruff check app` clean in both apps. Known flakes: `test_evidence_contract` future-timestamp param, `test_lease_renewer`, `test_manual_reopen_blocks_old_and_requires_new_scans` (#57), `test_scan_dispatch*` pollution (#58).
 
 Ticket ordering refines the task order above: capability-scoped absence (#41) depends only on #33 and #37, not on `fp.v3`.
 
@@ -724,6 +726,24 @@ No new behavior. Turn "landed in code" into evidence or into explicit gaps.
 - Walk the archived October M07 and M08 checklists item by item. For each item, cite the test that proves it or mark it missing.
 - Missing M07 items become sub-tasks here. Missing M08 fencing items (progress, findings, uploads, heartbeat routes, not only completion) become sub-tasks here. M08 cleanup durability moves to P1.7.
 
+#### M07 acceptance evidence (#35)
+
+Tests are in `apps/api/tests/test_scan_dispatch.py` (SQLite, queue emulator) and `apps/api/tests/test_scan_dispatch_postgres.py` (disposable PostgreSQL 16, real concurrency; skipped when no PostgreSQL binaries or `DISPATCH_POSTGRES_URL`/`R04_POSTGRES_URL` are available).
+
+| M07 checklist item | Status | Evidence |
+| --- | --- | --- |
+| Queue outage after scan creation retains an awaiting-dispatch obligation and recovers on retry | Proven | `test_queue_outage_retains_awaiting_dispatch_and_recovers_on_retry` |
+| Crash after queue delivery before acknowledgement is idempotent on reclaim | Proven | `test_crash_after_queue_delivery_before_ack_is_idempotent_on_reclaim` |
+| Trigger, scan and obligation persist in one transaction | Proven (scan + obligation); fixed (savepoint) | `test_scan_and_obligation_commit_or_roll_back_together`. Fixed: a losing duplicate used `rollback()` on the caller's session, discarding the webhook delivery row and expiring loaded rows; `ScanService.create` now isolates scan + obligation insert in a savepoint |
+| Idempotent leased dispatcher with retries and visible awaiting-dispatch state | Proven | `test_postgres_concurrent_dispatchers_claim_each_obligation_once_with_zero_stranded`, `test_dispatcher_restart_reclaims_expired_lease_and_delivers_once`, outage test above |
+| Equivalent automatic business identity incl. scope/coverage context | Proven | `test_automatic_business_identity_and_manual_idempotency_vs_deliberate_rerun`, `test_concurrent_duplicate_automatic_triggers_yield_one_scan_and_one_obligation` |
+| Manual request idempotency separate from deliberate reruns | Fixed + proven | `test_concurrent_manual_requests_split_idempotent_duplicates_from_deliberate_reruns` (concurrent same-key requests previously raised `MissingGreenlet`) |
+| Bounded admission | Proven (SQLite) | `test_bounded_admission_and_explicit_supersession_of_unstarted_automatic_work` |
+| Explicit supersession of unstarted automatic work within a generation; manual work never coalesced | Proven | same test; `test_burst_with_concurrent_dispatchers_leaves_no_stranded_obligation` (manual scan survives a burst) |
+| Concurrent dispatchers, duplicates, restarts and bursts: one authoritative scan per equivalent trigger, zero stranded obligations | Fixed + proven on PostgreSQL | the three PostgreSQL tests above. Fixed: concurrent first pushes to a ref raced on `uq_repo_branch_generation` (500); `RepositoryRefService.resolve_and_advance_generation` now takes a per-ref `pg_advisory_xact_lock` so ref transitions, the scan and its obligation serialize |
+
+Not run: real Upstash Redis (the queue path uses the in-memory emulator `InMemoryUpstashQueue`); the Docker integration stack (`infra/testing/docker-compose.integration.yml`) because Docker is not accessible to this user, so a native PostgreSQL 16 cluster was used instead.
+
 Acceptance: a table in this plan listing every M07/M08 checklist item as proven (with test) or open. Commit the table only (`docs: verify M07/M08 acceptance (P1.3)`).
 
 ### Task P1.4: Primary dependency engine evaluation
@@ -827,7 +847,7 @@ Two design-partner repositories plus ScanForge, each with at least two weeks of 
 
 ## Open questions to resolve during execution
 
-1. Do counted-but-untransitioned absences reach the database in the completion path (P1.1 Step 12)?
+1. ~~Do counted-but-untransitioned absences reach the database in the completion path (P1.1 Step 12)?~~ Yes; see the P1.1 tracker row. The `commit=True` path's latent gap remains.
 2. Does the nested `scanforge-security-platform/.github/` Dependabot/Renovate configuration run at all? If not, move it to the Git root `.github/` in a separate change.
 3. B11 (`/findings/trend` shadowing) appears open; confirm with an assembled-router test and fix as a small independent slice.
 4. 19 harness stashes, about 25 stale branches and two prunable worktrees need a separate, approval-gated Git housekeeping inventory.

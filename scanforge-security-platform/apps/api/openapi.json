@@ -143,6 +143,111 @@
         }
       }
     },
+    "/api/v1/internal/scans/{scan_id}/artifacts/{artifact_id}/finalize": {
+      "post": {
+        "tags": [
+          "internal",
+          "internal"
+        ],
+        "summary": "Finalize Artifact",
+        "operationId": "finalize_artifact_api_v1_internal_scans__scan_id__artifacts__artifact_id__finalize_post",
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Scan Id"
+            }
+          },
+          {
+            "name": "artifact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Artifact Id"
+            }
+          },
+          {
+            "name": "X-Worker-Credential",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Credential"
+            }
+          },
+          {
+            "name": "X-Scan-Attempt-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Scan-Attempt-Id"
+            }
+          },
+          {
+            "name": "X-Scan-Execution-Revision",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "X-Scan-Execution-Revision"
+            }
+          },
+          {
+            "name": "X-Scan-Worker-Incarnation-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Scan-Worker-Incarnation-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArtifactFinalizeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/notifications": {
       "post": {
         "tags": [
@@ -769,6 +874,54 @@
               ],
               "title": "X-Worker-Credential"
             }
+          },
+          {
+            "name": "X-Scan-Attempt-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Scan-Attempt-Id"
+            }
+          },
+          {
+            "name": "X-Scan-Execution-Revision",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Scan-Execution-Revision"
+            }
+          },
+          {
+            "name": "X-Scan-Worker-Incarnation-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Scan-Worker-Incarnation-Id"
+            }
           }
         ],
         "responses": {
@@ -840,6 +993,55 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/shadow-corpus/expire": {
+      "post": {
+        "tags": [
+          "internal",
+          "internal"
+        ],
+        "summary": "Expire Shadow Corpus",
+        "description": "Retention sweep for the shadow replay corpus (#51); safe to call repeatedly.",
+        "operationId": "expire_shadow_corpus_api_v1_internal_shadow_corpus_expire_post",
+        "parameters": [
+          {
+            "name": "x-scheduler-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Scheduler-Key"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -965,6 +1167,26 @@
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/github/app": {
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Github App Webhook",
+        "description": "App-level lifecycle ingress (installation, installation_repositories, repository).\n\nAuthority comes only from the verified signature plus the stored installation\nbinding; no browser-supplied identity is involved. Lifecycle transitions are\nidempotent, so deduplication is by delivery id alone (a business digest would let a\nrepeated suspend/unsuspend be mistaken for a replay).",
+        "operationId": "github_app_webhook_api_v1_webhooks_github_app_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           }
@@ -3855,6 +4077,164 @@
         }
       }
     },
+    "/api/v1/organizations/{org_id}/projects/{project_id}/scans/{scan_id}/shadow-review": {
+      "get": {
+        "tags": [
+          "scans"
+        ],
+        "summary": "Get Shadow Review",
+        "description": "Internal per-PR shadow results. Read-only; never published to GitHub.",
+        "operationId": "get_shadow_review_api_v1_organizations__org_id__projects__project_id__scans__scan_id__shadow_review_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Org Id"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Scan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShadowReviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{org_id}/projects/{project_id}/scans/{scan_id}/shadow-review/candidates/{candidate_id}/label": {
+      "put": {
+        "tags": [
+          "scans"
+        ],
+        "summary": "Label Shadow Candidate",
+        "description": "Record the caller's evaluation label. Never suppresses or changes any finding.",
+        "operationId": "label_shadow_candidate_api_v1_organizations__org_id__projects__project_id__scans__scan_id__shadow_review_candidates__candidate_id__label_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Org Id"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Scan Id"
+            }
+          },
+          {
+            "name": "candidate_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Candidate Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShadowCandidateLabelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShadowCandidateLabelResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/organizations/{org_id}/projects/{project_id}/scans/{scan_id}/scanner-runs/{run_id}/download": {
       "get": {
         "tags": [
@@ -5574,6 +5954,22 @@
   },
   "components": {
     "schemas": {
+      "ArtifactFinalizeRequest": {
+        "properties": {
+          "checksum_sha256": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-fA-F]{64}$",
+            "title": "Checksum Sha256"
+          }
+        },
+        "type": "object",
+        "required": [
+          "checksum_sha256"
+        ],
+        "title": "ArtifactFinalizeRequest"
+      },
       "ArtifactUploadRequest": {
         "properties": {
           "scanner_name": {
@@ -5739,7 +6135,7 @@
             "title": "References"
           }
         },
-        "additionalProperties": true,
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "canonical_fingerprint"
@@ -5855,8 +6251,44 @@
             "title": "Url"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "title": "CanonicalFindingReference"
+      },
+      "CapabilityCoverageResponse": {
+        "properties": {
+          "capability": {
+            "type": "string",
+            "title": "Capability"
+          },
+          "state": {
+            "type": "string",
+            "pattern": "^(complete|partial|unknown|not_applicable)$",
+            "title": "State"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reasons",
+            "default": []
+          },
+          "scanners": {
+            "items": {
+              "$ref": "#/components/schemas/ScannerCoverageResponse"
+            },
+            "type": "array",
+            "title": "Scanners",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "capability",
+          "state"
+        ],
+        "title": "CapabilityCoverageResponse"
       },
       "CreateScannerRunRequest": {
         "properties": {
@@ -8521,30 +8953,9 @@
               }
             ],
             "title": "Html Url"
-          },
-          "installation_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Installation Id"
-          },
-          "provider_account_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Provider Account Id"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "provider",
@@ -9191,6 +9602,24 @@
             "type": "array",
             "title": "Scanner Runs",
             "default": []
+          },
+          "capability_coverage": {
+            "items": {
+              "$ref": "#/components/schemas/CapabilityCoverageResponse"
+            },
+            "type": "array",
+            "title": "Capability Coverage",
+            "default": []
+          },
+          "shadow_classification": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShadowClassificationResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -9646,6 +10075,138 @@
         },
         "type": "object",
         "title": "ScanStatusUpdate"
+      },
+      "ScannerCoverageResponse": {
+        "properties": {
+          "scanner_name": {
+            "type": "string",
+            "title": "Scanner Name"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reasons",
+            "default": []
+          },
+          "outcome_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome Status"
+          },
+          "declared_scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declared Scope"
+          },
+          "inputs_found": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inputs Found"
+          },
+          "inputs_supported": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inputs Supported"
+          },
+          "unsupported_inputs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unsupported Inputs"
+          },
+          "exclusions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exclusions"
+          },
+          "parse_failures": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parse Failures"
+          },
+          "truncated": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Truncated"
+          },
+          "timed_out": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timed Out"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scanner_name",
+          "state"
+        ],
+        "title": "ScannerCoverageResponse",
+        "description": "Analyzer-reported measurements only; None means the analyzer did not report it."
       },
       "ScannerRunCompletion": {
         "properties": {
@@ -10166,6 +10727,507 @@
           "project_id"
         ],
         "title": "ScorecardResponse"
+      },
+      "ShadowCandidateLabelRequest": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "enum": [
+              "useful",
+              "not_useful",
+              "incorrect",
+              "duplicate",
+              "missing_context"
+            ],
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label"
+        ],
+        "title": "ShadowCandidateLabelRequest",
+        "description": "Reviewer judgement of a shadow candidate. Evaluation data; never a suppression."
+      },
+      "ShadowCandidateLabelResponse": {
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Candidate Id"
+          },
+          "label": {
+            "type": "string",
+            "enum": [
+              "useful",
+              "not_useful",
+              "incorrect",
+              "duplicate",
+              "missing_context"
+            ],
+            "title": "Label"
+          },
+          "actor_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor User Id"
+          },
+          "labeled_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Labeled At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidate_id",
+          "label",
+          "labeled_at"
+        ],
+        "title": "ShadowCandidateLabelResponse"
+      },
+      "ShadowClassificationCounts": {
+        "properties": {
+          "new": {
+            "type": "integer",
+            "title": "New",
+            "default": 0
+          },
+          "existing": {
+            "type": "integer",
+            "title": "Existing",
+            "default": 0
+          },
+          "unknown": {
+            "type": "integer",
+            "title": "Unknown",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "ShadowClassificationCounts"
+      },
+      "ShadowClassificationResponse": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "pattern": "^(classified|unavailable)$",
+            "title": "State"
+          },
+          "merge_base_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merge Base Sha"
+          },
+          "comparison_strategy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comparison Strategy"
+          },
+          "baseline_scan_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Scan Id"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/ShadowClassificationCounts",
+            "default": {
+              "new": 0,
+              "existing": 0,
+              "unknown": 0
+            }
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ShadowResultClassification"
+            },
+            "type": "array",
+            "title": "Results",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "ShadowClassificationResponse",
+        "description": "New / existing / unknown against a comparable merge-base baseline (never inferred)."
+      },
+      "ShadowResultClassification": {
+        "properties": {
+          "fingerprint": {
+            "type": "string",
+            "title": "Fingerprint"
+          },
+          "scanner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scanner"
+          },
+          "capability": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capability"
+          },
+          "classification": {
+            "type": "string",
+            "pattern": "^(new|existing|unknown)$",
+            "title": "Classification"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fingerprint",
+          "classification",
+          "reason"
+        ],
+        "title": "ShadowResultClassification"
+      },
+      "ShadowReviewCost": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "pattern": "^(estimated|unavailable)$",
+            "title": "State"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "ShadowReviewCost"
+      },
+      "ShadowReviewDuration": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "pattern": "^(measured|partial|unavailable)$",
+            "title": "State"
+          },
+          "total_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "ShadowReviewDuration",
+        "description": "Sum of measured scanner run durations; ``partial`` when some runs recorded none."
+      },
+      "ShadowReviewResponse": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "pattern": "^(pending|failed|empty|partial|ready)$",
+            "title": "State"
+          },
+          "scan_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Scan Id"
+          },
+          "scan_status": {
+            "type": "string",
+            "title": "Scan Status"
+          },
+          "revisions": {
+            "$ref": "#/components/schemas/ShadowReviewRevisions"
+          },
+          "capability_coverage": {
+            "items": {
+              "$ref": "#/components/schemas/CapabilityCoverageResponse"
+            },
+            "type": "array",
+            "title": "Capability Coverage",
+            "default": []
+          },
+          "classification_state": {
+            "type": "string",
+            "pattern": "^(classified|unavailable)$",
+            "title": "Classification State"
+          },
+          "classification_counts": {
+            "$ref": "#/components/schemas/ShadowClassificationCounts",
+            "default": {
+              "new": 0,
+              "existing": 0,
+              "unknown": 0
+            }
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ShadowReviewResult"
+            },
+            "type": "array",
+            "title": "Results",
+            "default": []
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Limitations",
+            "default": []
+          },
+          "duration": {
+            "$ref": "#/components/schemas/ShadowReviewDuration"
+          },
+          "cost_estimate": {
+            "$ref": "#/components/schemas/ShadowReviewCost"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state",
+          "scan_id",
+          "scan_status",
+          "revisions",
+          "classification_state",
+          "duration",
+          "cost_estimate"
+        ],
+        "title": "ShadowReviewResponse",
+        "description": "Internal per-PR shadow view. ``empty`` and ``partial`` are never a clean verdict."
+      },
+      "ShadowReviewResult": {
+        "properties": {
+          "fingerprint": {
+            "type": "string",
+            "title": "Fingerprint"
+          },
+          "scanner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scanner"
+          },
+          "capability": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capability"
+          },
+          "classification": {
+            "type": "string",
+            "pattern": "^(new|existing|unknown)$",
+            "title": "Classification"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "candidate_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Id"
+          },
+          "candidate_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate State"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "line_start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Start"
+          },
+          "labels": {
+            "items": {
+              "$ref": "#/components/schemas/ShadowCandidateLabelResponse"
+            },
+            "type": "array",
+            "title": "Labels",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "fingerprint",
+          "classification",
+          "reason"
+        ],
+        "title": "ShadowReviewResult"
+      },
+      "ShadowReviewRevisions": {
+        "properties": {
+          "pull_request_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pull Request Number"
+          },
+          "base_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Sha"
+          },
+          "head_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head Sha"
+          },
+          "merge_base_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merge Base Sha"
+          },
+          "comparison_strategy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comparison Strategy"
+          },
+          "baseline_scan_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Scan Id"
+          },
+          "head_is_fork": {
+            "type": "boolean",
+            "title": "Head Is Fork",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "ShadowReviewRevisions"
       },
       "SuppressionRuleCreate": {
         "properties": {

@@ -14,16 +14,38 @@ class CanonicalFindingInstance(BaseModel):
 
 
 class CanonicalFindingReference(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     type: str = "unknown"
     value: str = ""
     url: str | None = None
 
 
+CURRENT_FINGERPRINT_VERSION = "fp.v2"
+
+# Categories whose identity policy has moved past CURRENT_FINGERPRINT_VERSION.
+# A finding recorded under an older policy is never comparable with analysis
+# under the category's current one (ADR-014).
+CATEGORY_FINGERPRINT_VERSIONS = {"vulnerability": "fp.v3"}
+
+
+# Scanners whose every finding is identified under a newer policy regardless of
+# category (Semgrep emits vulnerability and code-quality findings; Trivy's
+# secret and IaC findings stay on the default policy).
+SCANNER_FINGERPRINT_VERSIONS = {"semgrep": "fp.v3", "checkov": "fp.v3", "gitleaks": "fp.v3"}
+
+
+def current_fingerprint_version(category: str | None, scanner: str | None = None) -> str:
+    if scanner in SCANNER_FINGERPRINT_VERSIONS:
+        return SCANNER_FINGERPRINT_VERSIONS[scanner]
+    return CATEGORY_FINGERPRINT_VERSIONS.get(category or "", CURRENT_FINGERPRINT_VERSION)
+
+
 class CanonicalFindingCandidate(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
     canonical_fingerprint: str = Field(min_length=1, max_length=255)
-    fingerprint_version: str = Field(default="fp.v2", min_length=1, max_length=32)
+    fingerprint_version: str = Field(default=CURRENT_FINGERPRINT_VERSION, min_length=1, max_length=32)
     severity: str = "medium"
     category: str = "unknown"
     title: str = "Untitled Finding"

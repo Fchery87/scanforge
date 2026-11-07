@@ -9,11 +9,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.enums import ScanStatus
 from app.db.models import Project, Scan, ScanCompletionReceipt, ScannerRun
 from app.schemas.scan_completion import ScanCompletionRequest
+from app.services.artifact_finalization import ArtifactFinalizationService
+from app.services.audit_logs import AuditLogService
 from app.services.evidence_contract import (
     compute_canonical_evidence_digest,
     derive_scan_evidence_decision,
 )
 from app.services.findings import FindingService
+from app.services.pr_candidates import ShadowCandidateService, build_result_locations
+from app.services.pr_classification import (
+    ShadowClassificationService,
+    build_result_index,
+    carried_shadow_summary,
+    fingerprint_policy_digest,
+)
 
 
 class ScanCompletionConflict(Exception):
@@ -107,6 +116,7 @@ class ScanCompletionService:
                 scan,
                 data,
                 digest,
+                organization_id=organization_id,
                 worker_principal_id=worker_principal_id,
             )
         except Exception:
@@ -148,9 +158,14 @@ class ScanCompletionService:
         data: ScanCompletionRequest,
         digest: str,
         *,
+        organization_id: UUID,
         worker_principal_id: str | None,
     ) -> dict:
         scan_id = scan.id
+        # Worker-claimed artifact references are replaced by verified ones (#43).
+        data = await ArtifactFinalizationService(self.db, None).reconcile_completion_artifacts(
+            str(scan_id), str(organization_id), data
+        )
         decision = derive_scan_evidence_decision(
             data,
             expected_scanners=getattr(scan, "expected_scanners_json", None),
@@ -213,13 +228,24 @@ class ScanCompletionService:
         }
         scan.summary_json = {
             **data.summary_json,
+            **carried_shadow_summary(scan.summary_json),
             "scanner_health": scanner_health,
             "seen_fingerprints": sorted(seen_fingerprints),
+            # Per-scan result evidence for shadow PR classification (#47): shadow findings are
+            # not stored as repository findings, so each scan carries its own result index.
+            "result_index": build_result_index(data.findings),
+            "result_locations": build_result_locations(data.findings),
+            "fingerprint_policy": fingerprint_policy_digest(),
             "coverage_completeness": decision.coverage_completeness,
             "closure_eligible": decision.closure_eligible,
             "artifact_availability": decision.artifact_availability,
             "severity_counts": decision.severity_counts,
             "ineligibility_reasons": list(decision.ineligibility_reasons),
+            # Counts are derived from validated evidence; worker-reported
+            # values for these keys are discarded.
+            "finding_count": len(data.findings),
+            "critical_count": decision.severity_counts.get("critical", 0),
+            "high_count": decision.severity_counts.get("high", 0),
         }
         scan.contract_version = decision.contract_version
         scan.coverage_completeness = decision.coverage_completeness
@@ -234,6 +260,8 @@ class ScanCompletionService:
                 commit=False,
             )
         scan.status = ScanStatus.COMPLETED
+        await ShadowClassificationService(self.db).schedule_baseline_work(scan)
+        await ShadowCandidateService(self.db).reconcile(scan)
         receipt = ScanCompletionReceipt(
             scan_id=str(scan_id),
             worker_principal_id=worker_principal_id,
@@ -265,6 +293,23 @@ class ScanCompletionService:
             },
         )
         self.db.add(receipt)
+        AuditLogService(self.db).record(
+            actor_user_id=None,
+            action="scan_completed",
+            target_type="scan",
+            target_id=scan_id,
+            organization_id=organization_id,
+            metadata_json={
+                "evidence_digest": digest,
+                "winning_attempt_id": str(data.winning_attempt_id),
+                "execution_revision": data.execution_revision,
+                "inserted_findings": inserted,
+                "updated_findings": updated,
+                "coverage_completeness": decision.coverage_completeness,
+                "closure_eligible": decision.closure_eligible,
+                "worker_principal_id": worker_principal_id,
+            },
+        )
         await self.db.flush()
         await self.db.commit()
         return {

@@ -88,7 +88,9 @@ FULL_HEALTH = {
 }
 MAIN = "refs/heads/main"
 DEV = "refs/heads/dev"
-OK_RUNS = (("trivy", "completed"), ("gitleaks", "completed"))
+TRIVY_V1 = {"scanner_version": "0.56.2", "parser_version": "2026-10-parser.v1", "rules_digest": None}
+GITLEAKS_V1 = {"scanner_version": "8.21.2", "parser_version": "2026-10-parser.v1", "rules_digest": "sha256:gl-rules-a"}
+OK_RUNS = (("trivy", "completed", TRIVY_V1), ("gitleaks", "completed", GITLEAKS_V1))
 
 
 def _health(**overrides):
@@ -173,18 +175,29 @@ async def _seed_repo(session):
     return str(repo_id), str(project_id), user_id
 
 
-async def _seed_finding(session, repo_id, project_id, fingerprint, *, status="open"):
+async def _seed_finding(
+    session,
+    repo_id,
+    project_id,
+    fingerprint,
+    *,
+    status="open",
+    scanner="trivy",
+    fingerprint_version="fp.v3",
+    category="vulnerability",
+):
     now = datetime.now(UTC)
     finding = Finding(
         project_id=project_id,
         repository_id=repo_id,
-        category="vulnerability",
+        category=category,
         severity="high",
         status=status,
         title="t",
         description=None,
         canonical_fingerprint=fingerprint,
-        primary_scanner="trivy",
+        fingerprint_version=fingerprint_version,
+        primary_scanner=scanner,
         first_seen_at=now,
         last_seen_at=now,
     )
@@ -212,22 +225,54 @@ async def _seed_scan(session, repo_id, project_id, *, branch=MAIN, commit, scan_
     return scan
 
 
-async def _observe(session, repo_id, project_id, fingerprint, *, branch=MAIN, commit):
+async def _add_runs(session, scan_id, runs):
+    """Committed scanner-run evidence, as completion persists it before findings."""
+    for name, status, signature in runs:
+        session.add(
+            ScannerRun(
+                id=str(uuid4()),
+                scan_id=str(scan_id),
+                scanner_name=name,
+                status=ScanStatus(status),
+                **signature,
+            )
+        )
+        # One row per flush keeps inserts single-row on both dialects.
+        await session.flush()
+
+
+async def _observe(
+    session,
+    repo_id,
+    project_id,
+    fingerprint,
+    *,
+    branch=MAIN,
+    commit,
+    runs=OK_RUNS,
+    scanner="trivy",
+    fingerprint_version="fp.v3",
+    category="vulnerability",
+):
     """Positive evidence: a comparable scan that reports the finding."""
     service = FindingService(session)
     scan = await _seed_scan(session, repo_id, project_id, branch=branch, commit=commit)
+    await _add_runs(session, scan.id, runs)
     await service.upsert_from_scan(
         scan_id=str(scan.id),
         repository_id=repo_id,
         project_id=project_id,
         normalized_findings=[
             {
-                "category": "vulnerability",
+                "category": category,
                 "severity": "high",
                 "title": "t",
                 "canonical_fingerprint": fingerprint,
-                "primary_scanner": "trivy",
+                "fingerprint_version": fingerprint_version,
+                "primary_scanner": scanner,
                 "confidence_score": 0.9,
+                "package_name": "pkg",
+                "instance": {"package_name": "pkg", "installed_version": "1.0.0", "path": "lock"},
             }
         ],
     )
@@ -244,6 +289,7 @@ async def _absence(
     summary=None,
     run_statuses=OK_RUNS,
     created_at=None,
+    inventory=True,
 ):
     """One absence evaluation for a fresh scan, mirroring completion.
 
@@ -254,13 +300,19 @@ async def _absence(
     scan = await _seed_scan(
         session, repo_id, project_id, branch=branch, commit=commit, created_at=created_at
     )
-    for name, status in run_statuses:
+    await _add_runs(session, scan.id, run_statuses)
+    if inventory and any(name == "trivy" for name, _, _ in run_statuses):
+        # Dependency absence needs same-scan inventory (#42); "pkg" is gone in these scans.
         session.add(
             ScannerRun(
-                id=str(uuid4()), scan_id=str(scan.id), scanner_name=name, status=ScanStatus(status)
+                id=str(uuid4()),
+                scan_id=str(scan.id),
+                scanner_name="syft",
+                status=ScanStatus.COMPLETED,
+                metadata_json={"inventory": {"complete": True, "packages": []}},
+                **{"scanner_version": "1.4.1", "parser_version": "2026-10-parser.v1", "rules_digest": None},
             )
         )
-        # One row per flush keeps inserts single-row on both dialects.
         await session.flush()
     return await service.mark_not_observed_after_scan(
         repository_id=repo_id,
@@ -292,8 +344,10 @@ async def test_non_comparable_scan_does_not_disappear_finding(db_session):
         repo_id,
         project_id,
         commit="c" * 40,
-        summary=_health(complete=False, failed=["gitleaks"]),
-        run_statuses=(("trivy", "completed"), ("gitleaks", "failed")),
+        # The finding's own capability (trivy -> dependencies) failed; since #41 an unrelated
+        # failure (gitleaks) no longer blocks it, see test_capability_scoped_absence.py.
+        summary=_health(complete=False, failed=["trivy"], completed=["gitleaks"]),
+        run_statuses=(("trivy", "failed", TRIVY_V1), ("gitleaks", "completed", GITLEAKS_V1)),
     )
 
     assert updated == 0
@@ -489,6 +543,171 @@ async def test_scan_without_committed_scanner_runs_is_ineligible(db_session):
 
     assert updated == 0
     assert (await _reload(db_session, finding)).status == "open"
+
+
+TRIVY_V2 = {**TRIVY_V1, "scanner_version": "0.57.0"}
+UPGRADED_RUNS = (("trivy", "completed", TRIVY_V2), ("gitleaks", "completed", GITLEAKS_V1))
+
+
+@pytest.mark.asyncio
+async def test_analyzer_upgrade_absences_never_close_finding(db_session):
+    """P1.1 (#33): an analyzer change is not remediation evidence (ADR-014)."""
+    repo_id, project_id, _ = await _seed_repo(db_session)
+    fingerprint = "fp-analyzer-upgrade"
+    finding = await _seed_finding(db_session, repo_id, project_id, fingerprint)
+    service = await _observe(db_session, repo_id, project_id, fingerprint, commit="0" * 40)
+
+    assert await _absence(service, repo_id, project_id, commit="a" * 40, run_statuses=UPGRADED_RUNS) == 0
+    assert await _absence(service, repo_id, project_id, commit="b" * 40, run_statuses=UPGRADED_RUNS) == 0
+
+    after = await _reload(db_session, finding)
+    assert after.status == "open"
+    series = after.metadata_json["absence_series"][MAIN]["qualifying_absences"]
+    assert series == []
+
+
+@pytest.mark.asyncio
+async def test_uncredited_absence_is_explained_once_per_analyzer(db_session):
+    repo_id, project_id, _ = await _seed_repo(db_session)
+    fingerprint = "fp-analyzer-event"
+    finding = await _seed_finding(db_session, repo_id, project_id, fingerprint)
+    service = await _observe(db_session, repo_id, project_id, fingerprint, commit="0" * 40)
+
+    await _absence(service, repo_id, project_id, commit="a" * 40, run_statuses=UPGRADED_RUNS)
+    await _absence(service, repo_id, project_id, commit="b" * 40, run_statuses=UPGRADED_RUNS)
+
+    events = [e for e in await _events(db_session, finding) if e.event_type == "absence_not_credited"]
+    assert len(events) == 1
+    assert events[0].metadata_json["blocked_by"] == ["analyzer_not_comparable"]
+    assert events[0].metadata_json["baseline"]["scanner_version"] == "0.56.2"
+    assert events[0].metadata_json["current"]["scanner_version"] == "0.57.0"
+
+
+@pytest.mark.asyncio
+async def test_reobservation_under_new_analyzer_restores_credit(db_session):
+    repo_id, project_id, _ = await _seed_repo(db_session)
+    fingerprint = "fp-analyzer-rebaseline"
+    finding = await _seed_finding(db_session, repo_id, project_id, fingerprint)
+    service = await _observe(db_session, repo_id, project_id, fingerprint, commit="0" * 40)
+    await _absence(service, repo_id, project_id, commit="a" * 40, run_statuses=UPGRADED_RUNS)
+
+    await _observe(db_session, repo_id, project_id, fingerprint, commit="1" * 40, runs=UPGRADED_RUNS)
+    assert await _absence(service, repo_id, project_id, commit="b" * 40, run_statuses=UPGRADED_RUNS) == 1
+    assert await _absence(service, repo_id, project_id, commit="c" * 40, run_statuses=UPGRADED_RUNS) == 1
+    assert (await _reload(db_session, finding)).status == "fixed"
+
+
+@pytest.mark.asyncio
+async def test_finding_without_recorded_presence_analyzer_is_not_closed(db_session):
+    repo_id, project_id, _ = await _seed_repo(db_session)
+    fingerprint = "fp-legacy-presence"
+    finding = await _seed_finding(db_session, repo_id, project_id, fingerprint)
+    legacy_runs = (
+        ("trivy", "completed", {"scanner_version": None, "parser_version": None, "rules_digest": None}),
+    )
+    service = await _observe(db_session, repo_id, project_id, fingerprint, commit="0" * 40, runs=legacy_runs)
+
+    assert await _absence(service, repo_id, project_id, commit="a" * 40) == 0
+    assert await _absence(service, repo_id, project_id, commit="b" * 40) == 0
+    assert (await _reload(db_session, finding)).status == "open"
+
+
+@pytest.mark.asyncio
+async def test_fp_v2_dependency_finding_is_preserved_and_not_closed_by_new_policy_absence(db_session):
+    """P1.5 (#39): the fp.v3 scan reports new identities, so the fp.v2 row is absent.
+
+    That absence comes from a policy change, not a fix: the finding keeps its
+    state and the uncredited absence is explained.
+    """
+    repo_id, project_id, _ = await _seed_repo(db_session)
+    fingerprint = "fp2-legacy-dependency"
+    finding = await _seed_finding(db_session, repo_id, project_id, fingerprint, fingerprint_version="fp.v2")
+    service = await _observe(
+        db_session, repo_id, project_id, fingerprint, commit="0" * 40, fingerprint_version="fp.v2"
+    )
+
+    assert await _absence(service, repo_id, project_id, commit="a" * 40) == 0
+    assert await _absence(service, repo_id, project_id, commit="b" * 40) == 0
+    assert await _absence(service, repo_id, project_id, commit="c" * 40) == 0
+
+    after = await _reload(db_session, finding)
+    assert after.status == "open"
+    assert after.fingerprint_version == "fp.v2"
+    events = [e for e in await _events(db_session, finding) if e.event_type == "absence_not_credited"]
+    assert len(events) == 1
+    assert events[0].metadata_json["baseline"]["fingerprint_version"] == "fp.v2"
+    assert events[0].metadata_json["current"]["fingerprint_version"] == "fp.v3"
+
+
+@pytest.mark.asyncio
+async def test_upsert_records_the_candidate_fingerprint_version(db_session):
+    repo_id, project_id, _ = await _seed_repo(db_session)
+    await _observe(db_session, repo_id, project_id, "fp3-new-dependency", commit="0" * 40)
+
+    result = await db_session.execute(select(Finding).where(Finding.canonical_fingerprint == "fp3-new-dependency"))
+    row = result.scalar_one()
+    assert row.fingerprint_version == "fp.v3"
+
+
+SEMGREP_V1 = {"scanner_version": "1.99.0", "parser_version": "2026-10-parser.v1", "rules_digest": "sha256:sg-rules"}
+
+
+@pytest.mark.asyncio
+async def test_fp_v2_secret_finding_is_not_closed_by_fp_v3_gitleaks_absences(db_session):
+    """P1.5 (#38): the moved scanner's absences never close findings from the old policy."""
+    repo_id, project_id, _ = await _seed_repo(db_session)
+    finding = await _seed_finding(
+        db_session, repo_id, project_id, "fp2-secret", scanner="gitleaks", category="secret", fingerprint_version="fp.v2"
+    )
+    service = await _observe(
+        db_session, repo_id, project_id, "fp2-secret", commit="0" * 40,
+        scanner="gitleaks", category="secret", fingerprint_version="fp.v2",
+    )
+
+    assert await _absence(service, repo_id, project_id, commit="a" * 40) == 0
+    assert await _absence(service, repo_id, project_id, commit="b" * 40) == 0
+
+    assert (await _reload(db_session, finding)).status == "open"
+    events = [e for e in await _events(db_session, finding) if e.event_type == "absence_not_credited"]
+    assert events[0].metadata_json["blocked_by"] == ["analyzer_not_comparable"]
+    assert events[0].metadata_json["current"]["fingerprint_version"] == "fp.v3"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("scanner", "category"),
+    [("gitleaks", "secret"), ("checkov", "iac_misconfiguration"), ("semgrep", "code_quality")],
+)
+async def test_fp_v3_source_and_secret_findings_close_on_comparable_absences(db_session, scanner, category):
+    repo_id, project_id, _ = await _seed_repo(db_session)
+    runs = (*OK_RUNS, ("semgrep", "completed", SEMGREP_V1), ("checkov", "completed", SEMGREP_V1))
+    service = await _observe(
+        db_session, repo_id, project_id, "fp3-src", commit="0" * 40, runs=runs, scanner=scanner, category=category
+    )
+    finding = (await db_session.execute(select(Finding))).scalar_one()
+    assert finding.fingerprint_version == "fp.v3"
+
+    everyone = ["trivy", "gitleaks", "semgrep", "checkov"]
+    summary = _health(expected=everyone, completed=everyone)
+    assert await _absence(service, repo_id, project_id, commit="a" * 40, run_statuses=runs, summary=summary) == 1
+    assert await _absence(service, repo_id, project_id, commit="b" * 40, run_statuses=runs, summary=summary) == 1
+    assert (await _reload(db_session, finding)).status == "fixed"
+
+
+@pytest.mark.asyncio
+async def test_trivy_secret_findings_stay_on_the_default_policy(db_session):
+    repo_id, project_id, _ = await _seed_repo(db_session)
+    finding = await _seed_finding(
+        db_session, repo_id, project_id, "fp2-trivy-secret", category="secret", fingerprint_version="fp.v2"
+    )
+    service = await _observe(
+        db_session, repo_id, project_id, "fp2-trivy-secret", commit="0" * 40,
+        category="secret", fingerprint_version="fp.v2",
+    )
+
+    assert await _absence(service, repo_id, project_id, commit="a" * 40) == 1
+    assert await _absence(service, repo_id, project_id, commit="b" * 40) == 1
+    assert (await _reload(db_session, finding)).status == "fixed"
 
 
 @pytest.mark.asyncio

@@ -31,6 +31,12 @@ class Scan(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # trigger event provides it (pull_request base.sha).
     base_sha: Mapped[str | None] = mapped_column(String(64))
     pull_request_number: Mapped[int | None] = mapped_column(Integer)
+    # Shadow PR analysis (#46): merge-base is resolved from the provider and left NULL
+    # when unresolved; it is never guessed. comparison_strategy names which inputs a
+    # later comparison uses (head scan vs merge-base scan).
+    merge_base_sha: Mapped[str | None] = mapped_column(String(64))
+    comparison_strategy: Mapped[str | None] = mapped_column(String(32))
+    head_is_fork: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     requested_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     error_message: Mapped[str | None] = mapped_column(Text)
     summary_json: Mapped[dict | None] = mapped_column(JSONB)

@@ -15,9 +15,11 @@ provider-compare receipts owned by the scan lifecycle (D1); this module
 requires distinct commits and arrival order and must be handed ordered,
 already-ancestry-checked scan context.
 """
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from enum import StrEnum
+
+from app.services.evidence_contract import CAPABILITY_SCANNERS
 
 ABSENCE_THRESHOLD = 2
 POLICY_VERSION = "scan-evidence-v1"
@@ -42,6 +44,12 @@ class AbsenceBlockReason(StrEnum):
     MANUAL_REOPEN_CHECKPOINT = "manual_reopen_checkpoint"
     UNRESOLVED_BRANCH_OBLIGATION = "unresolved_branch_obligation"
     HUMAN_BLOCK_STATE = "human_block_state"
+    ANALYZER_NOT_COMPARABLE = "analyzer_not_comparable"
+    ANALYZER_BASELINE_UNKNOWN = "analyzer_baseline_unknown"
+    PULL_REQUEST_SHADOW = "pull_request_shadow"
+    # Dependency absence needs Syft inventory from the same scan (ADR-014, P1.7).
+    INVENTORY_UNAVAILABLE = "inventory_unavailable"
+    PACKAGE_STILL_INSTALLED = "package_still_installed"
 
 
 class FindingWorkflowState(StrEnum):
@@ -82,18 +90,27 @@ def transition_event_for_state(state: str) -> str:
     return TRANSITION_EVENTS[validate_workflow_state(state)]
 
 
-def evaluate_scan_absence_evidence(scan_context: Mapping[str, object] | None) -> tuple[bool, list[str]]:
-    """Decide whether a completed scan may authorize any absence observation.
+def evaluate_scan_absence_evidence(
+    scan_context: Mapping[str, object] | None, capability: str | None = None
+) -> tuple[bool, list[str]]:
+    """Decide whether a completed scan may authorize an absence observation.
 
     Failed or missing scanner evidence is treated as committed evidence (D3):
-    a scan without explicit complete, healthy coverage for every expected
-    scanner is ineligible and never proves a finding disappeared.
+    a scan without explicit healthy coverage is ineligible and never proves a
+    finding disappeared.  Without ``capability`` every expected scanner must be
+    healthy.  With a finding's capability (P1.6) only that capability's expected
+    scanners are judged, so an unrelated failure cannot block it and an
+    unrelated success cannot prove it; a capability with no expected scanner in
+    the scan is ineligible.
     """
     context = scan_context or {}
     reasons: list[str] = []
 
     if context.get("scan_type") != "full":
         reasons.append(AbsenceBlockReason.SCAN_TYPE_NOT_FULL)
+    if context.get("trigger_type") == "pull_request":
+        # Shadow PR analysis examines proposed code, not the tracked branch.
+        reasons.append(AbsenceBlockReason.PULL_REQUEST_SHADOW)
     if not context.get("commit_sha"):
         reasons.append(AbsenceBlockReason.MISSING_COMMIT_SHA)
     if not context.get("branch_name"):
@@ -107,13 +124,21 @@ def evaluate_scan_absence_evidence(scan_context: Mapping[str, object] | None) ->
         completed = set(health.get("completed") or [])
         failed = set(health.get("failed") or [])
         missing = set(health.get("missing") or [])
-        if (
-            not expected
-            or failed
-            or missing
-            or not set(expected).issubset(completed)
-            or health.get("complete") is not True
-        ):
+        if capability is not None:
+            in_scope = set(CAPABILITY_SCANNERS.get(capability, ()))
+            expected = [name for name in expected if name in in_scope]
+            failed &= in_scope
+            missing &= in_scope
+            incomplete = not expected or failed or missing or not set(expected).issubset(completed)
+        else:
+            incomplete = (
+                not expected
+                or failed
+                or missing
+                or not set(expected).issubset(completed)
+                or health.get("complete") is not True
+            )
+        if incomplete:
             reasons.append(AbsenceBlockReason.SCANNER_EVIDENCE_INCOMPLETE)
 
     return (not reasons, reasons)
@@ -201,6 +226,106 @@ def branch_obligation_counts(metadata: Mapping[str, object] | None) -> dict[str,
     for branch in observed_branches(meta):
         counts[branch] = len(_absence_entry(meta, branch)["qualifying_absences"])
     return counts
+
+
+ANALYZER_SIGNATURE_FIELDS = (
+    "scanner_name",
+    "scanner_version",
+    "parser_version",
+    "rules_digest",
+    "fingerprint_version",
+)
+ANALYZER_BLOCK_KEY = "analyzer_absence_block"
+
+
+def analyzer_signature(
+    *,
+    scanner_name: str | None,
+    scanner_version: str | None,
+    parser_version: str | None,
+    rules_digest: str | None,
+    fingerprint_version: str | None,
+) -> dict[str, str | None]:
+    """Identity of the analysis that produced (or failed to produce) a finding.
+
+    Database and image digests are deliberately excluded: vulnerability
+    databases refresh at least weekly and one image carries every scanner.
+    That residual risk is tracked in the redirection plan (P1.5b).
+    """
+    return {
+        "scanner_name": scanner_name,
+        "scanner_version": scanner_version,
+        "parser_version": parser_version,
+        "rules_digest": rules_digest,
+        "fingerprint_version": fingerprint_version,
+    }
+
+
+def _signature_recorded(signature: Mapping[str, object] | None) -> bool:
+    return bool(signature and signature.get("scanner_version") and signature.get("parser_version"))
+
+
+def analyzer_comparability(
+    baseline: Mapping[str, object] | None,
+    current: Mapping[str, object] | None,
+) -> AbsenceBlockReason | None:
+    """None when an absence may earn credit; otherwise why it may not.
+
+    An absence under a different analyzer is not remediation evidence: the
+    analyzer, not the code, may explain the difference (ADR-014).
+    """
+    if not _signature_recorded(baseline):
+        return AbsenceBlockReason.ANALYZER_BASELINE_UNKNOWN
+    if not _signature_recorded(current):
+        return AbsenceBlockReason.ANALYZER_NOT_COMPARABLE
+    for field in ANALYZER_SIGNATURE_FIELDS:
+        if baseline.get(field) != current.get(field):
+            return AbsenceBlockReason.ANALYZER_NOT_COMPARABLE
+    return None
+
+
+def usable_inventory(run_metadata: Mapping[str, object] | None) -> list[dict] | None:
+    """Package list from a Syft run's metadata, or None unless it is a complete inventory.
+
+    Absence of a dependency finding is proven only by an inventory the worker marked
+    complete; a missing, malformed or truncated one proves nothing.
+    """
+    inventory = (run_metadata or {}).get("inventory")
+    if not isinstance(inventory, Mapping) or inventory.get("complete") is not True:
+        return None
+    packages = inventory.get("packages")
+    if not isinstance(packages, list):
+        return None
+    return [p for p in packages if isinstance(p, Mapping) and p.get("name") and p.get("version")]
+
+
+def _package_name_keys(name: str) -> set[str]:
+    """Comparison keys for a package name across ecosystems' spellings.
+
+    Case and ``_``/``.`` vs ``-`` do not distinguish packages, and a Maven
+    ``group:artifact`` coordinate matches the bare artifact Syft reports. Over-matching
+    only withholds credit, so these keys deliberately err toward "still installed".
+    """
+
+    def normalize(value: str) -> str:
+        return value.strip().lower().replace("_", "-").replace(".", "-")
+
+    return {normalize(name), normalize(name.rsplit(":", 1)[-1])}
+
+
+def installed_packages_matching(
+    identities: Sequence[tuple[str, str]], inventory: Sequence[Mapping[str, object]]
+) -> list[dict]:
+    """Inventory entries showing any (name, installed version) of the finding is still present."""
+    matches: list[dict] = []
+    for name, version in identities:
+        wanted = _package_name_keys(name)
+        for package in inventory:
+            if str(package["version"]) == version and wanted & _package_name_keys(str(package["name"])):
+                matches.append(
+                    {"name": str(package["name"]), "version": version, "path": package.get("path")}
+                )
+    return matches
 
 
 def absence_transition_target(

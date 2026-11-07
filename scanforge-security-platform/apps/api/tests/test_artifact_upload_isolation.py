@@ -207,7 +207,7 @@ class _StubR2Client:
     def __init__(self, **_kwargs) -> None:
         pass
 
-    def generate_presigned_upload_url(self, key: str, content_type: str) -> str:
+    def generate_presigned_upload_url(self, key: str, content_type: str, expires_in: int = 300) -> str:
         return f"https://signed.example/{key}?ct={content_type}"
 
 
@@ -241,8 +241,10 @@ async def test_upload_url_key_is_scoped_to_authenticated_organization_and_scan(d
     request = ArtifactUploadRequest(scanner_name="trivy", filename="results.json", size_bytes=10)
     response = await create_artifact_upload_url(uuid.UUID(scan_id), request, principal, attempt, session)
 
-    assert response["key"] == f"scan-artifacts/{org_a}/{scan_id}/trivy/results.json"
-    assert response["upload_url"].startswith(f"https://signed.example/scan-artifacts/{org_a}/{scan_id}/")
+    prefix = f"scan-staging/{org_a}/{scan_id}/{attempt.attempt_id}/"
+    assert response["key"].startswith(prefix)
+    assert response["key"].endswith("/trivy/results.json")
+    assert response["upload_url"].startswith(f"https://signed.example/{prefix}")
 
 
 @pytest.mark.asyncio

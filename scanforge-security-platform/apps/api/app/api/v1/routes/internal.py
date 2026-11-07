@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +26,12 @@ from app.schemas.canonical_findings import CanonicalFindingCandidate
 from app.schemas.notifications import NotificationCreate
 from app.schemas.scan_completion import ScanCompletionRequest
 from app.schemas.scans import ScanStatusUpdate
+from app.services.artifact_finalization import (
+    MAX_ARTIFACT_BYTES,
+    ArtifactFinalizationError,
+    ArtifactFinalizationService,
+    valid_component,
+)
 from app.services.evidence_contract import EvidenceContractError
 from app.services.findings import FindingService
 from app.services.github import GitHubService
@@ -35,11 +41,12 @@ from app.services.scan_lease import LEASE_SECONDS, RENEWAL_SECONDS, LeaseConflic
 from app.services.scan_lifecycle import ScanLifecycleService
 from app.services.scan_schedules import ScanScheduleService
 from app.services.scans import ScanAuthorizationError, ScanService
+from app.services.shadow_corpus import ShadowCorpusService
 
 logger = logging.getLogger(__name__)
 
 SCAN_TYPE_SCANNERS = {
-    "full": ["trivy", "gitleaks", "osv", "semgrep", "syft", "checkov", "grype"],
+    "full": ["trivy", "gitleaks", "semgrep", "syft", "checkov"],
     "diff": ["gitleaks", "semgrep", "checkov"],
     "dependencies": ["trivy", "osv", "syft", "grype"],
     "secrets": ["gitleaks"],
@@ -71,10 +78,30 @@ async def require_execution_attempt_identity(
     )
 
 
+async def optional_execution_attempt_identity(
+    attempt_id: str | None = Header(default=None, alias="X-Scan-Attempt-Id"),
+    execution_revision: int | None = Header(default=None, alias="X-Scan-Execution-Revision"),
+    worker_incarnation_id: str | None = Header(default=None, alias="X-Scan-Worker-Incarnation-Id"),
+) -> ExecutionAttemptIdentity | None:
+    """Identity a refetching worker proves it already holds, if any.
+
+    A partial set is treated as a (stale) presented identity, never as absent.
+    """
+    if attempt_id is None and execution_revision is None and worker_incarnation_id is None:
+        return None
+    return ExecutionAttemptIdentity(
+        attempt_id=attempt_id or "",
+        execution_revision=execution_revision if execution_revision is not None else -1,
+        worker_incarnation_id=worker_incarnation_id or "",
+    )
+
+
 def assert_live_execution_authority(
     scan: Scan,
     principal: WorkerPrincipal,
     attempt: ExecutionAttemptIdentity,
+    *,
+    allow_terminal: bool = False,
 ) -> None:
     if (
         scan.current_attempt_id != attempt.attempt_id
@@ -90,6 +117,19 @@ def assert_live_execution_authority(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "stale_worker", "message": "Worker principal does not own this attempt"},
         )
+    # Leases are not cleared when a scan ends, so a finished or canceled scan
+    # would otherwise accept writes until the lease runs out.  Only completion
+    # replay (which reads its frozen receipt) may touch a terminal scan.
+    if not allow_terminal and getattr(scan, "status", None) in TERMINAL_SCAN_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "scan_terminal", "message": "Scan is finished; writes are closed"},
+        )
+    if allow_terminal and getattr(scan, "status", None) in TERMINAL_SCAN_STATUSES:
+        # Frozen-receipt replay is read-only and re-checks attempt identity in
+        # the completion service; a lapsed lease must not hide the original
+        # result from the attempt that earned it.
+        return
     lease_expires_at = scan.lease_expires_at
     if lease_expires_at is None:
         raise HTTPException(
@@ -170,9 +210,9 @@ async def create_artifact_upload_url(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan not found")
     scan, project = scan_project
     assert_live_execution_authority(scan, principal, attempt)
-    if data.size_bytes < 0 or data.size_bytes > 50 * 1024 * 1024:
+    if data.size_bytes < 0 or data.size_bytes > MAX_ARTIFACT_BYTES:
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Artifact too large")
-    if not _valid_artifact_component(data.scanner_name) or not _valid_artifact_component(data.filename):
+    if not valid_component(data.scanner_name) or not valid_component(data.filename):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid artifact path")
     if data.content_type not in {
         "application/json",
@@ -182,29 +222,63 @@ async def create_artifact_upload_url(
     }:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported artifact type")
 
-    key = (
-        f"scan-artifacts/{project.organization_id}/{scan.id}/"
-        f"{data.scanner_name}/{data.filename}"
-    )
-    client = R2Client(
+    try:
+        return await ArtifactFinalizationService(db, _artifact_store()).stage(
+            organization_id=str(project.organization_id),
+            scan_id=str(scan.id),
+            attempt_id=attempt.attempt_id,
+            scanner_name=data.scanner_name,
+            filename=data.filename,
+            content_type=data.content_type,
+            size_bytes=data.size_bytes,
+        )
+    except ArtifactFinalizationError as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e)) from e
+
+
+class ArtifactFinalizeRequest(BaseModel):
+    checksum_sha256: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-fA-F]{64}$")
+
+
+@router.post("/scans/{scan_id}/artifacts/{artifact_id}/finalize")
+async def finalize_artifact(
+    scan_id: UUID,
+    artifact_id: UUID,
+    data: ArtifactFinalizeRequest,
+    principal: WorkerPrincipal = Depends(require_capability("artifacts:write")),
+    attempt: ExecutionAttemptIdentity = Depends(require_execution_attempt_identity),
+    *,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        scan_project = await ScanService(db).authorize_scan_access(
+            scan_id,
+            caller_organization_id=principal.organization_id,
+        )
+    except ScanAuthorizationError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
+    if scan_project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan not found")
+    scan, project = scan_project
+    assert_live_execution_authority(scan, principal, attempt)
+    try:
+        return await ArtifactFinalizationService(db, _artifact_store()).finalize(
+            organization_id=str(project.organization_id),
+            scan_id=str(scan.id),
+            attempt_id=attempt.attempt_id,
+            artifact_id=str(artifact_id),
+            checksum_sha256=data.checksum_sha256,
+        )
+    except ArtifactFinalizationError as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e)) from e
+
+
+def _artifact_store() -> R2Client:
+    return R2Client(
         endpoint=settings.R2_ENDPOINT,
         bucket=settings.R2_BUCKET,
         access_key_id=settings.R2_ACCESS_KEY_ID,
         secret_access_key=settings.R2_SECRET_ACCESS_KEY,
-    )
-    return {
-        "key": key,
-        "upload_url": client.generate_presigned_upload_url(key, data.content_type),
-    }
-
-
-def _valid_artifact_component(value: str) -> bool:
-    return (
-        bool(value)
-        and value not in {".", ".."}
-        and "/" not in value
-        and "\\" not in value
-        and "\x00" not in value
     )
 
 
@@ -249,6 +323,7 @@ async def complete_scan(
             execution_revision=data.execution_revision,
             worker_incarnation_id=data.worker_incarnation_id or "",
         ),
+        allow_terminal=True,
     )
     try:
         return await ScanCompletionService(db).complete(
@@ -356,8 +431,14 @@ async def update_scanner_run(
             duration_ms=data.duration_ms,
             exit_code=data.exit_code,
             error_message=data.error_message,
-            artifact_uri=data.artifact_uri,
-            metadata_json=data.metadata_json,
+            # Worker-claimed storage references are never trusted: artifact
+            # references are set only from verified artifacts at completion.
+            artifact_uri=None,
+            metadata_json=(
+                {k: v for k, v in data.metadata_json.items() if not k.endswith("_uri")}
+                if data.metadata_json
+                else None
+            ),
             attempt_id=attempt.attempt_id,
             execution_revision=attempt.execution_revision,
             caller_organization_id=principal.organization_id,
@@ -447,6 +528,17 @@ async def get_repository_clone_url(
         raise HTTPException(status_code=409, detail={"code": "stale_attempt"})
     assert_live_execution_authority(scan, principal, attempt)
 
+    clone_url = f"https://github.com/{repo.owner_name}/{repo.repo_name}.git"
+    if getattr(scan, "head_is_fork", False):
+        # Fork PR heads are untrusted: no installation token, no privileged credential.
+        # Only content reachable without credentials can be acquired; anything else
+        # fails closed at the worker.
+        return {
+            "clone_url": clone_url,
+            "auth_header": "",
+            "external_repo_id": getattr(repo, "external_repo_id", None),
+        }
+
     result = await db.execute(
         select(OrganizationIntegration).where(OrganizationIntegration.organization_id == project.organization_id)
     )
@@ -486,7 +578,6 @@ async def get_repository_clone_url(
         raise HTTPException(status_code=404, detail="Repository is not accessible to the GitHub installation")
     token = await gh._get_installation_token(integration.installation_id)
 
-    clone_url = f"https://github.com/{repo.owner_name}/{repo.repo_name}.git"
     basic_auth = base64.b64encode(f"x-access-token:{token}".encode()).decode()
 
     return {
@@ -500,6 +591,7 @@ async def get_repository_clone_url(
 async def get_scan_execution_context(
     scan_id: UUID,
     principal: WorkerPrincipal = Depends(require_capability("scans:read")),
+    presented_identity: ExecutionAttemptIdentity | None = Depends(optional_execution_attempt_identity),
     db: AsyncSession = Depends(get_db),
 ):
     # Service-boundary org check (merge follow-up): the R06 ScanAuthorizationError
@@ -532,6 +624,15 @@ async def get_scan_execution_context(
                 str(scan.id),
                 terminal_statuses=TERMINAL_SCAN_STATUSES,
                 worker_owner=lease_owner,
+                presented_identity=(
+                    (
+                        presented_identity.attempt_id,
+                        presented_identity.execution_revision,
+                        presented_identity.worker_incarnation_id,
+                    )
+                    if presented_identity is not None
+                    else None
+                ),
             )
         except LeaseConflict as exc:
             raise HTTPException(
@@ -577,6 +678,8 @@ async def get_scan_execution_context(
         "branch_generation_number": branch_generation_number,
         "ancestry_status": ancestry_status,
         "commit_sha": scan.commit_sha,
+        "head_is_fork": bool(getattr(scan, "head_is_fork", False)),
+        "pull_request_number": getattr(scan, "pull_request_number", None),
         "status": scan.status.value,
         "user_id": str(scan.requested_by_user_id) if scan.requested_by_user_id else None,
         "attempt_id": locked_scan.current_attempt_id,
@@ -637,6 +740,15 @@ async def renew_scan_lease(
         "lease_seconds": LEASE_SECONDS,
         "renewal_seconds": RENEWAL_SECONDS,
     }
+
+
+@router.post("/shadow-corpus/expire")
+async def expire_shadow_corpus(
+    _scheduler: None = Depends(require_scheduler_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retention sweep for the shadow replay corpus (#51); safe to call repeatedly."""
+    return {"expired": await ShadowCorpusService(db).expire_past_retention()}
 
 
 @router.post("/scan-schedules/run-due")

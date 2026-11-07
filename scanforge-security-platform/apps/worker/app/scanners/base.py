@@ -109,6 +109,8 @@ class ScannerAdapter(ABC):
             )
             completed = runtime.run(request)
             result = self.parse_runtime_result(completed, output_directory)
+            if result.success:
+                self.annotate_identity(result.raw_output, repo_path)
             self._apply_provenance(result)
             if completed.image_digest:
                 result.image_digest = completed.image_digest
@@ -119,6 +121,14 @@ class ScannerAdapter(ABC):
         finally:
             if not keep_output_dir:
                 shutil.rmtree(output_directory, ignore_errors=True)
+
+    def annotate_identity(self, raw_output: dict[str, Any] | list[Any], repo_path: Path) -> None:  # noqa: B027
+        """Add location-independent identity inputs that sanitization removed.
+
+        Scanners whose findings are identified by their source snippet override
+        this to attach a snippet digest read from the checkout. Only a digest is
+        kept, never the snippet.
+        """
 
     def runtime_arguments(self) -> tuple[str, ...]:
         raise NotImplementedError(

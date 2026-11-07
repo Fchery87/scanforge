@@ -21,20 +21,29 @@ from app.db.models import (
     ScannerRun,
     User,
 )
-from app.schemas.canonical_findings import CanonicalFindingCandidate
+from app.schemas.canonical_findings import (
+    CURRENT_FINGERPRINT_VERSION,
+    CanonicalFindingCandidate,
+    current_fingerprint_version,
+)
 from app.schemas.findings import (
     FindingStats,
 )
 from app.services.access_policies import FINDING_MUTATION_ROLES
 from app.services.audit_logs import AuditLogService
+from app.services.evidence_contract import CAPABILITY_SCANNERS, capability_for_scanner
 from app.services.finding_lifecycle import (
     ABSENCE_THRESHOLD,
+    ANALYZER_BLOCK_KEY,
     POLICY_VERSION,
     REOPEN_CHECKPOINT_KEY,
     AbsenceBlockReason,
     absence_transition_target,
+    analyzer_comparability,
+    analyzer_signature,
     branch_obligation_counts,
     evaluate_scan_absence_evidence,
+    installed_packages_matching,
     observed_branches,
     record_manual_reopen_checkpoint,
     record_observed_branch,
@@ -42,8 +51,10 @@ from app.services.finding_lifecycle import (
     reset_branch_series,
     scan_precedes_checkpoint,
     transition_event_for_state,
+    usable_inventory,
     validate_transition,
 )
+from app.services.finding_successors import link_fp_successors
 from app.services.risk_scoring import calculate_risk_score
 from app.services.scans import ScanAuthorizationError
 from app.services.secret_safety import sanitize_secret_mapping
@@ -307,7 +318,7 @@ class FindingService:
         )
         return result.scalar_one()
 
-    async def upsert_from_scan(
+    async def upsert_from_scan(  # noqa: PLR0912
         self,
         scan_id: str,
         repository_id: str,
@@ -329,6 +340,10 @@ class FindingService:
         repository = await self.db.get(Repository, repository_id)
         repository_importance = getattr(repository, "importance", "normal") or "normal"
         scan_row = await self.db.get(Scan, str(scan_id))
+        if scan_row is not None and getattr(scan_row, "trigger_type", None) == "pull_request":
+            # Shadow PR analysis is stored on the run only (completion summary and
+            # artifacts). It never creates, reopens or closes baseline findings.
+            return 0, 0
         presence_branch = getattr(scan_row, "branch_name", None) if scan_row else None
 
         for finding_input in normalized_findings:
@@ -376,6 +391,7 @@ class FindingService:
                     title=candidate.title,
                     description=candidate.description,
                     canonical_fingerprint=fingerprint,
+                    fingerprint_version=candidate.fingerprint_version,
                     primary_scanner=candidate.primary_scanner,
                     confidence_score=candidate.confidence_score,
                     risk_score=calculate_risk_score(
@@ -450,6 +466,12 @@ class FindingService:
                 )
                 self.db.add(reference)
 
+        if new_count:
+            # New identities may be exact successors of fp.v2 findings (#40).
+            # Linking records lineage only; dispositions never transfer.
+            await self.db.flush()
+            await link_fp_successors(self.db, repository_id=repository_id)
+
         if commit:
             await self.db.commit()
         else:
@@ -473,17 +495,161 @@ class FindingService:
         )
         return set(result.scalars().all())
 
-    async def _scan_has_incomplete_scanner_evidence(self, scan_id: str) -> bool:
-        """Committed ScannerRun rows must show healthy coverage (D3)."""
-        result = await self.db.execute(select(ScannerRun.status).where(ScannerRun.scan_id == scan_id))
-        statuses = [getattr(status, "value", status) for status in result.scalars().all()]
+    async def _scan_has_incomplete_scanner_evidence(self, scan_id: str, capability: str | None = None) -> bool:
+        """Committed ScannerRun rows must show healthy coverage (D3).
+
+        With a capability only that capability's scanner runs are judged (P1.6).
+        """
+        result = await self.db.execute(
+            select(ScannerRun.scanner_name, ScannerRun.status).where(ScannerRun.scan_id == scan_id)
+        )
+        in_scope = CAPABILITY_SCANNERS.get(capability or "")
+        statuses = [
+            getattr(status, "value", status)
+            for name, status in result.all()
+            if capability is None or name in (in_scope or ())
+        ]
         if not statuses:
             # No committed scanner outcome: missing evidence is ineligible,
             # never assumed clean.
             return True
         return any(status != ScanStatus.COMPLETED.value for status in statuses)
 
-    async def _apply_branch_absence(self, finding, scan, branch: str, present: set[str]) -> int:
+    async def _capability_may_credit_absence(
+        self, scan, scan_context: dict, capability: str | None, cache: dict[str | None, bool]
+    ) -> bool:
+        """Per-capability absence eligibility for one scan, evaluated once per capability."""
+        if capability not in cache:
+            eligible, _ = evaluate_scan_absence_evidence(scan_context, capability=capability)
+            cache[capability] = eligible and not await self._scan_has_incomplete_scanner_evidence(
+                str(scan.id), capability
+            )
+        return cache[capability]
+
+    async def _scanner_signatures_for_scan(self, scan_id: str) -> dict[str, dict]:
+        """Analyzer identity of every scanner that ran in this scan."""
+        result = await self.db.execute(select(ScannerRun).where(ScannerRun.scan_id == scan_id))
+        return {
+            run.scanner_name: analyzer_signature(
+                scanner_name=run.scanner_name,
+                scanner_version=run.scanner_version,
+                parser_version=run.parser_version,
+                rules_digest=run.rules_digest,
+                fingerprint_version=CURRENT_FINGERPRINT_VERSION,
+            )
+            for run in result.scalars().all()
+        }
+
+    async def _last_presence_signature(self, finding, branch: str) -> dict | None:
+        """Analyzer identity at the finding's most recent presence on this branch."""
+        if not finding.primary_scanner:
+            return None
+        result = await self.db.execute(
+            select(ScannerRun)
+            .join(FindingInstance, FindingInstance.scan_id == ScannerRun.scan_id)
+            .join(Scan, Scan.id == FindingInstance.scan_id)
+            .where(
+                FindingInstance.finding_id == finding.id,
+                Scan.branch_name == branch,
+                ScannerRun.scanner_name == finding.primary_scanner,
+            )
+            .order_by(Scan.created_at.desc())
+            .limit(1)
+        )
+        run = result.scalars().first()
+        if run is None:
+            return None
+        return analyzer_signature(
+            scanner_name=run.scanner_name,
+            scanner_version=run.scanner_version,
+            parser_version=run.parser_version,
+            rules_digest=run.rules_digest,
+            fingerprint_version=finding.fingerprint_version,
+        )
+
+    async def _scan_inventory(self, scan_id: str) -> list[dict] | None:
+        """Syft inventory from this scan's own completed run, else None (never another scan's)."""
+        result = await self.db.execute(
+            select(ScannerRun).where(ScannerRun.scan_id == scan_id, ScannerRun.scanner_name == "syft")
+        )
+        for run in result.scalars().all():
+            if getattr(run.status, "value", run.status) == ScanStatus.COMPLETED.value and (
+                run.outcome_status == ScanStatus.COMPLETED.value
+            ):
+                return usable_inventory(run.metadata_json)
+        return None
+
+    async def _dependency_inventory_block(
+        self, finding, inventory: list[dict] | None
+    ) -> tuple[AbsenceBlockReason, dict] | None:
+        """Why inventory evidence forbids absence credit for a dependency finding, else None.
+
+        A vulnerability finding that disappears while its package version is still
+        installed is an advisory or scanner change, not remediation. License findings
+        are derived from the inventory itself and are exempt.
+        """
+        if capability_for_scanner(finding.primary_scanner) != "dependencies" or finding.category == (
+            "license_compliance"
+        ):
+            return None
+        if inventory is None:
+            return AbsenceBlockReason.INVENTORY_UNAVAILABLE, {}
+        result = await self.db.execute(
+            select(FindingInstance.package_name, FindingInstance.installed_version).where(
+                FindingInstance.finding_id == finding.id,
+                FindingInstance.package_name.is_not(None),
+                FindingInstance.installed_version.is_not(None),
+            )
+        )
+        identities = sorted({(name, version) for name, version in result.all()})
+        if not identities:
+            # Without the affected package version there is nothing to look up.
+            return AbsenceBlockReason.INVENTORY_UNAVAILABLE, {}
+        still_installed = installed_packages_matching(identities, inventory)
+        if still_installed:
+            return AbsenceBlockReason.PACKAGE_STILL_INSTALLED, {"packages": still_installed}
+        return None
+
+    def _record_uncredited_absence(
+        self, finding, scan, branch, reason, baseline, *, current, extra: dict | None = None
+    ) -> None:
+        """Explain a non-credited absence once per (branch, reason, current analyzer)."""
+        metadata = dict(finding.metadata_json or {})
+        blocks = dict(metadata.get(ANALYZER_BLOCK_KEY) or {})
+        marker = {"reason": reason.value, "current": current}
+        if blocks.get(branch) == marker:
+            return
+        blocks[branch] = marker
+        metadata[ANALYZER_BLOCK_KEY] = blocks
+        finding.metadata_json = metadata
+        self.db.add(
+            FindingEvent(
+                finding_id=finding.id,
+                event_type="absence_not_credited",
+                actor_user_id=None,
+                metadata_json={
+                    "scan_id": str(scan.id),
+                    "commit_sha": str(scan.commit_sha),
+                    "branch": branch,
+                    "policy": POLICY_VERSION,
+                    "blocked_by": [reason.value],
+                    "baseline": baseline,
+                    "current": current,
+                    **(extra or {}),
+                },
+            )
+        )
+
+    async def _apply_branch_absence(
+        self,
+        finding,
+        scan,
+        branch: str,
+        present: set[str],
+        current_signatures: dict[str, dict],
+        *,
+        inventory: list[dict] | None = None,
+    ) -> int:
         """Record one branch-local absence and transition when eligible.
 
         Returns 1 when the finding state changed, else 0.
@@ -492,15 +658,31 @@ class FindingService:
             return 0
         metadata = dict(finding.metadata_json or {})
         known_branches = observed_branches(metadata)
-        if not known_branches:
-            # Unknown branch provenance blocks auto-closure.
-            return 0
         if branch not in known_branches:
-            # Absence on a branch where the finding was never seen is
-            # ignored for this finding.
+            # Unknown branch provenance (no observed branches) blocks
+            # auto-closure, and an absence on a branch where the finding was
+            # never seen is ignored for this finding.
             return 0
         if scan_precedes_checkpoint(scan.created_at, metadata.get(REOPEN_CHECKPOINT_KEY)):
             # Scan issued at/before a manual reopen decision.
+            return 0
+
+        baseline = await self._last_presence_signature(finding, branch)
+        current = current_signatures.get(finding.primary_scanner or "")
+        if current is not None:
+            # The scan analyzes under the category's current identity policy.
+            policy = current_fingerprint_version(finding.category, finding.primary_scanner)
+            current = {**current, "fingerprint_version": policy}
+        block, extra = analyzer_comparability(baseline, current), {}
+        if block is None:
+            # Dependency findings also need inventory showing the package version is gone.
+            block, extra = await self._dependency_inventory_block(finding, inventory) or (None, {})
+        if block is not None:
+            # An analyzer or advisory-intelligence difference may explain the absence; it is
+            # not remediation evidence (ADR-014).
+            self._record_uncredited_absence(
+                finding, scan, branch, block, baseline, current=current, extra=extra
+            )
             return 0
 
         metadata, counted = record_qualifying_absence(
@@ -580,23 +762,33 @@ class FindingService:
 
         scan_context = {
             "scan_type": scan.scan_type,
+            "trigger_type": scan.trigger_type,
             "branch_name": scan.branch_name,
             "commit_sha": scan.commit_sha,
             "scanner_health": (scan_summary or {}).get("scanner_health"),
         }
-        eligible, _ = evaluate_scan_absence_evidence(scan_context)
-        if not eligible:
+        # Scan-level gates (type, ref, commit, PR shadow) apply to every capability; scanner
+        # health is judged per finding capability so one failed scanner blocks only its own.
+        _, reasons = evaluate_scan_absence_evidence({**scan_context, "scanner_health": None})
+        if any(reason != AbsenceBlockReason.SCANNER_EVIDENCE_INCOMPLETE for reason in reasons):
             return 0
-        if await self._scan_has_incomplete_scanner_evidence(str(scan.id)):
-            return 0
+        capability_cache: dict[str | None, bool] = {}
 
+        current_signatures = await self._scanner_signatures_for_scan(str(scan.id))
         present = await self._scan_persisted_fingerprints(str(scan.id))
         present = present | set(seen_fingerprints or [])
+        inventory = await self._scan_inventory(str(scan.id))
 
         branch = scan.branch_name
         updated = 0
         for finding in await self._list_open_findings_for_repository(repository_id):
-            updated += await self._apply_branch_absence(finding, scan, branch, present)
+            if finding.canonical_fingerprint not in present and not await self._capability_may_credit_absence(
+                scan, scan_context, capability_for_scanner(finding.primary_scanner), capability_cache
+            ):
+                continue
+            updated += await self._apply_branch_absence(
+                finding, scan, branch, present, current_signatures, inventory=inventory
+            )
 
         if updated:
             if commit:

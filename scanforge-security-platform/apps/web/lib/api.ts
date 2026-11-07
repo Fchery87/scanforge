@@ -21,6 +21,8 @@ import {
   scanScheduleSchema,
   scanSchema,
   scorecardSchema,
+  shadowCandidateLabelSchema,
+  shadowReviewSchema,
   suppressionRuleSchema,
 } from "@/lib/api-schemas";
 
@@ -185,6 +187,14 @@ export const api = {
       request(`/organizations/${orgId}/projects/${projectId}/scans`, { method: "POST", body: JSON.stringify(data) }, scanSchema),
     get: (orgId: string, projectId: string, scanId: string) =>
       request(`/organizations/${orgId}/projects/${projectId}/scans/${scanId}`, {}, scanDetailSchema),
+    shadowReview: (orgId: string, projectId: string, scanId: string) =>
+      request(`/organizations/${orgId}/projects/${projectId}/scans/${scanId}/shadow-review`, {}, shadowReviewSchema),
+    labelShadowCandidate: (orgId: string, projectId: string, scanId: string, candidateId: string, label: string) =>
+      request(
+        `/organizations/${orgId}/projects/${projectId}/scans/${scanId}/shadow-review/candidates/${candidateId}/label`,
+        { method: "PUT", body: JSON.stringify({ label }) },
+        shadowCandidateLabelSchema,
+      ),
     cancel: (orgId: string, projectId: string, scanId: string, reason?: string) =>
       request(`/organizations/${orgId}/projects/${projectId}/scans/${scanId}/cancel`, {
         method: "POST",

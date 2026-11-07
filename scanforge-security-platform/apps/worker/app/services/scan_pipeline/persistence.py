@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import httpx
 
 from app.core.logging import get_logger
+from app.normalizers.syft import build_syft_inventory
 from app.security.secret_evidence import sanitize_secret_finding
 from app.services.scan_pipeline.context import ScanContext
 
@@ -18,6 +19,21 @@ class PersistenceStage:
     def __init__(self, api_base_url: str, worker_credential: str) -> None:
         self.api_base_url = api_base_url
         self.worker_credential = worker_credential
+
+    @staticmethod
+    def _run_metadata(context: ScanContext, scanner_name: str, uploads_by_scanner: dict) -> dict:
+        metadata = dict(uploads_by_scanner.get(scanner_name) or {})
+        if scanner_name == "semgrep" and context.review_packs:
+            # Review-pack rules run inside the Semgrep run; record which pack versions it used.
+            metadata["review_packs"] = [
+                {"id": p["id"], "version": p["version"], "rules_digest": p["rules_digest"]}
+                for p in context.review_packs
+            ]
+        result = context.scanner_results.get(scanner_name)
+        if scanner_name == "syft" and result is not None and result.success:
+            # Dependency absence is credited only against this scan's own inventory.
+            metadata["inventory"] = build_syft_inventory(result.raw_output)
+        return metadata
 
     async def complete_scan(self, context: ScanContext) -> None:
         run_uploads_by_scanner = (context.artifact_uris or {}).get("scanner_runs") or {}
@@ -60,7 +76,7 @@ class PersistenceStage:
                                 (run_uploads_by_scanner.get(name) or {}).get("artifact_uri")
                                 or (run_uploads_by_scanner.get(name) or {}).get("raw_output_uri")
                             ),
-                            "metadata_json": dict(run_uploads_by_scanner.get(name) or {}),
+                            "metadata_json": self._run_metadata(context, name, run_uploads_by_scanner),
                         }
                         for name, result in context.scanner_results.items()
                     ],

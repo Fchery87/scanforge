@@ -250,11 +250,113 @@ class ScanDispatchService:
             .order_by(Scan.created_at.asc())
         )
         rows = (await self.db.execute(stmt)).all()
-        superseded: list[Scan] = []
         reason = (
             f"Superseded before execution by verified descendant commit {new_scan.commit_sha} "
             f"in generation {branch_generation_number}"
         )
+        return self._apply_supersession(rows, new_scan=new_scan, reason=reason)
+
+    async def supersede_obsolete_pr_shadow_runs(self, *, new_scan: Scan) -> list[Scan]:
+        """Supersede unstarted shadow runs for older heads of the same pull request (#48).
+
+        Reuses the durable-dispatch supersession semantics: the older scan is canceled, its
+        obligation is marked superseded, and no observations are fabricated. No ancestry is
+        required because a force-push or rebase replaces the head with a non-descendant.
+        Running work is never canceled or coalesced; it is only marked as having a newer
+        head so its results are visibly obsolete.
+        """
+        if new_scan.trigger_type != "pull_request" or new_scan.pull_request_number is None:
+            return []
+
+        scope = (
+            Scan.repository_id == str(new_scan.repository_id),
+            Scan.id != str(new_scan.id),
+            Scan.trigger_type == "pull_request",
+            Scan.full_ref_name == new_scan.full_ref_name,
+            Scan.pull_request_number == int(new_scan.pull_request_number),
+            Scan.commit_sha != new_scan.commit_sha,
+            Scan.deleted_at.is_(None),
+        )
+        unstarted = (
+            await self.db.execute(
+                select(Scan, ScanDispatchObligation)
+                .join(ScanDispatchObligation, ScanDispatchObligation.scan_id == Scan.id)
+                .where(
+                    *scope,
+                    Scan.status == ScanStatusEnum.QUEUED,
+                    Scan.current_attempt_id.is_(None),
+                    ScanDispatchObligation.status.in_(
+                        (
+                            DispatchObligationStatus.AWAITING_DISPATCH.value,
+                            DispatchObligationStatus.LEASED.value,
+                        )
+                    ),
+                )
+                .order_by(Scan.created_at.asc())
+            )
+        ).all()
+        reason = f"Superseded before execution by newer pull request head {new_scan.commit_sha}"
+        superseded = self._apply_supersession(unstarted, new_scan=new_scan, reason=reason)
+
+        started = (
+            (
+                await self.db.execute(
+                    select(Scan).where(
+                        *scope,
+                        Scan.superseded_by_scan_id.is_(None),
+                        or_(
+                            Scan.status == ScanStatusEnum.RUNNING,
+                            Scan.current_attempt_id.is_not(None),
+                        ),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for running in started:
+            summary = dict(running.summary_json or {})
+            summary["newer_head_scan_id"] = str(new_scan.id)
+            summary["newer_head_commit_sha"] = new_scan.commit_sha
+            running.summary_json = summary
+
+        # Unstarted baseline runs of an older merge-base are obsolete once the PR's merge-base
+        # moves. Baselines for the new head's own merge-base are kept; started ones finish.
+        if new_scan.merge_base_sha:
+            # Same name as pr_classification.baseline_ref_name (importing it here would be circular).
+            baseline_ref = f"refs/pull/{int(new_scan.pull_request_number)}/base"
+            stale_baselines = (
+                await self.db.execute(
+                    select(Scan, ScanDispatchObligation)
+                    .join(ScanDispatchObligation, ScanDispatchObligation.scan_id == Scan.id)
+                    .where(
+                        Scan.repository_id == str(new_scan.repository_id),
+                        Scan.id != str(new_scan.id),
+                        Scan.trigger_type == "pull_request",
+                        Scan.pull_request_number == int(new_scan.pull_request_number),
+                        Scan.full_ref_name == baseline_ref,
+                        Scan.commit_sha != new_scan.merge_base_sha,
+                        Scan.deleted_at.is_(None),
+                        Scan.status == ScanStatusEnum.QUEUED,
+                        Scan.current_attempt_id.is_(None),
+                        ScanDispatchObligation.status.in_(
+                            (
+                                DispatchObligationStatus.AWAITING_DISPATCH.value,
+                                DispatchObligationStatus.LEASED.value,
+                            )
+                        ),
+                    )
+                )
+            ).all()
+            superseded += self._apply_supersession(
+                stale_baselines,
+                new_scan=new_scan,
+                reason=f"Superseded before execution: pull request merge-base moved to {new_scan.merge_base_sha}",
+            )
+        return superseded
+
+    def _apply_supersession(self, rows: Any, *, new_scan: Scan, reason: str) -> list[Scan]:
+        superseded: list[Scan] = []
         for older_scan, older_obligation in rows:
             if older_scan.commit_sha == new_scan.commit_sha:
                 continue
@@ -297,6 +399,7 @@ class ScanDispatchService:
         request_idempotency_key: str | None = None,
         webhook_delivery_id: str | None = None,
         now: datetime | None = None,
+        not_before_seconds: float = 0,
     ) -> ScanDispatchObligation:
         current_now = _as_utc(now) or datetime.now(UTC)
         job_type = job_type_for_scan_type(scan.scan_type)
@@ -318,7 +421,7 @@ class ScanDispatchService:
             queue_job_id=str(scan.id),
             attempt_count=0,
             max_attempts=self.max_attempts,
-            next_attempt_at=current_now,
+            next_attempt_at=current_now + timedelta(seconds=max(float(not_before_seconds), 0)),
             webhook_delivery_id=webhook_delivery_id,
             payload_json={"scan_id": str(scan.id)},
         )

@@ -60,11 +60,19 @@ class ScanOrchestrator:
     def _redact_sensitive_text(self, value: str) -> str:
         return redact_sensitive_text(value, (self._worker_credential,))
 
+    def _refetch_headers(self, context: ScanContext) -> dict[str, str]:
+        try:
+            return context.attempt_headers(self._worker_credential)
+        except RuntimeError:
+            return {"X-Worker-Credential": self._worker_credential}
+
     async def _is_canceled(self, context: ScanContext) -> bool:
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{self.api_base_url}/api/v1/internal/scans/{context.scan_id}/execution-context",
-                headers={"X-Worker-Credential": self._worker_credential},
+                # Prove the identity this process already holds; the API refuses
+                # to hand a live attempt's authority to a caller that cannot (#36).
+                headers=self._refetch_headers(context),
                 timeout=30.0,
             )
             response.raise_for_status()
@@ -296,6 +304,8 @@ class ScanOrchestrator:
             branch_generation_number=int(data.get("branch_generation_number") or 1),
             ancestry_status=data.get("ancestry_status") or "unknown",
             commit_sha=data.get("commit_sha"),
+            head_is_fork=bool(data.get("head_is_fork", False)),
+            pull_request_number=data.get("pull_request_number"),
             user_id=data.get("user_id"),
             job_id=job.job_id,
             expected_scanners=data.get("expected_scanners"),
@@ -312,7 +322,9 @@ class ScanOrchestrator:
         completed = [n for n, r in context.scanner_results.items() if r.success]
         failed = [n for n, r in context.scanner_results.items() if not r.success]
         missing = [n for n in expected if n not in context.scanner_results]
+        review_packs = {"review_packs": list(context.review_packs)} if context.review_packs else {}
         return {
+            **review_packs,
             "finding_count": len(context.findings),
             "critical_count": context.critical_count,
             "high_count": context.high_count,

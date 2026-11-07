@@ -9,7 +9,7 @@ This file is the only documentation index. Read in this order:
 | Topic | Authoritative document |
 | --- | --- |
 | Product direction | [Product charter](docs/PRODUCT_CHARTER.md) |
-| Accepted decisions | [ADRs](docs/adr/): ADR-018 sets direction; ADR-010–017 define evidence, identity, dispatch, isolation and AI boundaries; ADR-001–009 preserve earlier rationale |
+| Accepted decisions | [ADRs](docs/adr/): ADR-018 sets direction; ADR-019 (provisional) picks the primary dependency engine; ADR-010–017 define evidence, identity, dispatch, isolation and AI boundaries; ADR-001–009 preserve earlier rationale |
 | Current architecture, trust boundaries, supported capabilities, known gaps | [System overview](docs/SYSTEM_OVERVIEW.md) |
 | Implementation priorities | [Redirection implementation plan](docs/plans/2026-11-04-redirection-implementation-plan.md) (the single active plan) |
 | Domain vocabulary | [CONTEXT.md](CONTEXT.md) |

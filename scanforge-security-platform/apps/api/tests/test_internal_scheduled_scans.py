@@ -113,7 +113,7 @@ async def test_get_scan_execution_context_loads_authoritative_scan_context(monke
         AsyncMock(return_value=(scan, project)),
     )
     result = await internal.get_scan_execution_context(
-        scan_id=scan_id,
+        presented_identity=None, scan_id=scan_id,
         principal=principal(org_id),
         db=Db(),
     )
@@ -144,6 +144,8 @@ async def test_get_scan_execution_context_loads_authoritative_scan_context(monke
         "branch_generation_number": 1,
         "ancestry_status": "unknown",
         "commit_sha": "deadbeef",
+        "head_is_fork": False,
+        "pull_request_number": None,
         "status": scan.status.value,
         "user_id": str(user_id),
         "attempt_id": result["attempt_id"],

@@ -5,6 +5,7 @@ allowlisted environment. API database URLs, worker credentials, webhook
 secrets, and object-storage keys must never reach a scanner or git subprocess.
 """
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -35,7 +36,15 @@ ALLOWED_ENV_KEYS = frozenset(
     {"PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE"}
 )
 
-GIT_AUTH_KEYS = {"GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0"}
+GIT_AUTH_KEYS = {
+    "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_NOSYSTEM",
+    "GIT_CONFIG_GLOBAL",
+    "GIT_TERMINAL_PROMPT",
+    "GIT_LFS_SKIP_SMUDGE",
+    *(f"GIT_CONFIG_KEY_{i}" for i in range(5)),
+    *(f"GIT_CONFIG_VALUE_{i}" for i in range(5)),
+}
 
 
 def _seed_forbidden_env(monkeypatch) -> None:
@@ -114,7 +123,15 @@ def test_docker_runtime_cli_environment_is_minimal(monkeypatch, tmp_path):
 async def test_git_clone_environment_is_allowlisted(monkeypatch):
     _seed_forbidden_env(monkeypatch)
     captured: list = []
-    _recording_run(monkeypatch, captured)
+    live_envs: list = []
+    _recording_run(monkeypatch, captured, stdout="a" * 40)
+    _record = subprocess.run
+
+    def _run_and_keep_live_env(cmd, *args, **kwargs):
+        live_envs.append(kwargs.get("env"))
+        return _record(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", _run_and_keep_live_env)
 
     async def run_inline(function, *args, **kwargs):
         return function(*args, **kwargs)
@@ -136,7 +153,9 @@ async def test_git_clone_environment_is_allowlisted(monkeypatch):
     repo_dir = None
     try:
         repo_dir = await stage.prepare_repository(
-            SimpleNamespace(repository_id="repo-1", branch=None)
+            SimpleNamespace(
+                repository_id="repo-1", scan_id="scan-1", attempt_id="a1", commit_sha="a" * 40, branch=None
+            )
         )
     finally:
         if repo_dir is not None:
@@ -145,10 +164,13 @@ async def test_git_clone_environment_is_allowlisted(monkeypatch):
     env = captured[0]
     _assert_env_contained(env, "git clone", required_extra=GIT_AUTH_KEYS)
     assert env["GIT_CONFIG_VALUE_0"] == "Basic r08-auth-header"
-    assert env.get("GIT_CONFIG_COUNT") == "1"
-    # the clone auth value must be scrubbed from the env dict after the run
-    import os as _os
-    assert "GIT_CONFIG_VALUE_0" not in _os.environ
+    assert env["GIT_CONFIG_KEY_0"] == "http.extraHeader"
+    assert env["HOME"] != os.environ.get("HOME")
+    # the clone auth value must be scrubbed from the live env dict after the run
+    assert live_envs, "git subprocess env was not observed"
+    for live in live_envs:
+        assert "GIT_CONFIG_VALUE_0" not in live
+    assert "GIT_CONFIG_VALUE_0" not in os.environ
 
 
 def test_scanner_version_probe_environment_is_allowlisted(monkeypatch):

@@ -69,10 +69,74 @@ export const scannerRunSchema = z.object({
   artifact_download_url: z.string().nullable().optional(),
 }).passthrough();
 
+export const scannerCoverageSchema = z.object({
+  scanner_name: z.string(),
+  state: z.string(),
+  reasons: z.array(z.string()).optional(),
+  declared_scope: z.string().nullable().optional(),
+  inputs_found: z.number().nullable().optional(),
+  inputs_supported: z.number().nullable().optional(),
+  unsupported_inputs: z.array(z.string()).nullable().optional(),
+  exclusions: z.array(z.string()).nullable().optional(),
+  parse_failures: z.number().nullable().optional(),
+  truncated: z.boolean().nullable().optional(),
+  timed_out: z.boolean().nullable().optional(),
+}).passthrough();
+
+export const capabilityCoverageSchema = z.object({
+  capability: z.string(),
+  state: z.string(),
+  reasons: z.array(z.string()).optional(),
+  scanners: z.array(scannerCoverageSchema).optional(),
+}).passthrough();
+
+export const shadowCandidateLabelSchema = z.object({
+  candidate_id: z.string(),
+  label: z.string(),
+  actor_user_id: z.string().nullable().optional(),
+  labeled_at: z.string(),
+}).passthrough();
+
+export const shadowReviewResultSchema = z.object({
+  fingerprint: z.string(),
+  scanner: z.string().nullable().optional(),
+  capability: z.string().nullable().optional(),
+  classification: z.string(),
+  reason: z.string(),
+  candidate_id: z.string().nullable().optional(),
+  candidate_state: z.string().nullable().optional(),
+  path: z.string().nullable().optional(),
+  line_start: z.number().nullable().optional(),
+  labels: z.array(shadowCandidateLabelSchema).optional(),
+}).passthrough();
+
+export const shadowReviewSchema = z.object({
+  state: z.string(),
+  scan_id: z.string(),
+  scan_status: z.string(),
+  revisions: z.object({
+    pull_request_number: z.number().nullable().optional(),
+    base_sha: z.string().nullable().optional(),
+    head_sha: z.string().nullable().optional(),
+    merge_base_sha: z.string().nullable().optional(),
+    comparison_strategy: z.string().nullable().optional(),
+    baseline_scan_id: z.string().nullable().optional(),
+    head_is_fork: z.boolean().optional(),
+  }).passthrough(),
+  capability_coverage: z.array(capabilityCoverageSchema).optional(),
+  classification_state: z.string(),
+  classification_counts: z.object({ new: z.number(), existing: z.number(), unknown: z.number() }).passthrough(),
+  results: z.array(shadowReviewResultSchema).optional(),
+  limitations: z.array(z.string()).optional(),
+  duration: z.object({ state: z.string(), total_ms: z.number().nullable().optional() }).passthrough(),
+  cost_estimate: z.object({ state: z.string(), reason: z.string().nullable().optional() }).passthrough(),
+}).passthrough();
+
 export const scanDetailSchema = scanSchema.extend({
   scanner_runs: z.array(scannerRunSchema).optional(),
+  capability_coverage: z.array(capabilityCoverageSchema).optional(),
   error_message: z.string().nullable().optional(),
-  summary_json: z.record(z.unknown()).nullable().optional(),
+  summary_json: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
 export const findingSchema = z.object({
@@ -152,7 +216,7 @@ export const suppressionRuleSchema = z.object({
   id: z.string(),
   organization_id: z.string(),
   reason: z.string(),
-  scope: z.record(z.unknown()).optional(),
+  scope: z.record(z.string(), z.unknown()).optional(),
   created_at: z.string(),
 }).passthrough();
 
@@ -184,9 +248,9 @@ export const scorecardSchema = z.object({
   last_scan_at: z.string().nullable().optional(),
   risk_score_average: z.number().nullable().optional(),
   sla_overdue: z.number().optional(),
-  scanner_health: z.record(z.unknown()).optional(),
-  policy_evaluation: z.record(z.unknown()).nullable().optional(),
-  metrics: z.record(z.unknown()).optional(),
+  scanner_health: z.record(z.string(), z.unknown()).optional(),
+  policy_evaluation: z.record(z.string(), z.unknown()).nullable().optional(),
+  metrics: z.record(z.string(), z.unknown()).optional(),
   generated_at: z.string().optional(),
 }).passthrough();
 
@@ -195,8 +259,8 @@ export const findingStatsSchema = z.object({
   open: z.number(),
   fixed: z.number(),
   suppressed: z.number(),
-  by_severity: z.record(z.number()).optional(),
-  by_category: z.record(z.number()).optional(),
+  by_severity: z.record(z.string(), z.number()).optional(),
+  by_category: z.record(z.string(), z.number()).optional(),
 }).passthrough();
 
 // ── Pagination helper ───────────────────────────────────────────────
@@ -214,7 +278,9 @@ export type Organization = z.infer<typeof organizationSchema>;
 export type Project = z.infer<typeof projectSchema>;
 export type Repository = z.infer<typeof repositorySchema>;
 export type Scan = z.infer<typeof scanSchema>;
-export type ScanDetail = z.infer<typeof scanDetailSchema>;
+export type ShadowReview = z.infer<typeof shadowReviewSchema>;
+export type ShadowReviewResult = z.infer<typeof shadowReviewResultSchema>;
+export type ScanDetail =z.infer<typeof scanDetailSchema>;
 export type Finding = z.infer<typeof findingSchema>;
 export type FindingEvent = z.infer<typeof findingEventSchema>;
 export type Member = z.infer<typeof memberSchema>;

@@ -160,7 +160,8 @@ def test_scan_type_mappings_include_checkov_and_grype():
     orchestrator = ScanOrchestrator(queue=DummyQueue(), r2=DummyR2())
 
     assert "checkov" in orchestrator._get_scanners_for_type("scan.repo.full")
-    assert "grype" in orchestrator._get_scanners_for_type("scan.repo.full")
+    # ADR-019: Grype is registered but not part of the default full scan.
+    assert "grype" not in orchestrator._get_scanners_for_type("scan.repo.full")
     assert "checkov" in orchestrator._get_scanners_for_type("scan.repo.diff")
     assert "grype" in orchestrator._get_scanners_for_type("scan.dependencies")
 
@@ -240,6 +241,7 @@ async def test_load_scan_context_fetches_authoritative_context(monkeypatch):
                 },
                 "branch": "main",
                 "commit_sha": "deadbeef",
+                "head_is_fork": True,
                 "user_id": None,
             }
 
@@ -265,6 +267,7 @@ async def test_load_scan_context_fetches_authoritative_context(monkeypatch):
     assert context.scan_id == "scan-1"
     assert context.organization_id == "org-1"
     assert context.branch == "main"
+    assert context.head_is_fork is True
     assert context.expected_scanners == ["trivy", "osv", "syft", "grype"]
     assert context.coverage_scope == {
         "branch": "main",
@@ -342,7 +345,9 @@ async def test_is_canceled_adopts_latest_issued_identity(monkeypatch):
         job_id="job-1",
         attempt_id="stale-attempt",
         execution_revision=1,
+        worker_incarnation_id="incarnation-1",
     )
+    sent = {}
 
     class Response:
         def raise_for_status(self):
@@ -363,6 +368,7 @@ async def test_is_canceled_adopts_latest_issued_identity(monkeypatch):
             return None
 
         async def get(self, url, headers, timeout):
+            sent.update(headers)
             return Response()
 
     monkeypatch.setattr("app.services.scan_orchestrator.httpx.AsyncClient", Client)
@@ -370,6 +376,10 @@ async def test_is_canceled_adopts_latest_issued_identity(monkeypatch):
     canceled = await orchestrator._is_canceled(context)
 
     assert canceled is False
+    # The refetch proves the identity the worker holds (#36).
+    assert sent["X-Scan-Attempt-Id"] == "stale-attempt"
+    assert sent["X-Scan-Execution-Revision"] == "1"
+    assert sent["X-Scan-Worker-Incarnation-Id"] == "incarnation-1"
     assert context.attempt_id == "fresh-attempt"
     assert context.execution_revision == 2
 

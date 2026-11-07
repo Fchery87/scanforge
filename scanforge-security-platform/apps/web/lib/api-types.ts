@@ -55,6 +55,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/internal/scans/{scan_id}/artifacts/{artifact_id}/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finalize Artifact */
+        post: operations["finalize_artifact_api_v1_internal_scans__scan_id__artifacts__artifact_id__finalize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/internal/notifications": {
         parameters: {
             query?: never;
@@ -218,6 +235,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/internal/shadow-corpus/expire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Expire Shadow Corpus
+         * @description Retention sweep for the shadow replay corpus (#51); safe to call repeatedly.
+         */
+        post: operations["expire_shadow_corpus_api_v1_internal_shadow_corpus_expire_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/internal/scan-schedules/run-due": {
         parameters: {
             query?: never;
@@ -246,6 +283,31 @@ export interface paths {
         put?: never;
         /** Github Webhook */
         post: operations["github_webhook_api_v1_webhooks_github__org_id___project_id___repository_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/github/app": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Github App Webhook
+         * @description App-level lifecycle ingress (installation, installation_repositories, repository).
+         *
+         *     Authority comes only from the verified signature plus the stored installation
+         *     binding; no browser-supplied identity is involved. Lifecycle transitions are
+         *     idempotent, so deduplication is by delivery id alone (a business digest would let a
+         *     repeated suspend/unsuspend be mistaken for a replay).
+         */
+        post: operations["github_app_webhook_api_v1_webhooks_github_app_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -818,6 +880,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{org_id}/projects/{project_id}/scans/{scan_id}/shadow-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Shadow Review
+         * @description Internal per-PR shadow results. Read-only; never published to GitHub.
+         */
+        get: operations["get_shadow_review_api_v1_organizations__org_id__projects__project_id__scans__scan_id__shadow_review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{org_id}/projects/{project_id}/scans/{scan_id}/shadow-review/candidates/{candidate_id}/label": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Label Shadow Candidate
+         * @description Record the caller's evaluation label. Never suppresses or changes any finding.
+         */
+        put: operations["label_shadow_candidate_api_v1_organizations__org_id__projects__project_id__scans__scan_id__shadow_review_candidates__candidate_id__label_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{org_id}/projects/{project_id}/scans/{scan_id}/scanner-runs/{run_id}/download": {
         parameters: {
             query?: never;
@@ -1182,6 +1284,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ArtifactFinalizeRequest */
+        ArtifactFinalizeRequest: {
+            /** Checksum Sha256 */
+            checksum_sha256: string;
+        };
         /** ArtifactUploadRequest */
         ArtifactUploadRequest: {
             /** Scanner Name */
@@ -1241,8 +1348,6 @@ export interface components {
             instance?: components["schemas"]["CanonicalFindingInstance"] | null;
             /** References */
             references?: components["schemas"]["CanonicalFindingReference"][];
-        } & {
-            [key: string]: unknown;
         };
         /** CanonicalFindingInstance */
         CanonicalFindingInstance: {
@@ -1279,6 +1384,23 @@ export interface components {
             value: string;
             /** Url */
             url?: string | null;
+        };
+        /** CapabilityCoverageResponse */
+        CapabilityCoverageResponse: {
+            /** Capability */
+            capability: string;
+            /** State */
+            state: string;
+            /**
+             * Reasons
+             * @default []
+             */
+            reasons: string[];
+            /**
+             * Scanners
+             * @default []
+             */
+            scanners: components["schemas"]["ScannerCoverageResponse"][];
         };
         /** CreateScannerRunRequest */
         CreateScannerRunRequest: {
@@ -2294,10 +2416,6 @@ export interface components {
             clone_url?: string | null;
             /** Html Url */
             html_url?: string | null;
-            /** Installation Id */
-            installation_id?: string | null;
-            /** Provider Account Id */
-            provider_account_id?: string | null;
         };
         /** RepositoryResponse */
         RepositoryResponse: {
@@ -2564,6 +2682,12 @@ export interface components {
              * @default []
              */
             scanner_runs: components["schemas"]["ScannerRunResponse"][];
+            /**
+             * Capability Coverage
+             * @default []
+             */
+            capability_coverage: components["schemas"]["CapabilityCoverageResponse"][];
+            shadow_classification?: components["schemas"]["ShadowClassificationResponse"] | null;
         };
         /** ScanResponse */
         ScanResponse: {
@@ -2731,6 +2855,39 @@ export interface components {
             summary_json?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /**
+         * ScannerCoverageResponse
+         * @description Analyzer-reported measurements only; None means the analyzer did not report it.
+         */
+        ScannerCoverageResponse: {
+            /** Scanner Name */
+            scanner_name: string;
+            /** State */
+            state: string;
+            /**
+             * Reasons
+             * @default []
+             */
+            reasons: string[];
+            /** Outcome Status */
+            outcome_status?: string | null;
+            /** Declared Scope */
+            declared_scope?: string | null;
+            /** Inputs Found */
+            inputs_found?: number | null;
+            /** Inputs Supported */
+            inputs_supported?: number | null;
+            /** Unsupported Inputs */
+            unsupported_inputs?: string[] | null;
+            /** Exclusions */
+            exclusions?: string[] | null;
+            /** Parse Failures */
+            parse_failures?: number | null;
+            /** Truncated */
+            truncated?: boolean | null;
+            /** Timed Out */
+            timed_out?: boolean | null;
         };
         /** ScannerRunCompletion */
         ScannerRunCompletion: {
@@ -2923,6 +3080,201 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /**
+         * ShadowCandidateLabelRequest
+         * @description Reviewer judgement of a shadow candidate. Evaluation data; never a suppression.
+         */
+        ShadowCandidateLabelRequest: {
+            /**
+             * Label
+             * @enum {string}
+             */
+            label: "useful" | "not_useful" | "incorrect" | "duplicate" | "missing_context";
+        };
+        /** ShadowCandidateLabelResponse */
+        ShadowCandidateLabelResponse: {
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /**
+             * Label
+             * @enum {string}
+             */
+            label: "useful" | "not_useful" | "incorrect" | "duplicate" | "missing_context";
+            /** Actor User Id */
+            actor_user_id?: string | null;
+            /**
+             * Labeled At
+             * Format: date-time
+             */
+            labeled_at: string;
+        };
+        /** ShadowClassificationCounts */
+        ShadowClassificationCounts: {
+            /**
+             * New
+             * @default 0
+             */
+            new: number;
+            /**
+             * Existing
+             * @default 0
+             */
+            existing: number;
+            /**
+             * Unknown
+             * @default 0
+             */
+            unknown: number;
+        };
+        /**
+         * ShadowClassificationResponse
+         * @description New / existing / unknown against a comparable merge-base baseline (never inferred).
+         */
+        ShadowClassificationResponse: {
+            /** State */
+            state: string;
+            /** Merge Base Sha */
+            merge_base_sha?: string | null;
+            /** Comparison Strategy */
+            comparison_strategy?: string | null;
+            /** Baseline Scan Id */
+            baseline_scan_id?: string | null;
+            /**
+             * @default {
+             *       "new": 0,
+             *       "existing": 0,
+             *       "unknown": 0
+             *     }
+             */
+            counts: components["schemas"]["ShadowClassificationCounts"];
+            /**
+             * Results
+             * @default []
+             */
+            results: components["schemas"]["ShadowResultClassification"][];
+        };
+        /** ShadowResultClassification */
+        ShadowResultClassification: {
+            /** Fingerprint */
+            fingerprint: string;
+            /** Scanner */
+            scanner?: string | null;
+            /** Capability */
+            capability?: string | null;
+            /** Classification */
+            classification: string;
+            /** Reason */
+            reason: string;
+        };
+        /** ShadowReviewCost */
+        ShadowReviewCost: {
+            /** State */
+            state: string;
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
+         * ShadowReviewDuration
+         * @description Sum of measured scanner run durations; ``partial`` when some runs recorded none.
+         */
+        ShadowReviewDuration: {
+            /** State */
+            state: string;
+            /** Total Ms */
+            total_ms?: number | null;
+        };
+        /**
+         * ShadowReviewResponse
+         * @description Internal per-PR shadow view. ``empty`` and ``partial`` are never a clean verdict.
+         */
+        ShadowReviewResponse: {
+            /** State */
+            state: string;
+            /**
+             * Scan Id
+             * Format: uuid
+             */
+            scan_id: string;
+            /** Scan Status */
+            scan_status: string;
+            revisions: components["schemas"]["ShadowReviewRevisions"];
+            /**
+             * Capability Coverage
+             * @default []
+             */
+            capability_coverage: components["schemas"]["CapabilityCoverageResponse"][];
+            /** Classification State */
+            classification_state: string;
+            /**
+             * @default {
+             *       "new": 0,
+             *       "existing": 0,
+             *       "unknown": 0
+             *     }
+             */
+            classification_counts: components["schemas"]["ShadowClassificationCounts"];
+            /**
+             * Results
+             * @default []
+             */
+            results: components["schemas"]["ShadowReviewResult"][];
+            /**
+             * Limitations
+             * @default []
+             */
+            limitations: string[];
+            duration: components["schemas"]["ShadowReviewDuration"];
+            cost_estimate: components["schemas"]["ShadowReviewCost"];
+        };
+        /** ShadowReviewResult */
+        ShadowReviewResult: {
+            /** Fingerprint */
+            fingerprint: string;
+            /** Scanner */
+            scanner?: string | null;
+            /** Capability */
+            capability?: string | null;
+            /** Classification */
+            classification: string;
+            /** Reason */
+            reason: string;
+            /** Candidate Id */
+            candidate_id?: string | null;
+            /** Candidate State */
+            candidate_state?: string | null;
+            /** Path */
+            path?: string | null;
+            /** Line Start */
+            line_start?: number | null;
+            /**
+             * Labels
+             * @default []
+             */
+            labels: components["schemas"]["ShadowCandidateLabelResponse"][];
+        };
+        /** ShadowReviewRevisions */
+        ShadowReviewRevisions: {
+            /** Pull Request Number */
+            pull_request_number?: number | null;
+            /** Base Sha */
+            base_sha?: string | null;
+            /** Head Sha */
+            head_sha?: string | null;
+            /** Merge Base Sha */
+            merge_base_sha?: string | null;
+            /** Comparison Strategy */
+            comparison_strategy?: string | null;
+            /** Baseline Scan Id */
+            baseline_scan_id?: string | null;
+            /**
+             * Head Is Fork
+             * @default false
+             */
+            head_is_fork: boolean;
+        };
         /** SuppressionRuleCreate */
         SuppressionRuleCreate: {
             /** Rule Type */
@@ -3073,6 +3425,47 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ArtifactUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    finalize_artifact_api_v1_internal_scans__scan_id__artifacts__artifact_id__finalize_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Worker-Credential"?: string | null;
+                "X-Scan-Attempt-Id": string;
+                "X-Scan-Execution-Revision": number;
+                "X-Scan-Worker-Incarnation-Id": string;
+            };
+            path: {
+                scan_id: string;
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArtifactFinalizeRequest"];
             };
         };
         responses: {
@@ -3369,6 +3762,9 @@ export interface operations {
             query?: never;
             header?: {
                 "X-Worker-Credential"?: string | null;
+                "X-Scan-Attempt-Id"?: string | null;
+                "X-Scan-Execution-Revision"?: number | null;
+                "X-Scan-Worker-Incarnation-Id"?: string | null;
             };
             path: {
                 scan_id: string;
@@ -3413,6 +3809,37 @@ export interface operations {
                 "application/json": components["schemas"]["HeartbeatRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    expire_shadow_corpus_api_v1_internal_shadow_corpus_expire_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-scheduler-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -3494,6 +3921,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    github_app_webhook_api_v1_webhooks_github_app_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };
@@ -5050,6 +5497,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_shadow_review_api_v1_organizations__org_id__projects__project_id__scans__scan_id__shadow_review_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                project_id: string;
+                scan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShadowReviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    label_shadow_candidate_api_v1_organizations__org_id__projects__project_id__scans__scan_id__shadow_review_candidates__candidate_id__label_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+                project_id: string;
+                scan_id: string;
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShadowCandidateLabelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShadowCandidateLabelResponse"];
                 };
             };
             /** @description Validation Error */
