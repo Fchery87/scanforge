@@ -299,20 +299,24 @@ return entry_id
         return int(result.get("result", 0))
 
     async def reclaim_stale_jobs(self) -> int:
-        """Claim pending messages for this worker; no recovery state is deleted."""
+        """Count stale pending messages without changing ownership or idle time.
+
+        Maintenance is observational. Claiming here would reset delivery idle
+        time under the maintenance consumer and postpone the worker's recovery.
+        """
         await self._ensure_consumer_group()
         result = await self._command(
-            "XAUTOCLAIM",
+            "XPENDING",
             self.scan_queue,
             self.CONSUMER_GROUP,
-            self.consumer_name,
+            "IDLE",
             self.visibility_timeout_ms,
-            "0-0",
-            "COUNT",
+            "-",
+            "+",
             100,
         )
-        payload = result.get("result") or []
-        return len(payload[1]) if len(payload) > 1 else 0
+        pending = result.get("result") or []
+        return len(pending)
 
     async def clear_scan_queues(self) -> int:
         result = await self._command("DEL", self.scan_queue, self.dlq, self.retry_queue)
