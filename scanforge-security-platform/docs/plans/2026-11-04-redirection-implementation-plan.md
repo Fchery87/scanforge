@@ -48,6 +48,31 @@ enablement are authorized by these checks. PostgreSQL rehearsal uses a newly
 created disposable local cluster. Browser/live-provider and real-scanner evidence
 must be reported separately rather than inferred from unit tests.
 
+### Ticket acceptance reconciliation (2026-11-07, `fbffba8`)
+
+This table distinguishes verified ticket behavior from project completion. No ticket
+is automatically accepted merely because the default-order suite is green.
+Commands below run from `scanforge-security-platform/`. API invocations use
+`DATABASE_URL=sqlite+aiosqlite:///:memory: PYTHONPATH="$PWD/apps/api" apps/api/.venv/bin/python -m pytest`.
+Worker invocations use `PYTHONPATH="$PWD/apps/worker" apps/worker/.venv/bin/python -m pytest`.
+PostgreSQL tests unset `DISPATCH_POSTGRES_URL` and `R04_POSTGRES_URL` and create
+their own migrated cluster, with `TMPDIR` under the session scratch directory.
+
+| Ticket | Acceptance mapping and evidence | Closure state |
+| --- | --- | --- |
+| #2 | `aiosqlite` is dev-only in API `pyproject.toml`; CI API installs and tests pass. Literal clean `make install && make test` is being rehearsed in an isolated checkout. | Pending clean workflow |
+| #3 | `4dc777f`; `apps/web/lib/auth/server.spec.ts` verifies lazy import and runtime enforcement. CI web build has no cookie secret configured and passes. | Verified, awaiting integration disposition |
+| #4 | `ba42175`, `bd17a6e`; `apps/api/.venv/bin/python -m pytest scripts/test_ci_gates.py scripts/test_audit_python_dependencies.py -q`: 9 passed, 47 subtests passed. `fbffba8` CI api/worker/web/required pass. SBOM is main-only and depends on successful api/worker/web. | Verified, awaiting integration disposition |
+| #5 | Existing Streams ack/reclaim is implemented, but maintenance only counts stale deliveries. Withdrawn simulated API rehearsal does not prove terminal persistence. Real API-backed recovery and atomic maintenance re-enqueue remain in progress. | Pending implementation and acceptance |
+| #6, #7 | `45ce08b`, `6acce0c`, `b5e3963`; worker `apps/worker/tests/test_ai_investigation_stage.py apps/worker/tests/test_worker_main.py -q`: 16 passed. Default-off, missing-provider skip, secrets skip, and structured fields are asserted. | Verified, awaiting integration disposition |
+| #8, #10 | `0eeb7ca`, `766360f`; API `apps/api/tests/test_bulk_project_scope_postgres.py apps/api/tests/test_scan_soft_delete_postgres.py -q -rs`: 11 passed against migrated disposable PostgreSQL. Covers atomic cross-project/missing-target rejection and idempotent soft delete, hidden reads, retained finding/instance/event FK lineage. Migration `0016_scan_soft_delete.py` adds nullable timestamp. | Verified, awaiting integration disposition |
+| #9, #11, #12, #13 | `a6d52ee`, `8314573`, `63ea705`, `6cbf005`; API `apps/api/tests/test_trusted_proxy_limits.py apps/api/tests/test_auth_runtime_contract.py apps/api/tests/test_health_readiness.py apps/api/tests/test_internal_routes.py apps/api/tests/test_scans_route_contract.py apps/api/tests/test_authorization_regressions.py -q`: 41 passed. No dead RBAC helpers or internal onboarding route remain. Covers both limiter paths, membership-derived roles, readiness failure and independent liveness, route authorization. | Verified, awaiting integration disposition |
+| #14 | `3cdcd02` adds persisted ASGI audit outcome coverage, but the focused run after PostgreSQL tests exposed five SQLite UUID failures that the full default-order suite masked. | Pending test-isolation correction |
+| #15, #16 | `9f564ad`, `8ff4892`; web `npm test && npm run lint && ./node_modules/.bin/tsc --noEmit && npm run build`: 80 Node and 33 Vitest passed. Includes route redirect/pass-through/public exclusion, safe destinations, response drift/advisory behavior, and codegen parity. | Verified, awaiting integration disposition |
+| #57 | `b2047f2`; API `apps/api/tests/test_findings_disappearance_scope.py::test_manual_reopen_blocks_old_and_requires_new_scans -q -p no:cacheprovider`: 1 passed alone. File: 22 passed/1 skipped. Full suite: 613 passed/23 skipped. | Verified, awaiting integration disposition |
+| #58 | `b2047f2`; API `apps/api/tests/test_pr_shadow_webhook.py apps/api/tests/test_pr_shadow_isolation.py apps/api/tests/test_scan_dispatch.py -q -p no:cacheprovider`: 23 passed in reported pollution order. Additional audit fixture order dependence found during this pass is being fixed before closure. | Pending broader isolation correction |
+| #1 | Depends on all child acceptance above. Broader operator pilot and scanner evaluation gates remain separate and unverified. | Not complete |
+
 ## Tracker
 
 Spec: [issue #32](https://github.com/Fchery87/scanforge/issues/32). Each slice is a sub-issue labelled `ready-for-agent`. The issues' native "blocked by" links are the authoritative dependency graph; the "Depends on" column below summarizes them. Close an issue only when its tracker row here is `Done` with SHA and test command.
