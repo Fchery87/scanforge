@@ -263,6 +263,22 @@ export const findingStatsSchema = z.object({
   by_category: z.record(z.string(), z.number()).optional(),
 }).passthrough();
 
+export const orgStatsSchema = z.object({
+  project_count: z.number(),
+  open_findings: z.number(),
+  critical_findings: z.number(),
+  scans_today: z.number(),
+  scans_this_week: z.number(),
+}).passthrough();
+
+export const findingDetailSchema = findingSchema.extend({
+  description: z.string().nullable().optional(),
+  fixed_version: z.string().nullable().optional(),
+  instances: z.array(z.unknown()).optional(),
+  references: z.array(z.unknown()).optional(),
+  events: z.array(z.unknown()).optional(),
+}).passthrough();
+
 // ── Pagination helper ───────────────────────────────────────────────
 
 export function paginated<T extends z.ZodTypeAny>(itemSchema: T) {
