@@ -37,11 +37,11 @@ are verified rather than replaced. Disabled capabilities remain disabled.
 | Issues | Status | Evidence |
 | --- | --- | --- |
 | #56 | Closed | Merged API dispatch regression passed; clean `npm ci --ignore-scripts && npm audit --audit-level=high` exited 0 (remaining advisories low/moderate only). |
-| #4 | Implemented | `ba42175`, `bd17a6e`: root CI gates protected by executable tests; CI `api`, `worker`, `web`, `required`, and `changes` checks passed on the integration branch. SBOM remains conditionally skipped when its tool is unavailable. |
+| #4 | Implemented | `ba42175`, `bd17a6e`: root CI gates protected by executable tests; CI `api`, `worker`, `web`, `required`, and `changes` checks passed on `cd31c52`. SBOM is required on `main` and intentionally skipped on pull requests. |
 | #6 | Implemented | `45ce08b`: default-off coverage and unconfigured provider skip; focused AI stage suite passed and the integrated worker suite passed (239 passed, 2 skipped). |
 | #9, #13 | Implemented | `a6d52ee`, `6cbf005`: trusted-proxy identity for both limiter paths, spoof-resistant chain traversal, readiness/liveness coverage; integrated API focused middleware suite passed (32 passed). |
 | #2, #3, #5, #7, #8, #10, #11, #12, #14, #15, #16, #57, #58 | Implemented on `integration/production-readiness` | `8ff4892` adds complete client response-path validation and request-level drift tests; `a904389` preserves stale queue delivery idle time during maintenance; `3cdcd02` adds real ASGI audit outcome coverage; `b5e3963` removes raw worker exception fields. Fresh integrated API suite: 613 passed, 23 skipped. Fresh worker suite: 240 passed, 2 skipped. Fresh web suite: Node 80 passed and Vitest 33 passed; lint, TypeScript, and production build passed. Clean API dev installation including `aiosqlite` completed in `issue-2-install.log`. |
-| #1 | Ready for maintainer review | All requested code and verification work is integrated. Live GitHub/browser/provider workflows, real scanners, real Redis, deployment, and production database operation remain unverified. |
+| #1 | Draft, acceptance follow-up remains | Integrated local suites and PR CI pass. Live GitHub/browser/provider workflows, real scanners, deployment, and production database operation remain unverified. Queue maintenance observes stale deliveries without delaying worker reclaim; a killed-worker-to-terminal-state rehearsal remains required before claiming all #5 acceptance criteria. |
 
 No production migrations, live customer scans, provider credentials, or feature
 enablement are authorized by these checks. PostgreSQL rehearsal uses a newly
