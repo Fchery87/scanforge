@@ -69,7 +69,7 @@ class _SQLiteUUID(TypeDecorator):
             return None
         if dialect.name == "postgresql":
             return value if isinstance(value, UUID) else UUID(str(value))
-        return str(value)
+        return str(UUID(str(value)))
 
     def process_result_value(self, value, _dialect):
         if value is None:

@@ -27,6 +27,27 @@
 
 Working directories: API commands run from `apps/api`, worker commands from `apps/worker`, using each app's existing `.venv`. The Git root is the parent `scanforge/` directory.
 
+## Production-readiness follow-up (2026-11-07)
+
+The user authorized completing the older hardening backlog after spec #32 merged
+at `93d967e`. Work is collected on `integration/production-readiness` in
+[PR #60](https://github.com/Fchery87/scanforge/pull/60). Existing implementations
+are verified rather than replaced. Disabled capabilities remain disabled.
+
+| Issues | Status | Evidence |
+| --- | --- | --- |
+| #56 | Closed | Merged API dispatch regression passed; clean `npm ci --ignore-scripts && npm audit --audit-level=high` exited 0 (remaining advisories low/moderate only). |
+| #4 | Implemented, integration verification pending | `ba42175`, `bd17a6e`: root CI gates protected by executable tests; `python -m unittest discover -s scripts -p test_ci_gates.py` (3 passed) and `-p test_audit_python_dependencies.py` (6 passed). |
+| #6 | Implemented, integration verification pending | `45ce08b`: default-off coverage and unconfigured provider skip; worker `python -m pytest tests/test_ai_investigation_stage.py -q` (11 passed). |
+| #9, #13 | Implemented, integration verification pending | `a6d52ee`, `6cbf005`: trusted-proxy identity for both limiter paths, spoof-resistant chain traversal, readiness/liveness coverage. API `python -m pytest tests/test_health_readiness.py tests/test_trusted_proxy_limits.py tests/test_rate_limit.py tests/test_rate_limit_middleware.py -q` (22 passed), changed-file Ruff clean. |
+| #2, #3, #5, #7, #8, #10, #11, #12, #14, #15, #16, #57, #58 | In progress | Isolated implementation and acceptance verification. Not resolved by this tracker entry. |
+| #1 | Open parent | Full integration checks and per-ticket acceptance remain required. |
+
+No production migrations, live customer scans, provider credentials, or feature
+enablement are authorized by these checks. PostgreSQL rehearsal uses a newly
+created disposable local cluster. Browser/live-provider and real-scanner evidence
+must be reported separately rather than inferred from unit tests.
+
 ## Tracker
 
 Spec: [issue #32](https://github.com/Fchery87/scanforge/issues/32). Each slice is a sub-issue labelled `ready-for-agent`. The issues' native "blocked by" links are the authoritative dependency graph; the "Depends on" column below summarizes them. Close an issue only when its tracker row here is `Done` with SHA and test command.
