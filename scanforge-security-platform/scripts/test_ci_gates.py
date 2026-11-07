@@ -3,6 +3,7 @@
 import itertools
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 import unittest
@@ -58,7 +59,7 @@ class CiGateTests(unittest.TestCase):
                        SBOM="success", API_EXPECTED="true", WORKER_EXPECTED="true", WEB_EXPECTED="true")
             env[target] = status
             # Execute the actual workflow gate, not a reimplementation of its logic.
-            script = step["run"].replace("python -", f"{sys.executable} -", 1)
+            script = step["run"].replace("python -", f"{shlex.quote(sys.executable)} -", 1)
             result = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True)
             allowed = status == "success" or (target == "SBOM" and branch != "main" and status == "skipped")
             with self.subTest(branch=branch, target=target, status=status):
