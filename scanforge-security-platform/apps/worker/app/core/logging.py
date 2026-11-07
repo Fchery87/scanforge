@@ -11,9 +11,9 @@ class _JsonFormatter(logging.Formatter):
             "logger": record.name,
             "msg": record.getMessage(),
         }
-        for key in ("scan_id", "org_id", "job_id", "scanner", "error", "request_id"):
-            if hasattr(record, key):
-                payload[key] = getattr(record, key)
+        for key, value in record.__dict__.items():
+            if key not in payload and key not in logging.LogRecord(None, 0, "", 0, "", (), None).__dict__:
+                payload[key] = value
         if record.exc_info:
             payload["exc"] = self.formatException(record.exc_info)
         return json.dumps(payload)

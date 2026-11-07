@@ -3,6 +3,11 @@ import os
 
 import httpx
 
+from app.core.logging import configure_logging, get_logger
+
+configure_logging(level=os.environ.get("LOG_LEVEL", "INFO"))
+_log = get_logger(__name__)
+
 
 async def trigger_due_scan_schedules(
     *,
@@ -25,12 +30,12 @@ async def trigger_due_scan_schedules(
 async def run_scheduled_scans():
     try:
         result = await trigger_due_scan_schedules()
-        print(
-            "[scheduler] Processed due schedules "
-            f"found={result.get('found', 0)} queued={result.get('queued', 0)} failed={result.get('failed', 0)}"
+        _log.info(
+            "processed due schedules",
+            extra={"found": result.get("found", 0), "queued": result.get("queued", 0), "failed": result.get("failed", 0)},
         )
     except Exception as e:
-        print(f"[scheduler] Error processing due schedules: {e}")
+        _log.error("error processing due schedules", extra={"error": str(e)})
 
 
 if __name__ == "__main__":
