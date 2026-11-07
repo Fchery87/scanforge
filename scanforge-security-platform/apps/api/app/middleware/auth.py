@@ -71,9 +71,12 @@ async def get_current_user(
             except ValueError:
                 context.org_id = None
             else:
-                context.role = await OrganizationService(db).get_member_role(
+                role = await OrganizationService(db).get_member_role(
                     org_id, context.user_id
-                ) or "viewer"
+                )
+                context.role = role or "viewer"
+                if role is None:
+                    context.org_id = None
         return _record_audit_context(request, context)
     except AuthenticationError as e:
         raise HTTPException(

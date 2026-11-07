@@ -1,3 +1,4 @@
+import json
 import logging
 from collections.abc import Callable
 from contextvars import ContextVar
@@ -73,34 +74,23 @@ class AuditMiddleware(BaseHTTPMiddleware):
 
         actor_user_id = getattr(request.state, "audit_user_id", None)
         actor_org_id = getattr(request.state, "audit_org_id", None)
-        if True:
-            try:
-                action = self._extract_action(request.method, path)
-                target = self._extract_target(path)
-
-                async with AsyncSessionLocal() as db:
-                    service = AuditLogService(db)
-                    await service.create(
-                        actor_user_id=UUID(actor_user_id) if actor_user_id else None,
-                        action=action,
-                        target_type=target.get("type", "unknown"),
-                        target_id=target.get("id"),
-                        organization_id=UUID(actor_org_id) if actor_org_id else None,
-                        ip_address=request.headers.get("x-forwarded-for", "").split(",")[0].strip() or None,
-                        user_agent=request.headers.get("user-agent"),
-                        metadata_json={
-                            "method": request.method,
-                            "path": path,
-                            "status_code": response.status_code,
-                        },
-                    )
-            except Exception:
-                logger = logging.getLogger(__name__)
-                logger.warning("audit write failed", extra={
-                    "event": "audit_write_failed",
-                    "method": request.method,
-                    "status_code": response.status_code,
-                })
+        try:
+            action = self._extract_action(request.method, path)
+            target = self._extract_target(path)
+            async with AsyncSessionLocal() as db:
+                await AuditLogService(db).create(
+                    actor_user_id=UUID(actor_user_id) if actor_user_id else None,
+                    action=action,
+                    target_type=target.get("type", "unknown"),
+                    target_id=target.get("id"),
+                    organization_id=UUID(actor_org_id) if actor_org_id else None,
+                    metadata_json={"method": request.method, "path": path,
+                                   "status_code": response.status_code},
+                )
+        except Exception:
+            fields = {"event": "audit_write_failed", "method": request.method,
+                      "status_code": response.status_code}
+            logging.getLogger(__name__).warning(json.dumps(fields), extra=fields)
 
         return response
 
@@ -123,12 +113,14 @@ class AuditMiddleware(BaseHTTPMiddleware):
             "findings": "finding",
             "exports": "export",
             "members": "membership",
+            "suppression-rules": "suppression_rule",
             "schedules": "schedule",
         }
         target_type = "unknown"
         target_id = None
 
-        for i, part in enumerate(parts):
+        for i in range(len(parts) - 1, -1, -1):
+            part = parts[i]
             if part in target_types and i + 1 < len(parts):
                 target_type = target_types[part]
                 potential_id = parts[i + 1]
