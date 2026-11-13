@@ -45,6 +45,22 @@ class CiGateTests(unittest.TestCase):
                          "needs.web.result == 'success'")
         self.assertFalse(job.get("continue-on-error", False))
 
+    def test_api_requires_real_worker_recovery(self):
+        steps = self.jobs["api"]["steps"]
+        recovery = [step for step in steps if step.get("name") == "Persisted worker recovery"]
+        self.assertEqual(len(recovery), 1)
+        step = recovery[0]
+        self.assertNotIn("if", step)
+        self.assertFalse(step.get("continue-on-error", False))
+        self.assertIn("test_worker_recovery_postgres.py", step["run"])
+        self.assertEqual(step["env"]["RECOVERY_REQUIRED"], "1")
+        self.assertIn("RECOVERY_WORKER_PYTHON", step["env"])
+        setup = next(item for item in steps if item.get("name") == "Prepare recovery services")
+        self.assertLess(steps.index(setup), steps.index(step))
+        self.assertIn("postgresql", setup["run"])
+        self.assertIn("redis-server", setup["run"])
+        self.assertIn("venv", setup["run"])
+
     def test_required_gate_rejects_failed_cancelled_or_skipped_jobs(self):
         job = self.jobs["required"]
         self.assertEqual(job["if"], "always()")

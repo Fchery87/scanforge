@@ -31,7 +31,7 @@ Working directories: API commands run from `apps/api`, worker commands from `app
 
 ### Recovery acceptance update (2026-11-12)
 
-Issue #5 now has real local acceptance on top of `d099c0c`. From the application
+Issue #5 now has real local acceptance in `1f9202c` on top of `d099c0c`. From the application
 directory, with `RECOVERY_WORKER_PYTHON` pointing to the existing worker Python:
 `RECOVERY_REQUIRED=1 DATABASE_URL=sqlite+aiosqlite:///:memory: PYTHONPATH="$PWD/apps/api" <api-python> -m pytest apps/api/tests/test_worker_recovery_postgres.py -v -s`
 passed **2 tests** in 519.34 seconds. Both tests own migrated PostgreSQL and Redis
@@ -51,6 +51,15 @@ and scanners are synthetic fixtures, not real scanner or provider evidence.
 
 Earlier pending statements below are historical as of 2026-11-07. #5 and parent
 #1 await integration/remote CI disposition, not further local recovery proof.
+
+The API CI job now requires this rehearsal with an isolated worker environment
+and installed PostgreSQL/Redis binaries. `RECOVERY_REQUIRED=1` rejects missing
+prerequisites. The gate regression failed before wiring and passed afterward:
+`apps/api/.venv/bin/python -m pytest scripts/test_ci_gates.py scripts/test_make_test_environment.py scripts/test_audit_python_dependencies.py -q`
+reported **13 passed, 47 subtests passed**. Fresh web tests, lint, TypeScript and
+production build passed, OpenAPI/type regeneration produced no diff, Python
+dependency audits reported no vulnerabilities, and npm high/critical audit
+passed. Operator release gates remain separate.
 
 The user authorized completing the older hardening backlog after spec #32 merged
 at `93d967e`. Work is collected on `integration/production-readiness` in

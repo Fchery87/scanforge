@@ -40,6 +40,35 @@ cancellation, and skip cases on main and non-main refs. They also protect the
 audit commands and explicit SBOM prerequisites. Live GitHub execution and
 repository branch-protection settings remain separate operational checks.
 
+### Persisted worker recovery (issue #5)
+
+The API CI job also runs `tests/test_worker_recovery_postgres.py` with a separate
+worker virtual environment and local PostgreSQL and Redis binaries. This is a
+required API-job step, so a failed recovery rehearsal blocks the `required` check
+and SBOM generation. `RECOVERY_REQUIRED=1` makes missing prerequisites failures
+rather than skipped acceptance.
+
+To repeat it locally, use a checkout without `.env` files in its ancestor paths,
+existing API and worker development environments, and PostgreSQL and Redis
+binaries. From `scanforge-security-platform`:
+
+```sh
+RECOVERY_REQUIRED=1 \
+RECOVERY_WORKER_PYTHON="$PWD/apps/worker/.venv/bin/python" \
+DATABASE_URL=sqlite+aiosqlite:///:memory: \
+PYTHONPATH="$PWD/apps/api" \
+apps/api/.venv/bin/python -m pytest apps/api/tests/test_worker_recovery_postgres.py -q -rs
+```
+
+The test owns its disposable, migrated PostgreSQL cluster and Redis process. It
+does not accept an external database or Redis service. It runs the real HTTP API,
+worker orchestration, leases, persistence, and queue recovery. Source acquisition
+and scanner execution use synthetic local fixtures, so this proves lifecycle
+recovery, not scanner detection, container containment, or live Upstash behavior.
+The production execution lease expires in real elapsed time, so allow several
+minutes. Ordinary API tests may skip this opt-in rehearsal when the worker
+interpreter is not configured.
+
 To run the scanner integration in a 32 GB disposable Codespace, build a test-only scanner image with the PyPI OSV database. The real-scanner fixture exercises PyPI dependencies. This reduced database image is for verification only and must not be deployed. Release builds omit the build argument and include all OSV ecosystems. The image excludes worker code, tests, and virtual environments from the Docker build context.
 
 ```sh

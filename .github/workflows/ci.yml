@@ -89,6 +89,19 @@ jobs:
         run: python -m pytest
         env:
           DATABASE_URL: sqlite+aiosqlite:///./test.db
+      - name: Prepare recovery services
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql redis-server
+          python -m venv "$RUNNER_TEMP/recovery-worker"
+          "$RUNNER_TEMP/recovery-worker/bin/python" -m pip install -e '../worker[dev]'
+      - name: Persisted worker recovery
+        timeout-minutes: 15
+        run: python -m pytest tests/test_worker_recovery_postgres.py -q -rs
+        env:
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          RECOVERY_REQUIRED: "1"
+          RECOVERY_WORKER_PYTHON: ${{ runner.temp }}/recovery-worker/bin/python
       - name: Audit exception handlers (advisory)
         run: python scripts/check_exception_handlers.py
         env:
