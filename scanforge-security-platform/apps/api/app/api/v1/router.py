@@ -52,6 +52,7 @@ api_router.include_router(
     prefix="/organizations/{org_id}/projects/{project_id}/scans",
     tags=["scans"],
 )
+api_router.include_router(findings_trend.router, tags=["findings"])
 api_router.include_router(
     findings.router,
     prefix="/organizations/{org_id}/projects/{project_id}/findings",
@@ -64,4 +65,3 @@ api_router.include_router(
 )
 api_router.include_router(scorecard.router, tags=["scorecard"])
 api_router.include_router(suppression_rules.router, tags=["suppression-rules"])
-api_router.include_router(findings_trend.router, tags=["findings"])
