@@ -203,7 +203,7 @@ lint:
 	$(WORKER_RUFF) check apps/worker/app
 
 test:
-	PYTHONPATH="$(PWD)/apps/api" $(API_PYTHON) -m pytest apps/api
-	PYTHONPATH="$(PWD)/apps/worker" $(WORKER_PYTHON) -m pytest apps/worker
+	DATABASE_URL="$${DATABASE_URL:-sqlite+aiosqlite:///:memory:}" PYTHONPATH="$(PWD)/apps/api" $(API_PYTHON) -m pytest apps/api
+	DATABASE_URL="$${DATABASE_URL:-sqlite+aiosqlite:///:memory:}" PYTHONPATH="$(PWD)/apps/worker" $(WORKER_PYTHON) -m pytest apps/worker
 	cd apps/web && npm run test:node
 	cd apps/web && npm run test:vitest

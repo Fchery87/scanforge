@@ -94,6 +94,9 @@ class ScanOrchestrator:
 
     async def process_job(self, job: QueueJob) -> bool:
         context = await self._load_scan_context(job)
+        if context.status == "completed":
+            await self.queue.ack(job)
+            return True
         _log.info("scan job started", extra={"scan_id": context.scan_id, "job_id": context.job_id})
 
         renewer = self._build_lease_renewer(context)
@@ -313,6 +316,7 @@ class ScanOrchestrator:
             attempt_id=data.get("attempt_id"),
             execution_revision=data.get("execution_revision"),
             worker_incarnation_id=data.get("worker_incarnation_id"),
+            status=data.get("status"),
         )
 
     def _build_completion_summary(

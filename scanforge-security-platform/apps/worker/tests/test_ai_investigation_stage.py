@@ -71,7 +71,8 @@ async def test_stage_disabled_skips_provider(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_stage_skips_secrets_scan_type():
+async def test_stage_skips_secrets_scan_type(monkeypatch):
+    monkeypatch.setenv("AI_ENABLED", "true")
     stage = AIInvestigationStage()
     provider = FakeProvider()
     stage._provider = provider
@@ -81,6 +82,51 @@ async def test_stage_skips_secrets_scan_type():
 
     assert provider.calls == []
     assert ctx.ai_annotated_count == 0
+
+
+@pytest.mark.asyncio
+async def test_stage_defaults_off_even_with_provider_credentials(monkeypatch):
+    monkeypatch.delenv("AI_ENABLED", raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    stage = AIInvestigationStage()
+    provider = FakeProvider()
+    stage._provider = provider
+    ctx = _make_context([_make_finding()])
+
+    await stage.run(ctx, job_type="scan.repo.full")
+
+    assert provider.calls == []
+    assert ctx.ai_annotated_count == 0
+    assert "ai_annotation" not in ctx.findings[0]["instance"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("api_key", [None, "", "   "])
+async def test_stage_enabled_without_credentials_skips_without_provider_calls(monkeypatch, api_key):
+    from app.services.ai_investigation.anthropic_provider import AnthropicProvider
+
+    monkeypatch.setenv("AI_ENABLED", "true")
+    monkeypatch.setenv("AI_PROVIDER", "anthropic")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    if api_key is not None:
+        monkeypatch.setenv("ANTHROPIC_API_KEY", api_key)
+    calls = []
+
+    async def investigate(self, finding):
+        calls.append(finding)
+        return _FAKE_ANNOTATION
+
+    monkeypatch.setattr(AnthropicProvider, "investigate", investigate)
+    stage = AIInvestigationStage()
+    stage._cache = None
+    ctx = _make_context([_make_finding()])
+
+    await stage.run(ctx, job_type="scan.repo.full")
+
+    assert calls == []
+    assert ctx.ai_annotated_count == 0
+    assert ctx.ai_skipped_count == 1
+    assert "ai_annotation" not in ctx.findings[0]["instance"]
 
 
 @pytest.mark.asyncio

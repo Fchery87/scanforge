@@ -27,6 +27,35 @@ async def test_clear_scan_queues_deletes_main_and_dlq():
 
 
 @pytest.mark.asyncio
+async def test_maintenance_reclaim_requeues_expired_delivery_before_removing_pending_entry():
+    client = QueueClient(
+        redis_url="https://redis.example",
+        redis_token="token",
+        organization_id=uuid4(),
+        consumer_name="maintenance",
+    )
+    client._command = AsyncMock(
+        side_effect=[
+            {"result": "OK"},
+            {"result": [["1740000000000-0", "worker-a", 1800000, 1]]},
+            {"result": "1"},
+        ]
+    )
+
+    reclaimed = await client.reclaim_stale_jobs()
+
+    assert reclaimed == 1
+    assert client._command.await_args_list[1].args == (
+        "XPENDING", client.scan_queue, client.CONSUMER_GROUP,
+        "IDLE", client.visibility_timeout_ms, "-", "+", 100,
+    )
+    assert client._command.await_args_list[2].args[:5] == (
+        "EVAL", client.REQUEUE_STALE_SCRIPT, 1, client.scan_queue,
+        client.CONSUMER_GROUP,
+    )
+
+
+@pytest.mark.asyncio
 async def test_dequeue_reclaims_a_stale_pending_scan_before_reading_new_messages():
     organization_id = uuid4()
     client = QueueClient(

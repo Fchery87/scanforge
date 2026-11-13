@@ -42,6 +42,7 @@ class ScanContext:
     ai_annotated_count: int = 0
     ai_skipped_count: int = 0
     cleanup_receipt: dict | None = None
+    status: str | None = None
 
     def attempt_headers(self, worker_credential: str) -> dict[str, str]:
         if not self.attempt_id or self.execution_revision is None or not self.worker_incarnation_id:

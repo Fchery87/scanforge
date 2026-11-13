@@ -27,6 +27,84 @@
 
 Working directories: API commands run from `apps/api`, worker commands from `apps/worker`, using each app's existing `.venv`. The Git root is the parent `scanforge/` directory.
 
+## Production-readiness follow-up (2026-11-07)
+
+### Recovery acceptance update (2026-11-12)
+
+Issue #5 now has real local acceptance in `1f9202c` on top of `d099c0c`. From the application
+directory, with `RECOVERY_WORKER_PYTHON` pointing to the existing worker Python:
+`RECOVERY_REQUIRED=1 DATABASE_URL=sqlite+aiosqlite:///:memory: PYTHONPATH="$PWD/apps/api" <api-python> -m pytest apps/api/tests/test_worker_recovery_postgres.py -v -s`
+passed **2 tests** in 519.34 seconds. Both tests own migrated PostgreSQL and Redis
+processes and call the real HTTP API and worker orchestration. They kill a worker
+after persisted `running`, wait for the production 120-second lease to expire,
+then reclaim through maintenance. They verify completion, immutable authoritative
+context despite forged queue hints, stale-attempt rejection, duplicate-delivery
+idempotency, and exactly three failed attempts followed by one DLQ record.
+
+The completed-delivery regression failed with the acknowledgement fast path
+removed and passed after restoring it. The independent disabled-recovery control
+failed because PostgreSQL remained `running`. Missing worker configuration with
+`RECOVERY_REQUIRED=1` fails instead of skipping. Full suites: API **614 passed,
+25 skipped** (including the two opt-in recovery tests), worker **248 passed,
+2 skipped**. Worker Ruff and patch whitespace checks passed. Source acquisition
+and scanners are synthetic fixtures, not real scanner or provider evidence.
+
+Earlier pending statements below are historical as of 2026-11-07. #5 and parent
+#1 await integration/remote CI disposition, not further local recovery proof.
+
+The API CI job now requires this rehearsal with an isolated worker environment
+and installed PostgreSQL/Redis binaries. `RECOVERY_REQUIRED=1` rejects missing
+prerequisites. The gate regression failed before wiring and passed afterward:
+`apps/api/.venv/bin/python -m pytest scripts/test_ci_gates.py scripts/test_make_test_environment.py scripts/test_audit_python_dependencies.py -q`
+reported **13 passed, 47 subtests passed**. Fresh web tests, lint, TypeScript and
+production build passed, OpenAPI/type regeneration produced no diff, Python
+dependency audits reported no vulnerabilities, and npm high/critical audit
+passed. Operator release gates remain separate.
+
+The user authorized completing the older hardening backlog after spec #32 merged
+at `93d967e`. Work is collected on `integration/production-readiness` in
+[PR #60](https://github.com/Fchery87/scanforge/pull/60). Existing implementations
+are verified rather than replaced. Disabled capabilities remain disabled.
+
+| Issues | Status | Evidence |
+| --- | --- | --- |
+| #56 | Closed | Merged API dispatch regression passed; clean `npm ci --ignore-scripts && npm audit --audit-level=high` exited 0 (remaining advisories low/moderate only). |
+| #4 | Implemented | `ba42175`, `bd17a6e`: root CI gates protected by executable tests; CI `api`, `worker`, `web`, `required`, and `changes` checks passed on `cd31c52`. SBOM is required on `main` and intentionally skipped on pull requests. |
+| #6 | Implemented | `45ce08b`: default-off coverage and unconfigured provider skip; focused AI stage suite passed and the integrated worker suite passed (239 passed, 2 skipped). |
+| #9, #13 | Implemented | `a6d52ee`, `6cbf005`: trusted-proxy identity for both limiter paths, spoof-resistant chain traversal, readiness/liveness coverage; integrated API focused middleware suite passed (32 passed). |
+| #2, #3, #4, #6, #7, #8, #9, #10, #11, #12, #13, #14, #15, #16, #57, #58 | Accepted and closed with ticket-specific evidence | `b52aaf1` is green in remote CI. Fresh clean-checkout workflow: API 614/23 skipped, worker 247/2 skipped, web Node 80 and Vitest 33 passed. #14/#58 ordered UUID isolation passes 41/41. #5 remains open for real API-backed persisted terminal recovery. |
+| #1 | Draft, not accepted | Child issues except #5 are closed with evidence. Queue mechanics are verified, but the real API-backed killed-worker persisted terminal-state rehearsal was not delivered. Live browser/provider, real scanner, deployment, production database, #37 evaluation, and operator-pilot gates remain separate unverified limits. |
+
+No production migrations, live customer scans, provider credentials, or feature
+enablement are authorized by these checks. PostgreSQL rehearsal uses a newly
+created disposable local cluster. Browser/live-provider and real-scanner evidence
+must be reported separately rather than inferred from unit tests.
+
+### Ticket acceptance reconciliation (2026-11-07, `fbffba8`)
+
+This table distinguishes verified ticket behavior from project completion. No ticket
+is automatically accepted merely because the default-order suite is green.
+Commands below run from `scanforge-security-platform/`. API invocations use
+`DATABASE_URL=sqlite+aiosqlite:///:memory: PYTHONPATH="$PWD/apps/api" apps/api/.venv/bin/python -m pytest`.
+Worker invocations use `PYTHONPATH="$PWD/apps/worker" apps/worker/.venv/bin/python -m pytest`.
+PostgreSQL tests unset `DISPATCH_POSTGRES_URL` and `R04_POSTGRES_URL` and create
+their own migrated cluster, with `TMPDIR` under the session scratch directory.
+
+| Ticket | Acceptance mapping and evidence | Closure state |
+| --- | --- | --- |
+| #2 | `aiosqlite` is dev-only. Unset `DATABASE_URL` reproduced 80 collection errors. `b94b6e5` supplies a test-only in-memory default while preserving explicit nonempty overrides; the Makefile environment regression is 3 passed after 2 failed/1 passed before. On fresh detached checkout `2c99e1d`, literal `env -u DATABASE_URL -u DISPATCH_POSTGRES_URL -u R04_POSTGRES_URL TMPDIR=/home/nochaserz/.jcode/scratch make install && make test` exited 0: API 614 passed/23 skipped, worker 247 passed/2 skipped, web Node 80 passed, web Vitest 33 passed. | Verified |
+| #3 | `4dc777f`; `apps/web/lib/auth/server.spec.ts` verifies lazy import and runtime enforcement. CI web build has no cookie secret configured and passes. | Verified, awaiting integration disposition |
+| #4 | `ba42175`, `bd17a6e`; `apps/api/.venv/bin/python -m pytest scripts/test_ci_gates.py scripts/test_audit_python_dependencies.py -q`: 9 passed, 47 subtests passed. `fbffba8` CI api/worker/web/required pass. SBOM is main-only and depends on successful api/worker/web. | Verified, awaiting integration disposition |
+| #5 | Maintenance now atomically checks pending idle time, copies the original delivery to ready, and acknowledges/deletes the source. Real owned Redis tests cover repeated EVAL after response loss, concurrent maintainers, worker-claim races, active/deleted entries, and malformed delivery quarantine. `TMPDIR=/home/nochaserz/.jcode/scratch PYTHONPATH="$PWD/apps/worker" apps/worker/.venv/bin/python -m pytest apps/worker -q`: 247 passed, 2 skipped. Queue Ruff passed. Withdrawn simulated API rehearsal remains invalid evidence. Real API-backed persisted terminal recovery is still pending. | Pending terminal acceptance |
+| #6, #7 | `45ce08b`, `6acce0c`, `b5e3963`; worker `apps/worker/tests/test_ai_investigation_stage.py apps/worker/tests/test_worker_main.py -q`: 16 passed. Default-off, missing-provider skip, secrets skip, and structured fields are asserted. | Verified, awaiting integration disposition |
+| #8, #10 | `0eeb7ca`, `766360f`; API `apps/api/tests/test_bulk_project_scope_postgres.py apps/api/tests/test_scan_soft_delete_postgres.py -q -rs`: 11 passed against migrated disposable PostgreSQL. Covers atomic cross-project/missing-target rejection and idempotent soft delete, hidden reads, retained finding/instance/event FK lineage. Migration `0016_scan_soft_delete.py` adds nullable timestamp. | Verified, awaiting integration disposition |
+| #9, #11, #12, #13 | `a6d52ee`, `8314573`, `63ea705`, `6cbf005`; API `apps/api/tests/test_trusted_proxy_limits.py apps/api/tests/test_auth_runtime_contract.py apps/api/tests/test_health_readiness.py apps/api/tests/test_internal_routes.py apps/api/tests/test_scans_route_contract.py apps/api/tests/test_authorization_regressions.py -q`: 41 passed. No dead RBAC helpers or internal onboarding route remain. Covers both limiter paths, membership-derived roles, readiness failure and independent liveness, route authorization. | Verified, awaiting integration disposition |
+| #14 | `3cdcd02` adds persisted ASGI audit outcome coverage. The failure sequence after PostgreSQL tests reproduced 8 failures/33 passes. `2c99e1d` moves SQLite UUID adaptation into the per-engine dialect and adds a metadata non-mutation regression. Exact sequence: 41 passed, 6 warnings. Full API suite after integration: 614 passed, 23 skipped, 7 warnings. | Verified, awaiting integration disposition |
+| #15, #16 | `9f564ad`, `8ff4892`; web `npm test && npm run lint && ./node_modules/.bin/tsc --noEmit && npm run build`: 80 Node and 33 Vitest passed. Includes route redirect/pass-through/public exclusion, safe destinations, response drift/advisory behavior, and codegen parity. | Verified, awaiting integration disposition |
+| #57 | `b2047f2`; API `apps/api/tests/test_findings_disappearance_scope.py::test_manual_reopen_blocks_old_and_requires_new_scans -q -p no:cacheprovider`: 1 passed alone. File: 22 passed/1 skipped. Full suite: 613 passed/23 skipped. | Verified, awaiting integration disposition |
+| #58 | `b2047f2`; API `apps/api/tests/test_pr_shadow_webhook.py apps/api/tests/test_pr_shadow_isolation.py apps/api/tests/test_scan_dispatch.py -q -p no:cacheprovider`: 23 passed in reported pollution order. The broader PostgreSQL-to-audit order now passes 41/41 after `2c99e1d`, with SQLite metadata left unchanged. | Verified, awaiting integration disposition |
+| #1 | Depends on all child acceptance above. Broader operator pilot and scanner evaluation gates remain separate and unverified. | Not complete |
+
 ## Tracker
 
 Spec: [issue #32](https://github.com/Fchery87/scanforge/issues/32). Each slice is a sub-issue labelled `ready-for-agent`. The issues' native "blocked by" links are the authoritative dependency graph; the "Depends on" column below summarizes them. Close an issue only when its tracker row here is `Done` with SHA and test command.
@@ -53,7 +131,7 @@ Spec: [issue #32](https://github.com/Fchery87/scanforge/issues/32). Each slice i
 | P3 | Bounded contextual reviewer, publication, feedback | — | P2.7 | no | Deferred | Expand into its own plan when P2.7 passes |
 | P4 | Reachability, fix suggestions, exports, more frameworks | — | P3 | no | Deferred | |
 
-**Verification note (review fixes on `review-fixes/spec-32`).** Not run anywhere on this branch: real PostgreSQL (the suites use SQLite stand-ins, and migrations 0025-0029 have never been applied), Docker or the scanner image, real scanners, live GitHub or GitHub App delivery, and the #37 dependency-engine evaluation. A `Done` row means the code and its tests are on the branch and the suites below passed; it is not a deployment or pilot claim. Commands, from each app directory with its `.venv`: API `DATABASE_URL=postgresql+asyncpg://u:p@localhost/db python -m pytest -q`; worker `python -m pytest -q`. Results at the review-fix tip: API 558 passed, 23 skipped, 1 failed (the known `test_evidence_contract` future-timestamp flake); worker 231 passed, 2 skipped; `ruff check app` clean in both apps. Known flakes: `test_evidence_contract` future-timestamp param, `test_lease_renewer`, `test_manual_reopen_blocks_old_and_requires_new_scans` (#57), `test_scan_dispatch*` pollution (#58).
+**Verification correction (2026-11-07).** API at `1459f20`: `DATABASE_URL=sqlite+aiosqlite:///:memory: PYTHONPATH="$PWD/apps/api" apps/api/.venv/bin/python -m pytest apps/api -q` passed 613 tests with 23 skips; API Ruff passed. Web `npm test && npm run lint && ./node_modules/.bin/tsc --noEmit && npm run build` passed (80 Node and 33 Vitest tests). The worker result of 241 passed/2 skipped included an invalid acceptance rehearsal and must not be used to accept #5. `6fff8d4` used a simulated HTTP API rather than persisted application state, did not assert a running scan before SIGKILL, and called `FLUSHDB` on an existing local Redis instance. That command ran during the local rehearsals and may have removed unrelated local keys; no pre-run inventory exists to establish the impact. The rehearsal is removed and its completion claims are retracted. Its CI also failed because it assumed a local `.venv`. Replacement verification must use owned disposable services, the real API and persistence, and explicit assertions. No GitHub tickets have been closed. The prior worker baseline was 240 passed/2 skipped. Disposable PostgreSQL migration round-trip through 0029 was separately exercised; #37 evaluation and operator pilot gates remain unrun.
 
 Ticket ordering refines the task order above: capability-scoped absence (#41) depends only on #33 and #37, not on `fp.v3`.
 

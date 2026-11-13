@@ -36,6 +36,35 @@ class DummyR2:
 
 
 @pytest.mark.asyncio
+async def test_completed_redelivery_only_acknowledges(monkeypatch):
+    from app.clients.queue import QueueJob
+
+    queue = DummyQueue()
+    acknowledged = []
+
+    async def ack(job):
+        acknowledged.append(job.job_id)
+
+    async def context(job):
+        return ScanContext(
+            scan_id="scan-1", organization_id="org-1", repository_id="repo-1",
+            project_id="project-1", branch="main", commit_sha="a" * 40,
+            job_id=job.job_id, status="completed",
+        )
+
+    def forbidden(*_args):
+        pytest.fail("terminal delivery must not start a lease or execution")
+
+    orchestrator = ScanOrchestrator(queue=queue, r2=DummyR2())
+    monkeypatch.setattr(queue, "ack", ack)
+    monkeypatch.setattr(orchestrator, "_load_scan_context", context)
+    monkeypatch.setattr(orchestrator, "_build_lease_renewer", forbidden)
+    assert await orchestrator.process_job(QueueJob.create("scan.repo.full", {"scan_id": "scan-1"}))
+    assert acknowledged == ["scan-1"]
+    assert not queue.requeued_jobs
+
+
+@pytest.mark.asyncio
 async def test_upload_artifacts_returns_scanner_run_updates(tmp_path: Path):
     artifact = tmp_path / "trivy-results.json"
     artifact.write_text("{}")

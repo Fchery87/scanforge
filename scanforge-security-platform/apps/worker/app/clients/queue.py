@@ -43,6 +43,23 @@ local entry_id = redis.call('XADD', KEYS[2], '*', 'raw_retry', ARGV[1], 'reason'
 redis.call('ZREM', KEYS[1], ARGV[1])
 return entry_id
 """
+    REQUEUE_STALE_SCRIPT = """
+local pending = redis.call('XPENDING', KEYS[1], ARGV[1], 'IDLE', ARGV[2], ARGV[3], ARGV[3], 1)
+if #pending == 0 or pending[1][1] ~= ARGV[3] then
+    return false
+end
+local rows = redis.call('XRANGE', KEYS[1], ARGV[3], ARGV[3])
+if #rows == 0 then
+    redis.call('XACK', KEYS[1], ARGV[1], ARGV[3])
+    redis.call('XDEL', KEYS[1], ARGV[3])
+    return false
+end
+local fields = rows[1][2]
+local entry = redis.call('XADD', KEYS[1], '*', unpack(fields))
+redis.call('XACK', KEYS[1], ARGV[1], ARGV[3])
+redis.call('XDEL', KEYS[1], ARGV[3])
+return entry
+"""
 
     def __init__(
         self,
@@ -299,20 +316,21 @@ return entry_id
         return int(result.get("result", 0))
 
     async def reclaim_stale_jobs(self) -> int:
-        """Claim pending messages for this worker; no recovery state is deleted."""
+        """Re-enqueue expired deliveries and remove their pending ownership."""
         await self._ensure_consumer_group()
-        result = await self._command(
-            "XAUTOCLAIM",
-            self.scan_queue,
-            self.CONSUMER_GROUP,
-            self.consumer_name,
-            self.visibility_timeout_ms,
-            "0-0",
-            "COUNT",
-            100,
-        )
-        payload = result.get("result") or []
-        return len(payload[1]) if len(payload) > 1 else 0
+        result = await self._command("XPENDING", self.scan_queue, self.CONSUMER_GROUP,
+                                     "IDLE", self.visibility_timeout_ms, "-", "+", 100)
+        entries = result.get("result") or []
+        requeued = 0
+        for entry in entries:
+            entry_id = entry[0] if isinstance(entry, (list, tuple)) else None
+            eval_result = await self._command(
+                "EVAL", self.REQUEUE_STALE_SCRIPT, 1, self.scan_queue,
+                self.CONSUMER_GROUP, self.visibility_timeout_ms, entry_id,
+            )
+            if eval_result.get("result"):
+                requeued += 1
+        return requeued
 
     async def clear_scan_queues(self) -> int:
         result = await self._command("DEL", self.scan_queue, self.dlq, self.retry_queue)
