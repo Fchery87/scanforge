@@ -927,5 +927,5 @@ Two design-partner repositories plus ScanForge, each with at least two weeks of 
 
 1. ~~Do counted-but-untransitioned absences reach the database in the completion path (P1.1 Step 12)?~~ Yes; see the P1.1 tracker row. The `commit=True` path's latent gap remains.
 2. Does the nested `scanforge-security-platform/.github/` Dependabot/Renovate configuration run at all? If not, move it to the Git root `.github/` in a separate change.
-3. B11 (`/findings/trend` shadowing) appears open; confirm with an assembled-router test and fix as a small independent slice.
+3. ~~B11 (`/findings/trend` shadowing) appears open; confirm with an assembled-router test and fix as a small independent slice.~~ Fixed after the production-readiness merge: the trend router is registered before the generic UUID finding route, with `apps/api/tests/test_findings_trend_route.py` proving the assembled route returns the trend contract.
 4. 19 harness stashes, about 25 stale branches and two prunable worktrees need a separate, approval-gated Git housekeeping inventory.

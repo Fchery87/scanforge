@@ -77,7 +77,7 @@ Original B1–B12 findings and their dispositions are in the [October decision r
 | B8 | Handwritten client schemas disagree with API | Open (October M12) |
 | B9 | Export workflow incomplete | Open; exports disabled |
 | B10 | Suppression rules not enforced at ingestion | Open; suppression disabled |
-| B11 | `/findings/{finding_id}` shadows `/findings/trend` | Appears open: the findings router is included before the trend router and `finding_id` is a UUID path parameter ([router.py](../apps/api/app/api/v1/router.py)); runtime not verified |
+| B11 | `/findings/{finding_id}` shadows `/findings/trend` | Fixed: the trend router is registered before the generic UUID finding route, and `apps/api/tests/test_findings_trend_route.py` exercises the assembled application router |
 | B12 | Schedules ignore cron expressions; unsafe concurrent claiming | Open; schedules disabled |
 
 ## Gaps found during the 2026-11-04 discovery

@@ -954,6 +954,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{org_id}/projects/{project_id}/findings/trend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Findings Trend */
+        get: operations["get_findings_trend_api_v1_organizations__org_id__projects__project_id__findings_trend_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{org_id}/projects/{project_id}/findings/": {
         parameters: {
             query?: never;
@@ -1244,23 +1261,6 @@ export interface paths {
         head?: never;
         /** Update Rule */
         patch: operations["update_rule_api_v1_organizations__org_id__suppression_rules__rule_id__patch"];
-        trace?: never;
-    };
-    "/api/v1/organizations/{org_id}/projects/{project_id}/findings/trend": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Findings Trend */
-        get: operations["get_findings_trend_api_v1_organizations__org_id__projects__project_id__findings_trend_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/": {
@@ -5652,6 +5652,40 @@ export interface operations {
             };
         };
     };
+    get_findings_trend_api_v1_organizations__org_id__projects__project_id__findings_trend_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path: {
+                org_id: string;
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_findings_api_v1_organizations__org_id__projects__project_id__findings__get: {
         parameters: {
             query?: {
@@ -6328,40 +6362,6 @@ export interface operations {
                 "application/json": components["schemas"]["SuppressionRuleUpdate"];
             };
         };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_findings_trend_api_v1_organizations__org_id__projects__project_id__findings_trend_get: {
-        parameters: {
-            query?: {
-                days?: number;
-            };
-            header?: never;
-            path: {
-                org_id: string;
-                project_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
