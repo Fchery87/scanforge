@@ -80,6 +80,12 @@ Original B1–B12 findings and their dispositions are in the [October decision r
 | B11 | `/findings/{finding_id}` shadows `/findings/trend` | Fixed: the trend router is registered before the generic UUID finding route, and `apps/api/tests/test_findings_trend_route.py` exercises the assembled application router |
 | B12 | Schedules ignore cron expressions; unsafe concurrent claiming | Open; schedules disabled |
 
+Standalone absence evaluation commits metadata and events even when a finding's
+workflow state does not change. The completion path retains transaction ownership
+with `commit=False`. Four cases in
+`test_absence_without_transition_respects_transaction_owner` verify persistence
+and rollback for recorded and uncredited absences using SQLite.
+
 ## Gaps found during the 2026-11-04 discovery
 
 | ID | Gap | Source |

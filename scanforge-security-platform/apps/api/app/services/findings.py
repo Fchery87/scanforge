@@ -790,11 +790,11 @@ class FindingService:
                 finding, scan, branch, present, current_signatures, inventory=inventory
             )
 
-        if updated:
-            if commit:
-                await self.db.commit()
-            else:
-                await self.db.flush()
+        if commit:
+            # Evidence must survive even when no workflow state transitions.
+            await self.db.commit()
+        elif updated:
+            await self.db.flush()
 
         return updated
 
@@ -1242,4 +1242,3 @@ class FindingService:
         if commit:
             await self.db.commit()
         return count
-

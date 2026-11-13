@@ -371,6 +371,64 @@ async def test_two_qualifying_absences_move_finding_to_fixed(db_session):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("commit_owned", [True, False])
+@pytest.mark.parametrize("changed_analyzer", [False, True])
+async def test_absence_without_transition_respects_transaction_owner(db_session, commit_owned, changed_analyzer):
+    repo_id, project_id, _ = await _seed_repo(db_session)
+    fingerprint = "fp-human-block"
+    finding = await _seed_finding(db_session, repo_id, project_id, fingerprint, status="reviewing")
+    finding_id = str(finding.id)
+    service = await _observe(db_session, repo_id, project_id, fingerprint, commit="0" * 40)
+
+    scan = await _seed_scan(db_session, repo_id, project_id, commit="a" * 40)
+    runs = OK_RUNS
+    if changed_analyzer:
+        runs = (("trivy", "completed", {**TRIVY_V1, "scanner_version": "99.0.0"}),)
+    await _add_runs(db_session, scan.id, runs)
+    db_session.add(
+        ScannerRun(
+            id=str(uuid4()),
+            scan_id=str(scan.id),
+            scanner_name="syft",
+            status=ScanStatus.COMPLETED,
+            metadata_json={"inventory": {"complete": True, "packages": []}},
+            scanner_version="1.4.1",
+            parser_version="2026-10-parser.v1",
+            rules_digest=None,
+        )
+    )
+    scan.summary_json = _health()
+    scan.status = ScanStatus.COMPLETED
+    await db_session.commit()
+
+    if commit_owned:
+        updated = await service.mark_not_observed_for_completed_scan(scan)
+    else:
+        updated = await service.mark_not_observed_after_scan(
+            repository_id=repo_id,
+            scan_id=str(scan.id),
+            seen_fingerprints=set(),
+            scan_summary=scan.summary_json,
+            commit=False,
+        )
+    assert updated == 0
+    await db_session.rollback()
+    db_session.expire_all()
+
+    result = await db_session.execute(select(Finding).where(Finding.id == finding_id))
+    after = result.scalar_one()
+    assert after.status == "reviewing"
+    assert len(after.metadata_json["absence_series"][MAIN]["qualifying_absences"]) == int(
+        commit_owned and not changed_analyzer
+    )
+    event_result = await db_session.execute(select(FindingEvent).where(FindingEvent.finding_id == finding_id))
+    events = sorted(event_result.scalars().all(), key=lambda event: event.created_at)
+    expected_event = "absence_not_credited" if changed_analyzer else "absence_recorded"
+    assert [event.event_type for event in events] == ([expected_event] if commit_owned else [])
+    assert bool(after.metadata_json.get("analyzer_absence_block")) == (commit_owned and changed_analyzer)
+
+
+@pytest.mark.asyncio
 async def test_same_commit_rerun_does_not_close_finding(db_session):
     repo_id, project_id, _ = await _seed_repo(db_session)
     fingerprint = "fp-rerun"
