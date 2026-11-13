@@ -29,6 +29,29 @@ Working directories: API commands run from `apps/api`, worker commands from `app
 
 ## Production-readiness follow-up (2026-11-07)
 
+### Recovery acceptance update (2026-11-12)
+
+Issue #5 now has real local acceptance on top of `d099c0c`. From the application
+directory, with `RECOVERY_WORKER_PYTHON` pointing to the existing worker Python:
+`RECOVERY_REQUIRED=1 DATABASE_URL=sqlite+aiosqlite:///:memory: PYTHONPATH="$PWD/apps/api" <api-python> -m pytest apps/api/tests/test_worker_recovery_postgres.py -v -s`
+passed **2 tests** in 519.34 seconds. Both tests own migrated PostgreSQL and Redis
+processes and call the real HTTP API and worker orchestration. They kill a worker
+after persisted `running`, wait for the production 120-second lease to expire,
+then reclaim through maintenance. They verify completion, immutable authoritative
+context despite forged queue hints, stale-attempt rejection, duplicate-delivery
+idempotency, and exactly three failed attempts followed by one DLQ record.
+
+The completed-delivery regression failed with the acknowledgement fast path
+removed and passed after restoring it. The independent disabled-recovery control
+failed because PostgreSQL remained `running`. Missing worker configuration with
+`RECOVERY_REQUIRED=1` fails instead of skipping. Full suites: API **614 passed,
+25 skipped** (including the two opt-in recovery tests), worker **248 passed,
+2 skipped**. Worker Ruff and patch whitespace checks passed. Source acquisition
+and scanners are synthetic fixtures, not real scanner or provider evidence.
+
+Earlier pending statements below are historical as of 2026-11-07. #5 and parent
+#1 await integration/remote CI disposition, not further local recovery proof.
+
 The user authorized completing the older hardening backlog after spec #32 merged
 at `93d967e`. Work is collected on `integration/production-readiness` in
 [PR #60](https://github.com/Fchery87/scanforge/pull/60). Existing implementations
